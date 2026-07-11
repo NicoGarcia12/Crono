@@ -28,8 +28,14 @@ type NotificationsModule = typeof import('expo-notifications');
 const isExpoGoAndroid =
   Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
+/**
+ * Entornos sin notificaciones programadas: Expo Go Android (push removido en
+ * SDK 53+) y web (el navegador no tiene el scheduler nativo de expo-notifications).
+ */
+const notificationsUnavailable = isExpoGoAndroid || Platform.OS === 'web';
+
 /** true si en este entorno se pueden programar recordatorios. */
-export const remindersAvailable = !isExpoGoAndroid;
+export const remindersAvailable = !notificationsUnavailable;
 
 // Cache del módulo: undefined = todavía no se intentó cargar; null = no disponible.
 let cachedModule: NotificationsModule | null | undefined;
@@ -37,7 +43,7 @@ let cachedModule: NotificationsModule | null | undefined;
 function getNotifications(): NotificationsModule | null {
   if (cachedModule !== undefined) return cachedModule;
 
-  if (isExpoGoAndroid) {
+  if (notificationsUnavailable) {
     cachedModule = null;
     return cachedModule;
   }

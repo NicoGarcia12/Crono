@@ -1,10 +1,10 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { DateField, TimeField } from '@/components/date-time-field';
 import { EVENT_TYPE_META, REMINDER_OPTIONS } from '@/constants/event-types';
 import { EVENT_TYPES, type EventItem, type EventType, type NewEvent } from '@/types';
-import { dateToIso, dateToTime, formatLongDate, toLocalDate } from '@/utils/dates';
+import { dateToIso } from '@/utils/dates';
 
 /**
  * Formulario de evento, compartido entre "crear" y "editar".
@@ -34,8 +34,6 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [yearly, setYearly] = useState<boolean>(
     initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
   );
-  // En Android el picker es un diálogo que se abre y cierra; este flag controla cuándo mostrarlo.
-  const [picker, setPicker] = useState<'date' | 'time' | null>(null);
 
   const canSave = title.trim().length > 0;
 
@@ -86,35 +84,17 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       </View>
 
       <Text style={styles.label}>Fecha</Text>
-      <Pressable style={styles.input} onPress={() => setPicker('date')}>
-        <Text style={styles.inputText}>{formatLongDate(date)}</Text>
-      </Pressable>
+      <DateField value={date} onChange={setDate} />
 
       <Text style={styles.label}>Hora (opcional)</Text>
       <View style={styles.row}>
-        <Pressable style={[styles.input, styles.grow]} onPress={() => setPicker('time')}>
-          <Text style={styles.inputText}>{time ?? 'Todo el día'}</Text>
-        </Pressable>
+        <TimeField value={time} onChange={setTime} style={styles.grow} />
         {time ? (
           <Pressable style={styles.clearButton} onPress={() => setTime(null)}>
             <Text style={styles.clearText}>Quitar</Text>
           </Pressable>
         ) : null}
       </View>
-
-      {picker ? (
-        <DateTimePicker
-          value={toLocalDate(date, time)}
-          mode={picker}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_event, selected) => {
-            setPicker(null); // en Android el diálogo se cierra solo; esto lo refleja en el estado
-            if (!selected) return; // el usuario canceló
-            if (picker === 'date') setDate(dateToIso(selected));
-            else setTime(dateToTime(selected));
-          }}
-        />
-      ) : null}
 
       <Text style={styles.label}>Descripción (opcional)</Text>
       <TextInput
@@ -171,7 +151,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1a1a2e',
   },
-  inputText: { fontSize: 16, color: '#1a1a2e' },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   grow: { flex: 1 },

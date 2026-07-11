@@ -41,7 +41,8 @@
           "faceIDPermission": "Crono usa Face ID para desbloquear tu agenda."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,

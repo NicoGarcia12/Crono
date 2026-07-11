@@ -76,7 +76,7 @@ describe('candidateToEvent', () => {
       date: '1995-12-20',
       time: null,
       description: null,
-      reminderMinutes: 60 * 24,
+      reminderMinutes: [60 * 24],
       yearly: 1,
     });
   });

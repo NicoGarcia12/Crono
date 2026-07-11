@@ -15,11 +15,14 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
   db = await SQLite.openDatabaseAsync('crono.db');
+  // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
+  // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
+  await db.execAsync('PRAGMA foreign_keys = ON');
   await migrate(db);
 }
 
@@ -77,7 +80,30 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 1;
   }
 
-  // Futuras migraciones: if (currentVersion === 1) { ...ALTER TABLE...; currentVersion = 2; }
+  if (currentVersion === 1) {
+    // v2: recordatorios múltiples. El aviso único (columnas reminder_minutes /
+    // notification_id en events) pasa a una tabla propia: 1 evento → N avisos.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS reminders (
+        id INTEGER PRIMARY KEY NOT NULL,
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        minutes INTEGER NOT NULL,
+        notification_id TEXT
+      );
+
+      -- Backfill: cada evento que tenía UN aviso pasa a tener UNA fila acá.
+      INSERT INTO reminders (event_id, minutes, notification_id)
+        SELECT id, reminder_minutes, notification_id
+        FROM events
+        WHERE reminder_minutes IS NOT NULL;
+
+      ALTER TABLE events DROP COLUMN reminder_minutes;
+      ALTER TABLE events DROP COLUMN notification_id;
+    `);
+    currentVersion = 2;
+  }
+
+  // Futuras migraciones: if (currentVersion === 2) { ...ALTER TABLE...; currentVersion = 3; }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

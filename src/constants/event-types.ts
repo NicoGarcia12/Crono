@@ -21,9 +21,11 @@ export const EVENT_TYPE_META: Record<EventType, EventTypeMeta> = {
   cita_medica: { label: 'Cita médica', icon: 'medkit', color: '#4CAF50', defaultYearly: false },
 };
 
-/** Opciones de anticipación del recordatorio que se muestran en el formulario. */
-export const REMINDER_OPTIONS: { label: string; minutes: number | null }[] = [
-  { label: 'Sin recordatorio', minutes: null },
+/**
+ * Opciones de anticipación del recordatorio (se pueden elegir VARIAS por
+ * evento, ej: 1 semana antes para el regalo + en el momento para saludar).
+ */
+export const REMINDER_OPTIONS: { label: string; minutes: number }[] = [
   { label: 'En el momento', minutes: 0 },
   { label: '1 hora antes', minutes: 60 },
   { label: '1 día antes', minutes: 60 * 24 },

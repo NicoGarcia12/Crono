@@ -32,7 +32,7 @@ export function EventCard({ event }: { event: EventItem }) {
       </View>
       <View style={styles.right}>
         <Text style={[styles.when, { color: meta.color }]}>{formatRelative(next)}</Text>
-        {event.reminderMinutes !== null ? (
+        {event.reminders.length > 0 ? (
           <Ionicons name="notifications" size={14} color="#999" />
         ) : null}
       </View>

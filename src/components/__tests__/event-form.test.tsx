@@ -43,7 +43,7 @@ describe('<EventForm />', () => {
       date: todayIso(),
       time: null,
       description: null,
-      reminderMinutes: 60 * 24,
+      reminderMinutes: [60 * 24],
       yearly: 0,
     });
   });
@@ -58,13 +58,26 @@ describe('<EventForm />', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'cumpleanos', yearly: 1 }));
   });
 
-  it('permite quitar el recordatorio', async () => {
+  it('permite elegir VARIOS recordatorios a la vez', async () => {
+    const onSubmit = await renderForm();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Mamá');
+    // '1 día antes' ya viene elegido por defecto; sumamos '1 semana antes'.
+    await fireEvent.press(screen.getByText('1 semana antes'));
+    await fireEvent.press(screen.getByText('Crear evento'));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ reminderMinutes: [60 * 24, 60 * 24 * 7] }),
+    );
+  });
+
+  it('permite quitar todos los recordatorios', async () => {
     const onSubmit = await renderForm();
 
     await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Turno médico');
     await fireEvent.press(screen.getByText('Sin recordatorio'));
     await fireEvent.press(screen.getByText('Crear evento'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ reminderMinutes: null }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ reminderMinutes: [] }));
   });
 });

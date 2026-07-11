@@ -1,8 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import * as eventsRepo from '@/db/events-repo';
-import { cancelReminder, scheduleEventReminder } from '@/notifications/notifications';
-import type { EventItem, NewEvent } from '@/types';
+import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
+import type { EventItem, EventReminder, NewEvent } from '@/types';
 
 /**
  * Slice de eventos (Redux Toolkit, el mismo patrón que usás en React web).
@@ -25,25 +25,26 @@ export const loadEvents = createAsyncThunk('events/load', async () => {
 });
 
 export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) => {
-  // 1) Programar el recordatorio en el sistema, 2) guardar en SQLite con el id de la notificación.
-  const notificationId = await scheduleEventReminder(data);
-  return eventsRepo.insertEvent(data, notificationId);
+  // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
+  const reminders = await scheduleEventReminders(data);
+  return eventsRepo.insertEvent(data, reminders);
 });
 
 export const editEvent = createAsyncThunk(
   'events/edit',
-  async (payload: { id: number; data: NewEvent; previousNotificationId: string | null }) => {
-    // Al editar, la notificación vieja queda obsoleta: se cancela y se programa una nueva.
-    await cancelReminder(payload.previousNotificationId);
-    const notificationId = await scheduleEventReminder(payload.data);
-    const updated: EventItem = { ...payload.data, id: payload.id, notificationId };
+  async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
+    // Al editar, los avisos viejos quedan obsoletos: se cancelan y se programan de nuevo.
+    await cancelReminders(payload.previousReminders);
+    const reminders = await scheduleEventReminders(payload.data);
+    const { reminderMinutes: _ignored, ...eventData } = payload.data;
+    const updated: EventItem = { ...eventData, id: payload.id, reminders };
     await eventsRepo.updateEvent(updated);
     return updated;
   },
 );
 
 export const removeEvent = createAsyncThunk('events/remove', async (event: EventItem) => {
-  await cancelReminder(event.notificationId);
+  await cancelReminders(event.reminders);
   await eventsRepo.deleteEvent(event.id);
   return event.id;
 });

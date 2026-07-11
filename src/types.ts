@@ -12,6 +12,17 @@ export const EVENT_TYPES = ['evento', 'cumpleanos', 'aniversario', 'festivo', 'c
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/**
+ * Un aviso programado de un evento. Un evento puede tener varios
+ * (ej: 1 semana antes para comprar el regalo + el mismo día para saludar).
+ */
+export interface EventReminder {
+  /** Minutos de anticipación respecto del evento (0 = en el momento). */
+  minutes: number;
+  /** Id de la notificación en el sistema, para cancelarla al editar/borrar (null si el entorno no soporta avisos). */
+  notificationId: string | null;
+}
+
 export interface EventItem {
   id: number;
   title: string;
@@ -21,16 +32,14 @@ export interface EventItem {
   /** Hora 'HH:mm', o null si es un evento de día completo (ej. un festivo). */
   time: string | null;
   description: string | null;
-  /** Minutos de anticipación para el recordatorio; null = sin recordatorio. */
-  reminderMinutes: number | null;
+  /** Avisos programados (tabla `reminders`, 1 evento → N avisos). Vacío = sin recordatorio. */
+  reminders: EventReminder[];
   /** 1 = se repite todos los años (cumpleaños, aniversarios, festivos). SQLite no tiene boolean. */
   yearly: 0 | 1;
-  /** Id de la notificación programada en el sistema, para poder cancelarla al editar/borrar. */
-  notificationId: string | null;
 }
 
-/** Datos que completa el usuario al crear un evento (el id y la notificación los pone la app). */
-export type NewEvent = Omit<EventItem, 'id' | 'notificationId'>;
+/** Datos que completa el usuario al crear un evento: elige minutos; los ids de notificación los pone la app. */
+export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminderMinutes: number[] };
 
 export interface Note {
   id: number;

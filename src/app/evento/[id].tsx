@@ -28,7 +28,7 @@ export default function EditarEventoScreen() {
   }
 
   const handleSubmit = async (data: NewEvent) => {
-    await dispatch(editEvent({ id: event.id, data, previousNotificationId: event.notificationId })).unwrap();
+    await dispatch(editEvent({ id: event.id, data, previousReminders: event.reminders })).unwrap();
     router.back();
   };
 

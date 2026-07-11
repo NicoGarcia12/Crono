@@ -3,7 +3,7 @@ import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { EVENT_TYPE_META } from '@/constants/event-types';
-import type { EventItem, NewEvent } from '@/types';
+import type { EventReminder, NewEvent } from '@/types';
 import { toLocalDate } from '@/utils/dates';
 
 /**
@@ -87,18 +87,30 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
- * Programa el recordatorio de un evento. Devuelve el id de la notificación
- * (para guardarlo en la BD y poder cancelarla después) o null si no corresponde
- * o el entorno no soporta notificaciones (Expo Go en Android).
+ * Programa TODOS los avisos de un evento (uno por cada anticipación elegida)
+ * y devuelve la lista con sus ids de notificación, lista para persistir.
+ * En entornos sin notificaciones, los ids quedan en null.
  */
-export async function scheduleEventReminder(event: NewEvent | EventItem): Promise<string | null> {
+export async function scheduleEventReminders(event: NewEvent): Promise<EventReminder[]> {
+  const scheduled: EventReminder[] = [];
+  for (const minutes of event.reminderMinutes) {
+    scheduled.push({ minutes, notificationId: await scheduleOne(event, minutes) });
+  }
+  return scheduled;
+}
+
+/**
+ * Programa un aviso puntual. Devuelve el id de la notificación (para poder
+ * cancelarla después) o null si no corresponde o el entorno no soporta
+ * notificaciones (Expo Go en Android, web).
+ */
+async function scheduleOne(event: NewEvent, minutes: number): Promise<string | null> {
   const Notifications = getNotifications();
   if (!Notifications) return null;
-  if (event.reminderMinutes === null) return null;
 
   const occurrence = toLocalDate(event.date, event.time ?? '09:00');
   // El aviso es X minutos ANTES del evento.
-  const reminderAt = new Date(occurrence.getTime() - event.reminderMinutes * 60 * 1000);
+  const reminderAt = new Date(occurrence.getTime() - minutes * 60 * 1000);
 
   const content: NotificationContentInput = {
     title: `${EVENT_TYPE_META[event.type].label}: ${event.title}`,
@@ -134,9 +146,11 @@ export async function scheduleEventReminder(event: NewEvent | EventItem): Promis
   });
 }
 
-/** Cancela un recordatorio programado (al editar o borrar un evento). */
-export async function cancelReminder(notificationId: string | null): Promise<void> {
+/** Cancela los avisos programados de un evento (al editarlo o borrarlo). */
+export async function cancelReminders(reminders: EventReminder[]): Promise<void> {
   const Notifications = getNotifications();
-  if (!Notifications || !notificationId) return;
-  await Notifications.cancelScheduledNotificationAsync(notificationId);
+  if (!Notifications) return;
+  for (const { notificationId } of reminders) {
+    if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId);
+  }
 }

@@ -1,56 +1,54 @@
-# Welcome to your Expo app 👋
+# Crono 📅
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Agenda personal para el celular: eventos, cumpleaños, aniversarios, días festivos, citas médicas y notas. **Todos los datos viven solo en tu celular** (SQLite local, sin servidor) y la app se desbloquea con la huella/cara/PIN del propio dispositivo.
 
-## Get started
+## Stack
 
-1. Install dependencies
+| Capa | Tecnología |
+| --- | --- |
+| Framework mobile | React Native + Expo (managed) |
+| Navegación | Expo Router (rutas basadas en archivos, como Next.js) |
+| Base de datos | expo-sqlite (archivo `.db` en el sandbox de la app) |
+| Estado global | Redux Toolkit (mismo patrón que en React web) |
+| Autenticación | expo-local-authentication (delega en el bloqueo del sistema) |
+| Recordatorios | expo-notifications (notificaciones locales, sin internet) |
+| Lenguaje | TypeScript estricto |
+
+## Cómo probarla en tu celular
+
+1. Instalá la app **Expo Go** desde Play Store / App Store.
+2. En esta carpeta corré:
 
    ```bash
    npm install
-   ```
-
-2. Start the app
-
-   ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+3. Escaneá el QR que aparece en la terminal con Expo Go (Android) o con la cámara (iOS).
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+> ⚠️ Nota: en Expo Go las notificaciones locales de Android pueden tener limitaciones. Para la experiencia completa se genera un *development build* con `npx eas build` (no hace falta para desarrollar el resto).
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Arquitectura
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```
+src/
+├── app/                # Rutas (Expo Router): cada archivo = una pantalla
+│   ├── _layout.tsx     #   Providers + init BD + bloqueo + primer uso
+│   ├── (tabs)/         #   Pestañas: Agenda, Notas, Perfil
+│   ├── evento/         #   Crear/editar eventos
+│   └── nota/           #   Crear/editar notas
+├── components/         # Componentes presentacionales (formularios, tarjetas, lock screen)
+├── constants/          # Metadatos de tipos de evento, opciones de recordatorio
+├── db/                 # SQLite: conexión, migraciones y repositorios (única capa con SQL)
+├── notifications/      # Programar/cancelar recordatorios locales
+├── store/              # Redux Toolkit: slices + hooks tipados
+└── utils/              # Fechas (próxima ocurrencia, formato en español)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+**Flujo de datos**: Pantalla → `dispatch(thunk)` → repositorio SQLite + notificación → Redux actualiza → la pantalla re-renderiza. SQLite es la fuente de verdad; Redux es solo la copia en memoria (por eso no hace falta redux-persist).
 
-### Other setup steps
+## Decisiones de diseño
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **Sin servidor**: privacidad total, funciona sin conexión. La contracara: si se pierde el celular se pierden los datos (un backup/export es candidato a próxima feature).
+- **Bloqueo del sistema en vez de contraseña propia**: una app no puede leer el PIN del celular; lo correcto es delegar en `LocalAuthentication` (huella/cara/PIN del SO). La app se re-bloquea al pasar a segundo plano.
+- **Eventos anuales**: cumpleaños, aniversarios y festivos se repiten cada año automáticamente (trigger `YEARLY` de notificaciones + cálculo de "próxima ocurrencia" en la agenda).

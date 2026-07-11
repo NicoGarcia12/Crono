@@ -96,6 +96,10 @@ function Gates() {
       <Stack.Screen name="evento/[id]" options={{ title: 'Editar evento' }} />
       <Stack.Screen name="nota/nueva" options={{ title: 'Nueva nota', presentation: 'modal' }} />
       <Stack.Screen name="nota/[id]" options={{ title: 'Editar nota' }} />
+      <Stack.Screen
+        name="importar-cumpleanos"
+        options={{ title: 'Importar cumpleaños', presentation: 'modal' }}
+      />
     </Stack>
   );
 }

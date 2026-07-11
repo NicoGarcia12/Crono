@@ -47,7 +47,13 @@
         }
       ],
       "expo-notifications",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Crono accede a tus contactos solo para importar cumpleaños."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

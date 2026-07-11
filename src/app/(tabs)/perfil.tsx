@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
@@ -8,6 +9,7 @@ import { saveDisplayName } from '@/store/settings-slice';
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
 export default function PerfilScreen() {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const displayName = useAppSelector((state) => state.settings.displayName);
   const eventCount = useAppSelector((state) => state.events.items.length);
   const noteCount = useAppSelector((state) => state.notes.items.length);
@@ -58,6 +60,23 @@ export default function PerfilScreen() {
           <Text style={styles.statLabel}>Notas</Text>
         </View>
       </View>
+
+      <Pressable
+        style={styles.actionCard}
+        accessibilityLabel="Importar cumpleaños"
+        onPress={() => router.push('/importar-cumpleanos')}
+      >
+        <View style={styles.actionIcon}>
+          <Ionicons name="people" size={22} color="#E91E63" />
+        </View>
+        <View style={styles.actionBody}>
+          <Text style={styles.actionTitle}>Importar cumpleaños</Text>
+          <Text style={styles.actionSubtitle}>
+            Traé de una sola vez las fechas guardadas en tus contactos
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color="#bbb" />
+      </Pressable>
 
       <View style={styles.infoCard}>
         <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
@@ -114,6 +133,26 @@ const styles = StyleSheet.create({
   },
   statNumber: { fontSize: 26, fontWeight: '700', color: '#208AEF' },
   statLabel: { fontSize: 13, color: '#777' },
+  actionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    alignSelf: 'stretch',
+  },
+  actionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#E91E6322',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBody: { flex: 1, gap: 2 },
+  actionTitle: { fontSize: 15.5, fontWeight: '600', color: '#1a1a2e' },
+  actionSubtitle: { fontSize: 12.5, color: '#777' },
   infoCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, gap: 14, alignSelf: 'stretch' },
   infoRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   infoText: { flex: 1, fontSize: 13.5, color: '#555', lineHeight: 19 },

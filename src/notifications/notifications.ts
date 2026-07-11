@@ -35,10 +35,10 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 
   const current = await Notifications.getPermissionsAsync();
-  if (current.granted) return true;
+  if (current.status === 'granted') return true;
 
   const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
+  return requested.status === 'granted';
 }
 
 /**

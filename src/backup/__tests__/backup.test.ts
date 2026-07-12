@@ -18,6 +18,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   phone: null,
   reminders: [{ amount: 1, unit: 'dias', notificationId: 'notif-1' }],
   yearly: 1,
+  isMine: 0,
   ...over,
 });
 
@@ -49,6 +50,7 @@ describe('buildBackup', () => {
           phone: null,
           reminders: [{ amount: 1, unit: 'dias' }], // sin notificationId
           yearly: 1,
+          isMine: 0,
         },
       ],
       notes: [{ title: 'Lista del súper', content: 'Pan, leche' }],

@@ -17,6 +17,7 @@ const evento = (over: Partial<EventItem>): EventItem => ({
   phone: '+54 9 11 5555-0001',
   reminders: [],
   yearly: 1,
+  isMine: 0,
   ...over,
 });
 

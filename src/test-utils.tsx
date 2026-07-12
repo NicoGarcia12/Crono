@@ -4,6 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
 import eventsReducer from '@/store/events-slice';
+import greetingsReducer from '@/store/greetings-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 
@@ -16,7 +17,12 @@ import settingsReducer from '@/store/settings-slice';
  */
 export function renderWithStore(ui: ReactElement) {
   const store = configureStore({
-    reducer: { events: eventsReducer, notes: notesReducer, settings: settingsReducer },
+    reducer: {
+      events: eventsReducer,
+      greetings: greetingsReducer,
+      notes: notesReducer,
+      settings: settingsReducer,
+    },
   });
 
   const Wrapper = ({ children }: { children: ReactNode }) => (

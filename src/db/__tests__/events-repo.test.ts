@@ -6,8 +6,8 @@ jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
 
 describe('attachReminders', () => {
   const events = [
-    { id: 1, title: 'Mamá', type: 'cumpleanos' as const, date: '1960-08-01', time: null, description: null, contactId: 'c1', phone: '+54 11 5555-0001', yearly: 1 as const },
-    { id: 2, title: 'Turno médico', type: 'cita_medica' as const, date: '2026-09-10', time: '10:30', description: null, contactId: null, phone: null, yearly: 0 as const },
+    { id: 1, title: 'Mamá', type: 'cumpleanos' as const, date: '1960-08-01', time: null, description: null, contactId: 'c1', phone: '+54 11 5555-0001', yearly: 1 as const, isMine: 0 as const },
+    { id: 2, title: 'Turno médico', type: 'cita_medica' as const, date: '2026-09-10', time: '10:30', description: null, contactId: null, phone: null, yearly: 0 as const, isMine: 0 as const },
   ];
 
   it('agrupa los avisos por evento (relación 1→N)', () => {

@@ -11,6 +11,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   phone: null,
   reminders: [],
   yearly: 1,
+  isMine: 0,
   ...over,
 });
 

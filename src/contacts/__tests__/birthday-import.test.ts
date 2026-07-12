@@ -21,6 +21,7 @@ const evento = (over: Partial<EventItem>): EventItem => ({
   phone: null,
   reminders: [],
   yearly: 1,
+  isMine: 0,
   ...over,
 });
 
@@ -119,6 +120,7 @@ describe('candidateToEvent', () => {
       phone: '+54 9 11 5555-0002',
       reminders: [{ amount: 1, unit: 'dias' }],
       yearly: 1,
+      isMine: 0,
     });
   });
 });

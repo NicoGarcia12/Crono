@@ -15,7 +15,7 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 4;
+const DATABASE_VERSION = 5;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
@@ -133,7 +133,30 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 4;
   }
 
-  // Futuras migraciones: if (currentVersion === 4) { ...ALTER TABLE...; currentVersion = 5; }
+  if (currentVersion === 4) {
+    // v5: "mi cumpleaños" y la lista de quién me saludó cada año.
+    await database.execAsync(`
+      ALTER TABLE events ADD COLUMN is_mine INTEGER NOT NULL DEFAULT 0;
+
+      CREATE TABLE IF NOT EXISTS greetings (
+        id INTEGER PRIMARY KEY NOT NULL,
+        year INTEGER NOT NULL,
+        -- Si la persona está en mi agenda apunta a su cumpleaños; si la anoté
+        -- a mano, queda en NULL y solo guardo su nombre.
+        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        phone TEXT,
+        greeted INTEGER NOT NULL DEFAULT 0
+      );
+
+      -- Una sola fila por persona y año (índice parcial: solo aplica a los de la agenda).
+      CREATE UNIQUE INDEX IF NOT EXISTS greetings_event_year
+        ON greetings(year, event_id) WHERE event_id IS NOT NULL;
+    `);
+    currentVersion = 5;
+  }
+
+  // Futuras migraciones: if (currentVersion === 5) { ...ALTER TABLE...; currentVersion = 6; }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

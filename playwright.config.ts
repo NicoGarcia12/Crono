@@ -16,6 +16,9 @@ export default defineConfig({
   workers: 1,
   reporter: [['html', { open: 'never' }], ['list']],
   timeout: 120_000, // el primer bundle de Metro puede tardar
+  // Los 5s por defecto se quedan cortos en el arranque en frío (Metro sigue
+  // compilando mientras corre el primer test).
+  expect: { timeout: 15_000 },
   use: {
     baseURL: 'http://localhost:8082',
     trace: 'on-first-retry',

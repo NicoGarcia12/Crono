@@ -108,3 +108,23 @@ export function yearsSince(originalIso: string, occurrence: Date): number {
   const original = toLocalDate(originalIso);
   return occurrence.getFullYear() - original.getFullYear();
 }
+
+/**
+ * Años que cumple (o cumplió) en el año en curso.
+ *
+ * 💡 Aprendizaje: acá "edad" no es la edad de hoy, sino la del año calendario:
+ * alguien nacido en 1996 cumple 30 en 2026, tanto si su cumpleaños ya pasó
+ * como si todavía no llegó. Es lo que se muestra en la agenda ("cumple 30").
+ */
+export function ageThisYear(originalIso: string, from: Date = new Date()): number {
+  return from.getFullYear() - toLocalDate(originalIso).getFullYear();
+}
+
+/**
+ * Inverso del anterior: si sé que cumple N este año, deduzco su año de
+ * nacimiento y devuelvo la fecha con ese año (conservando día y mes).
+ */
+export function dateWithAgeThisYear(isoDate: string, age: number, from: Date = new Date()): string {
+  const [, month, day] = isoDate.split('-');
+  return `${from.getFullYear() - age}-${month}-${day}`;
+}

@@ -23,6 +23,7 @@ interface EventRow {
   contactId: string | null;
   phone: string | null;
   yearly: 0 | 1;
+  isMine: 0 | 1;
 }
 
 interface ReminderRow {
@@ -47,7 +48,7 @@ export async function findAllEvents(): Promise<EventItem[]> {
   const db = getDb();
   const events = await db.getAllAsync<EventRow>(
     `SELECT id, title, type, date, time, description, yearly,
-            contact_id AS contactId, phone
+            contact_id AS contactId, phone, is_mine AS isMine
      FROM events ORDER BY date ASC`,
   );
   const reminders = await db.getAllAsync<ReminderRow>(
@@ -59,9 +60,12 @@ export async function findAllEvents(): Promise<EventItem[]> {
 export async function insertEvent(data: NewEvent, reminders: EventReminder[]): Promise<EventItem> {
   const db = getDb();
   // Los parámetros SIEMPRE con '?' (binding) — nunca concatenar strings (SQL injection).
+  // Solo un evento puede ser "mi cumpleaños": si este lo es, se lo saca al anterior.
+  if (data.isMine) await clearMine(null);
+
   const result = await db.runAsync(
-    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     data.title,
     data.type,
     data.date,
@@ -70,6 +74,7 @@ export async function insertEvent(data: NewEvent, reminders: EventReminder[]): P
     data.yearly,
     data.contactId,
     data.phone,
+    data.isMine,
   );
   const eventId = result.lastInsertRowId;
   await insertReminders(eventId, reminders);
@@ -80,10 +85,13 @@ export async function insertEvent(data: NewEvent, reminders: EventReminder[]): P
 
 export async function updateEvent(event: EventItem): Promise<void> {
   const db = getDb();
+
+  if (event.isMine) await clearMine(event.id);
+
   await db.runAsync(
     `UPDATE events
      SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
-         contact_id = ?, phone = ?
+         contact_id = ?, phone = ?, is_mine = ?
      WHERE id = ?`,
     event.title,
     event.type,
@@ -93,6 +101,7 @@ export async function updateEvent(event: EventItem): Promise<void> {
     event.yearly,
     event.contactId,
     event.phone,
+    event.isMine,
     event.id,
   );
   // Los avisos se reemplazan enteros: los viejos ya fueron cancelados en el thunk.
@@ -103,6 +112,16 @@ export async function updateEvent(event: EventItem): Promise<void> {
 export async function deleteEvent(id: number): Promise<void> {
   // ON DELETE CASCADE borra también sus filas de reminders.
   await getDb().runAsync('DELETE FROM events WHERE id = ?', id);
+}
+
+/** Le saca la marca de "mi cumpleaños" a cualquier otro evento que la tenga. */
+async function clearMine(exceptId: number | null): Promise<void> {
+  const db = getDb();
+  if (exceptId === null) {
+    await db.runAsync('UPDATE events SET is_mine = 0 WHERE is_mine = 1');
+  } else {
+    await db.runAsync('UPDATE events SET is_mine = 0 WHERE is_mine = 1 AND id != ?', exceptId);
+  }
 }
 
 async function insertReminders(eventId: number, reminders: EventReminder[]): Promise<void> {

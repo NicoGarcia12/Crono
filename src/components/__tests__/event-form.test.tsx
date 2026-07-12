@@ -49,6 +49,7 @@ describe('<EventForm />', () => {
       phone: null,
       reminders: [{ amount: 1, unit: 'dias' }],
       yearly: 0,
+      isMine: 0,
     });
   });
 
@@ -80,6 +81,38 @@ describe('<EventForm />', () => {
         ],
       }),
     );
+  });
+
+  it('en un cumpleaños, escribir la edad fija el año de nacimiento', async () => {
+    const onSubmit = await renderForm();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Ana');
+    await fireEvent.press(screen.getByText('Cumpleaños'));
+    await fireEvent.changeText(screen.getByLabelText('Edad que cumple este año'), '30');
+    await fireEvent.press(screen.getByText('Crear evento'));
+
+    const añoNacimiento = new Date().getFullYear() - 30;
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ date: expect.stringContaining(String(añoNacimiento)) }),
+    );
+  });
+
+  it('permite marcar un cumpleaños como MI cumpleaños', async () => {
+    const onSubmit = await renderForm();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Nico');
+    await fireEvent.press(screen.getByText('Cumpleaños'));
+    await fireEvent(screen.getByLabelText('Este es mi cumpleaños'), 'valueChange', true);
+    await fireEvent.press(screen.getByText('Crear evento'));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isMine: 1 }));
+  });
+
+  it('la marca de "mi cumpleaños" solo existe en los cumpleaños', async () => {
+    await renderForm();
+
+    // Tipo evento (el default): no aparece.
+    expect(screen.queryByLabelText('Este es mi cumpleaños')).toBeNull();
   });
 
   it('permite quitar todos los recordatorios', async () => {

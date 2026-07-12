@@ -145,6 +145,7 @@ function toEvent(value: unknown): NewEvent[] {
       type: type as NewEvent['type'],
       date,
       yearly: yearly as 0 | 1,
+      isMine: value.isMine === 1 ? 1 : 0,
       time: typeof value.time === 'string' ? value.time : null,
       description: typeof value.description === 'string' ? value.description : null,
       contactId: typeof value.contactId === 'string' ? value.contactId : null,

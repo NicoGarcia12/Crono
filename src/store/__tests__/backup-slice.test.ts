@@ -6,6 +6,7 @@ import * as eventsRepo from '@/db/events-repo';
 import * as notesRepo from '@/db/notes-repo';
 import { scheduleEventReminders } from '@/notifications/notifications';
 import eventsReducer from '@/store/events-slice';
+import greetingsReducer from '@/store/greetings-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
@@ -33,6 +34,7 @@ const evento: EventItem = {
   phone: null,
   reminders: [{ amount: 1, unit: 'dias', notificationId: 'notif-1' }],
   yearly: 1,
+  isMine: 0,
 };
 
 const nota: Note = {
@@ -45,7 +47,12 @@ const nota: Note = {
 
 const makeStore = () =>
   configureStore({
-    reducer: { events: eventsReducer, notes: notesReducer, settings: settingsReducer },
+    reducer: {
+      events: eventsReducer,
+      greetings: greetingsReducer,
+      notes: notesReducer,
+      settings: settingsReducer,
+    },
     preloadedState: {
       events: { items: [evento], status: 'ready' as const },
       notes: { items: [nota], status: 'ready' as const },

@@ -50,6 +50,24 @@ export interface EventItem {
   reminders: EventReminder[];
   /** 1 = se repite todos los años (cumpleaños, aniversarios, festivos). SQLite no tiene boolean. */
   yearly: 0 | 1;
+  /** 1 = este es MI cumpleaños (habilita la lista de quién me saludó). Solo uno puede serlo. */
+  isMine: 0 | 1;
+}
+
+/**
+ * Una persona en la lista de "quién me saludó" de un año.
+ * Puede ser alguien cuyo cumpleaños tengo cargado (eventId) o alguien que
+ * anoté a mano en la lista (eventId null).
+ */
+export interface Greeting {
+  id: number;
+  /** Año del saludo: la lista se reinicia sola cada año. */
+  year: number;
+  /** Evento de cumpleaños de esa persona, si lo tengo en la agenda. */
+  eventId: number | null;
+  name: string;
+  phone: string | null;
+  greeted: 0 | 1;
 }
 
 /** Datos que completa el usuario al crear un evento: elige las anticipaciones; los ids de notificación los pone la app. */

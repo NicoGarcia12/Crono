@@ -129,6 +129,7 @@ function Gates() {
           name="cargar-cumpleanos"
           options={{ title: 'Cargar cumpleaños', presentation: 'modal' }}
         />
+        <Stack.Screen name="saludos" options={{ title: '¿Quién me saludó?' }} />
       </Stack>
     </>
   );

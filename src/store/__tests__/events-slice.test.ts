@@ -27,13 +27,17 @@ const nuevoEvento: NewEvent = {
   date: '2026-08-01',
   time: null,
   description: null,
-  reminderMinutes: [60 * 24, 60 * 24 * 7], // 1 día antes + 1 semana antes
+  // Un mes antes (para el regalo) + un día antes (para no olvidarse).
+  reminders: [
+    { amount: 1, unit: 'meses' },
+    { amount: 1, unit: 'dias' },
+  ],
   yearly: 1,
 };
 
 const avisosProgramados = [
-  { minutes: 60 * 24, notificationId: 'notif-1' },
-  { minutes: 60 * 24 * 7, notificationId: 'notif-2' },
+  { amount: 1, unit: 'meses' as const, notificationId: 'notif-1' },
+  { amount: 1, unit: 'dias' as const, notificationId: 'notif-2' },
 ];
 
 const eventoGuardado: EventItem = {
@@ -99,13 +103,17 @@ describe('addEvent', () => {
 
 describe('editEvent', () => {
   it('cancela los avisos viejos, programa los nuevos y actualiza el estado', async () => {
-    const nuevosAvisos = [{ minutes: 0, notificationId: 'notif-3' }];
+    const nuevosAvisos = [{ amount: 0, unit: 'minutos' as const, notificationId: 'notif-3' }];
     mockSchedule.mockResolvedValue(nuevosAvisos);
     mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
     const store = makeStore();
     await store.dispatch(loadEvents());
 
-    const data: NewEvent = { ...nuevoEvento, title: 'Cumple de papá', reminderMinutes: [0] };
+    const data: NewEvent = {
+      ...nuevoEvento,
+      title: 'Cumple de papá',
+      reminders: [{ amount: 0, unit: 'minutos' }],
+    };
     await store.dispatch(editEvent({ id: 1, data, previousReminders: eventoGuardado.reminders }));
 
     expect(mockCancel).toHaveBeenCalledWith(avisosProgramados);

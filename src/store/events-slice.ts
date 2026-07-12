@@ -36,7 +36,7 @@ export const editEvent = createAsyncThunk(
     // Al editar, los avisos viejos quedan obsoletos: se cancelan y se programan de nuevo.
     await cancelReminders(payload.previousReminders);
     const reminders = await scheduleEventReminders(payload.data);
-    const { reminderMinutes: _ignored, ...eventData } = payload.data;
+    const { reminders: _chosen, ...eventData } = payload.data;
     const updated: EventItem = { ...eventData, id: payload.id, reminders };
     await eventsRepo.updateEvent(updated);
     return updated;

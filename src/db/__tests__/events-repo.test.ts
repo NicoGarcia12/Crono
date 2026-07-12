@@ -12,21 +12,23 @@ describe('attachReminders', () => {
 
   it('agrupa los avisos por evento (relación 1→N)', () => {
     const reminders = [
-      { eventId: 1, minutes: 0, notificationId: 'n1' },
-      { eventId: 1, minutes: 10080, notificationId: 'n2' },
+      { eventId: 1, amount: 1, unit: 'meses' as const, notificationId: 'n1' },
+      { eventId: 1, amount: 1, unit: 'semanas' as const, notificationId: 'n2' },
     ];
 
     const result = attachReminders(events, reminders);
 
     expect(result[0].reminders).toEqual([
-      { minutes: 0, notificationId: 'n1' },
-      { minutes: 10080, notificationId: 'n2' },
+      { amount: 1, unit: 'meses', notificationId: 'n1' },
+      { amount: 1, unit: 'semanas', notificationId: 'n2' },
     ]);
     expect(result[1].reminders).toEqual([]); // sin avisos → lista vacía, nunca undefined
   });
 
   it('ignora avisos de eventos que no están en la lista', () => {
-    const result = attachReminders(events, [{ eventId: 99, minutes: 60, notificationId: null }]);
+    const result = attachReminders(events, [
+      { eventId: 99, amount: 1, unit: 'horas', notificationId: null },
+    ]);
 
     expect(result.every((e) => e.reminders.length === 0)).toBe(true);
   });

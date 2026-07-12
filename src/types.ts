@@ -12,13 +12,23 @@ export const EVENT_TYPES = ['evento', 'cumpleanos', 'aniversario', 'festivo', 'c
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/** Unidades en las que se puede expresar la anticipación de un aviso. */
+export const REMINDER_UNITS = ['minutos', 'horas', 'dias', 'semanas', 'meses'] as const;
+
+export type ReminderUnit = (typeof REMINDER_UNITS)[number];
+
+/** Anticipación elegida por el usuario: "3 días antes" = { amount: 3, unit: 'dias' }. */
+export interface ReminderInput {
+  /** 0 = en el momento del evento. */
+  amount: number;
+  unit: ReminderUnit;
+}
+
 /**
  * Un aviso programado de un evento. Un evento puede tener varios
- * (ej: 1 semana antes para comprar el regalo + el mismo día para saludar).
+ * (ej: 1 mes antes para el regalo + 1 hora antes para no llegar tarde).
  */
-export interface EventReminder {
-  /** Minutos de anticipación respecto del evento (0 = en el momento). */
-  minutes: number;
+export interface EventReminder extends ReminderInput {
   /** Id de la notificación en el sistema, para cancelarla al editar/borrar (null si el entorno no soporta avisos). */
   notificationId: string | null;
 }
@@ -38,8 +48,8 @@ export interface EventItem {
   yearly: 0 | 1;
 }
 
-/** Datos que completa el usuario al crear un evento: elige minutos; los ids de notificación los pone la app. */
-export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminderMinutes: number[] };
+/** Datos que completa el usuario al crear un evento: elige las anticipaciones; los ids de notificación los pone la app. */
+export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminders: ReminderInput[] };
 
 export interface Note {
   id: number;

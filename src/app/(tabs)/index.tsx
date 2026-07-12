@@ -4,10 +4,12 @@ import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventCard } from '@/components/event-card';
+import { SearchField } from '@/components/search-field';
 import { EVENT_TYPE_META } from '@/constants/event-types';
 import { useAppSelector } from '@/store';
 import { EVENT_TYPES, type EventType } from '@/types';
 import { nextOccurrence } from '@/utils/dates';
+import { filterEvents } from '@/utils/search';
 
 /**
  * Pantalla principal: la agenda.
@@ -18,15 +20,24 @@ export default function AgendaScreen() {
   const router = useRouter();
   const events = useAppSelector((state) => state.events.items);
   const [filter, setFilter] = useState<EventType | 'todos'>('todos');
+  const [query, setQuery] = useState('');
 
-  // useMemo evita reordenar la lista en cada render — solo cuando cambian eventos o filtro.
+  // useMemo evita reordenar la lista en cada render — solo cuando cambia algo de esto.
   const sorted = useMemo(() => {
-    const filtered = filter === 'todos' ? events : events.filter((e) => e.type === filter);
-    return [...filtered].sort((a, b) => nextOccurrence(a).getTime() - nextOccurrence(b).getTime());
-  }, [events, filter]);
+    const byType = filter === 'todos' ? events : events.filter((e) => e.type === filter);
+    const found = filterEvents(byType, query);
+    return [...found].sort((a, b) => nextOccurrence(a).getTime() - nextOccurrence(b).getTime());
+  }, [events, filter, query]);
 
   return (
     <View style={styles.container}>
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        label="Buscar eventos"
+        placeholder="Buscar por nombre, tipo o descripción…"
+      />
+
       {/* Filtros por tipo */}
       <View style={styles.filterRow}>
         <FilterChip label="Todos" active={filter === 'todos'} color="#1a1a2e" onPress={() => setFilter('todos')} />
@@ -53,11 +64,19 @@ export default function AgendaScreen() {
         contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="calendar-outline" size={56} color="#bbb" />
+            <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color="#bbb" />
             <Text style={styles.emptyTitle}>
-              {filter === 'todos' ? 'Todavía no hay nada agendado' : 'Nada agendado de este tipo'}
+              {query
+                ? 'Sin resultados'
+                : filter === 'todos'
+                  ? 'Todavía no hay nada agendado'
+                  : 'Nada agendado de este tipo'}
             </Text>
-            <Text style={styles.emptyText}>Tocá el botón + para agregar tu primer evento.</Text>
+            <Text style={styles.emptyText}>
+              {query
+                ? `No encontramos nada que coincida con “${query}”.`
+                : 'Tocá el botón + para agregar tu primer evento.'}
+            </Text>
           </View>
         }
       />

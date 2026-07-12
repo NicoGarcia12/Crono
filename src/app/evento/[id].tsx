@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { CountdownBanner } from '@/components/countdown-banner';
 import { EventForm } from '@/components/event-form';
 import { GreetButton } from '@/components/greet-button';
 import { useAppDispatch, useAppSelector } from '@/store';
@@ -60,6 +61,7 @@ export default function EditarEventoScreen() {
           ),
         }}
       />
+      <CountdownBanner event={event} />
       <GreetButton event={event} />
       <EventForm initial={event} submitLabel="Guardar cambios" onSubmit={handleSubmit} />
     </>

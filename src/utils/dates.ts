@@ -76,6 +76,24 @@ export function formatRelative(next: Date, from: Date = new Date()): string {
   return short;
 }
 
+/** Días completos que faltan hasta la fecha (negativo si ya pasó). Ignora la hora. */
+export function daysUntil(next: Date, from: Date = new Date()): number {
+  const startFrom = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const startNext = new Date(next.getFullYear(), next.getMonth(), next.getDate());
+  return Math.round((startNext.getTime() - startFrom.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+/** Cuenta regresiva legible: 'Es hoy', 'Falta 1 día', 'Faltan 12 días', 'Hace 3 días'. */
+export function countdownLabel(next: Date, from: Date = new Date()): string {
+  const days = daysUntil(next, from);
+
+  if (days === 0) return 'Es hoy';
+  if (days === 1) return 'Falta 1 día';
+  if (days > 1) return `Faltan ${days} días`;
+  if (days === -1) return 'Fue ayer';
+  return `Hace ${Math.abs(days)} días`;
+}
+
 /**
  * Primera letra en mayúscula ('julio 2026' → 'Julio 2026').
  * Ojo: el `textTransform: 'capitalize'` de los estilos NO sirve acá porque

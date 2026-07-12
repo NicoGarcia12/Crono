@@ -3,8 +3,9 @@ import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { EVENT_TYPE_META } from '@/constants/event-types';
-import type { EventReminder, NewEvent } from '@/types';
+import type { EventReminder, NewEvent, ReminderInput } from '@/types';
 import { toLocalDate } from '@/utils/dates';
+import { reminderDate } from '@/utils/reminders';
 
 /**
  * Recordatorios con notificaciones LOCALES.
@@ -93,8 +94,8 @@ export async function requestNotificationPermission(): Promise<boolean> {
  */
 export async function scheduleEventReminders(event: NewEvent): Promise<EventReminder[]> {
   const scheduled: EventReminder[] = [];
-  for (const minutes of event.reminderMinutes) {
-    scheduled.push({ minutes, notificationId: await scheduleOne(event, minutes) });
+  for (const reminder of event.reminders) {
+    scheduled.push({ ...reminder, notificationId: await scheduleOne(event, reminder) });
   }
   return scheduled;
 }
@@ -104,13 +105,14 @@ export async function scheduleEventReminders(event: NewEvent): Promise<EventRemi
  * cancelarla después) o null si no corresponde o el entorno no soporta
  * notificaciones (Expo Go en Android, web).
  */
-async function scheduleOne(event: NewEvent, minutes: number): Promise<string | null> {
+async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<string | null> {
   const Notifications = getNotifications();
   if (!Notifications) return null;
 
   const occurrence = toLocalDate(event.date, event.time ?? '09:00');
-  // El aviso es X minutos ANTES del evento.
-  const reminderAt = new Date(occurrence.getTime() - minutes * 60 * 1000);
+  // Momento del aviso: la fecha del evento menos la anticipación elegida
+  // (los meses se restan por calendario, ver utils/reminders).
+  const reminderAt = reminderDate(occurrence, reminder);
 
   const content: NotificationContentInput = {
     title: `${EVENT_TYPE_META[event.type].label}: ${event.title}`,

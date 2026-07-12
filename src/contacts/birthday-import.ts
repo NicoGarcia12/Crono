@@ -95,7 +95,7 @@ export function candidateToEvent(candidate: BirthdayCandidate): NewEvent {
     date: candidate.date,
     time: null,
     description: null,
-    reminderMinutes: [60 * 24], // aviso 1 día antes, igual que el default del formulario
+    reminders: [{ amount: 1, unit: 'dias' }], // aviso 1 día antes, igual que el default del formulario
     yearly: 1,
   };
 }

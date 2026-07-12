@@ -1,5 +1,5 @@
 import { getDb } from '@/db/database';
-import type { EventItem, EventReminder, EventType, NewEvent } from '@/types';
+import type { EventItem, EventReminder, EventType, NewEvent, ReminderUnit } from '@/types';
 
 /**
  * Repositorio de eventos: la ÚNICA capa que habla SQL sobre `events` y `reminders`.
@@ -25,7 +25,8 @@ interface EventRow {
 
 interface ReminderRow {
   eventId: number;
-  minutes: number;
+  amount: number;
+  unit: ReminderUnit;
   notificationId: string | null;
 }
 
@@ -34,7 +35,7 @@ export function attachReminders(events: EventRow[], reminders: ReminderRow[]): E
   const byEvent = new Map<number, EventReminder[]>();
   for (const r of reminders) {
     const list = byEvent.get(r.eventId) ?? [];
-    list.push({ minutes: r.minutes, notificationId: r.notificationId });
+    list.push({ amount: r.amount, unit: r.unit, notificationId: r.notificationId });
     byEvent.set(r.eventId, list);
   }
   return events.map((e) => ({ ...e, reminders: byEvent.get(e.id) ?? [] }));
@@ -46,7 +47,7 @@ export async function findAllEvents(): Promise<EventItem[]> {
     'SELECT id, title, type, date, time, description, yearly FROM events ORDER BY date ASC',
   );
   const reminders = await db.getAllAsync<ReminderRow>(
-    'SELECT event_id AS eventId, minutes, notification_id AS notificationId FROM reminders',
+    'SELECT event_id AS eventId, amount, unit, notification_id AS notificationId FROM reminders',
   );
   return attachReminders(events, reminders);
 }
@@ -67,7 +68,7 @@ export async function insertEvent(data: NewEvent, reminders: EventReminder[]): P
   const eventId = result.lastInsertRowId;
   await insertReminders(eventId, reminders);
 
-  const { reminderMinutes: _ignored, ...event } = data;
+  const { reminders: _chosen, ...event } = data;
   return { ...event, id: eventId, reminders };
 }
 
@@ -99,9 +100,10 @@ async function insertReminders(eventId: number, reminders: EventReminder[]): Pro
   const db = getDb();
   for (const reminder of reminders) {
     await db.runAsync(
-      'INSERT INTO reminders (event_id, minutes, notification_id) VALUES (?, ?, ?)',
+      'INSERT INTO reminders (event_id, amount, unit, notification_id) VALUES (?, ?, ?, ?)',
       eventId,
-      reminder.minutes,
+      reminder.amount,
+      reminder.unit,
       reminder.notificationId,
     );
   }

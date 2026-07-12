@@ -15,7 +15,7 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
@@ -103,7 +103,26 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 2;
   }
 
-  // Futuras migraciones: if (currentVersion === 2) { ...ALTER TABLE...; currentVersion = 3; }
+  if (currentVersion === 2) {
+    // v3: avisos personalizados. En vez de guardar minutos, se guarda la
+    // anticipación tal como la eligió el usuario (cantidad + unidad), porque
+    // "1 mes" no equivale a una cantidad fija de minutos.
+    await database.execAsync(`
+      ALTER TABLE reminders ADD COLUMN amount INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE reminders ADD COLUMN unit TEXT NOT NULL DEFAULT 'minutos';
+
+      -- Backfill: los minutos guardados se expresan en la unidad más natural.
+      UPDATE reminders SET amount = minutes / 10080, unit = 'semanas' WHERE minutes % 10080 = 0 AND minutes > 0;
+      UPDATE reminders SET amount = minutes / 1440,  unit = 'dias'    WHERE minutes % 1440 = 0  AND minutes > 0 AND unit = 'minutos';
+      UPDATE reminders SET amount = minutes / 60,    unit = 'horas'   WHERE minutes % 60 = 0    AND minutes > 0 AND unit = 'minutos';
+      UPDATE reminders SET amount = minutes,         unit = 'minutos' WHERE minutes > 0 AND unit = 'minutos';
+
+      ALTER TABLE reminders DROP COLUMN minutes;
+    `);
+    currentVersion = 3;
+  }
+
+  // Futuras migraciones: if (currentVersion === 3) { ...ALTER TABLE...; currentVersion = 4; }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text } from 'react-native';
-
 import type { EventItem } from '@/types';
 import { canGreet, whatsappUrl } from '@/utils/whatsapp';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Botón "Saludar por WhatsApp": abre el chat de la persona con el saludo ya
@@ -14,6 +16,9 @@ import { canGreet, whatsappUrl } from '@/utils/whatsapp';
  * no, abre WhatsApp Web en el navegador.
  */
 export function GreetButton({ event }: { event: EventItem }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   if (!canGreet(event)) return null;
 
   const open = async () => {
@@ -38,13 +43,14 @@ export function GreetButton({ event }: { event: EventItem }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#25D366', // verde de WhatsApp
+    backgroundColor: c.whatsapp, // verde de WhatsApp
     borderRadius: 24,
     paddingVertical: 13,
     marginHorizontal: 16,

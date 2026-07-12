@@ -1,15 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-
 import { EVENT_TYPE_META } from '@/constants/event-types';
 import type { EventItem } from '@/types';
 import { countdownLabel, dateToIso, formatLongDate, nextOccurrence, yearsSince } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Banner de cuenta regresiva en el detalle del evento: cuántos días faltan,
  * cuándo cae y, si es cumpleaños o aniversario, cuántos años cumple.
  */
 export function CountdownBanner({ event }: { event: EventItem }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const meta = EVENT_TYPE_META[event.type];
   const next = nextOccurrence(event);
   const years = event.yearly ? yearsSince(event.date, next) : 0;
@@ -29,7 +34,8 @@ export function CountdownBanner({ event }: { event: EventItem }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   banner: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -40,5 +46,5 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   countdown: { fontSize: 16, fontWeight: '700' },
-  detail: { fontSize: 13, color: '#666' },
+  detail: { fontSize: 13, color: c.textMuted },
 });

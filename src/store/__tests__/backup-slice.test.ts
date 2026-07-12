@@ -49,7 +49,7 @@ const makeStore = () =>
     preloadedState: {
       events: { items: [evento], status: 'ready' as const },
       notes: { items: [nota], status: 'ready' as const },
-      settings: { displayName: 'Nico', loaded: true },
+      settings: { displayName: 'Nico', themePreference: 'sistema' as const, loaded: true },
     },
   });
 

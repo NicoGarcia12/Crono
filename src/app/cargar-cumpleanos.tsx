@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 
 import { BirthdayWizard } from '@/components/birthday-wizard';
@@ -8,6 +8,8 @@ import { ContactPickList } from '@/components/contact-pick-list';
 import { candidateToEvent, fetchContacts, type ContactCandidate } from '@/contacts/birthday-import';
 import { store, useAppDispatch } from '@/store';
 import { addEvent, removeEvent } from '@/store/events-slice';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Ruta /cargar-cumpleanos — muestra todos los contactos del celular, se eligen
@@ -24,6 +26,9 @@ type ScreenState =
   | { status: 'wizard'; candidates: ContactCandidate[]; selected: ContactCandidate[] };
 
 export default function CargarCumpleanosScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const dispatch = useAppDispatch();
   const router = useRouter();
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
@@ -76,7 +81,7 @@ export default function CargarCumpleanosScreen() {
     case 'loading':
       return (
         <Centered>
-          <ActivityIndicator size="large" color="#208AEF" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.message}>Leyendo tus contactos…</Text>
         </Centered>
       );
@@ -131,24 +136,28 @@ export default function CargarCumpleanosScreen() {
 }
 
 function Centered({ icon, children }: { icon?: keyof typeof Ionicons.glyphMap; children: React.ReactNode }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <View style={styles.centered}>
-      {icon ? <Ionicons name={icon} size={56} color="#bbb" /> : null}
+      {icon ? <Ionicons name={icon} size={56} color={colors.textSubtle} /> : null}
       {children}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     padding: 32,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: c.background,
   },
-  title: { fontSize: 17, fontWeight: '600', color: '#555' },
-  message: { fontSize: 14, color: '#999', textAlign: 'center', lineHeight: 20 },
+  title: { fontSize: 17, fontWeight: '600', color: c.textMuted },
+  message: { fontSize: 14, color: c.textSubtle, textAlign: 'center', lineHeight: 20 },
 });

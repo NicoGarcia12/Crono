@@ -1,8 +1,10 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 
 import { dateToIso, dateToTime, formatLongDate, toLocalDate, todayIso } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Campos de fecha y hora multiplataforma.
@@ -22,6 +24,9 @@ export interface DateFieldProps {
 }
 
 export function DateField({ value, onChange, style }: DateFieldProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   // En Android el picker es un diálogo que se abre y se cierra; este flag lo controla.
   const [open, setOpen] = useState(false);
 
@@ -53,6 +58,9 @@ export interface TimeFieldProps {
 }
 
 export function TimeField({ value, onChange, style }: TimeFieldProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [open, setOpen] = useState(false);
 
   return (
@@ -75,13 +83,14 @@ export function TimeField({ value, onChange, style }: TimeFieldProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: c.border,
     borderRadius: 12,
     padding: 13,
   },
-  inputText: { fontSize: 16, color: '#1a1a2e' },
+  inputText: { fontSize: 16, color: c.text },
 });

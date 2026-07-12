@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppDispatch, useAppSelector } from '@/store';
+import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { saveDisplayName } from '@/store/settings-slice';
 
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
@@ -21,6 +22,30 @@ export default function PerfilScreen() {
     if (name.trim().length === 0) return;
     dispatch(saveDisplayName(name));
     setEditing(false);
+  };
+
+  const handleExport = async () => {
+    try {
+      await dispatch(exportBackup()).unwrap();
+    } catch {
+      Alert.alert('No se pudo exportar', 'Intentá de nuevo en un momento.');
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      const summary = await dispatch(restoreBackup()).unwrap();
+      if (!summary) return; // el usuario canceló
+
+      const partes = [
+        `${summary.events} ${summary.events === 1 ? 'evento' : 'eventos'}`,
+        `${summary.notes} ${summary.notes === 1 ? 'nota' : 'notas'}`,
+      ];
+      const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
+      Alert.alert('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
+    } catch (error) {
+      Alert.alert('No se pudo restaurar', typeof error === 'string' ? error : 'El archivo no es válido.');
+    }
   };
 
   return (
@@ -78,12 +103,52 @@ export default function PerfilScreen() {
         <Ionicons name="chevron-forward" size={20} color="#bbb" />
       </Pressable>
 
+      <ActionCard
+        icon="cloud-upload"
+        color="#208AEF"
+        title="Exportar copia de seguridad"
+        subtitle="Guardá un archivo con tus eventos y notas (Drive, WhatsApp, donde quieras)"
+        onPress={handleExport}
+      />
+
+      <ActionCard
+        icon="cloud-download"
+        color="#4CAF50"
+        title="Restaurar desde un archivo"
+        subtitle="Traé tu agenda desde una copia. No se duplica lo que ya tenés"
+        onPress={handleRestore}
+      />
+
       <View style={styles.infoCard}>
         <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
         <InfoRow icon="phone-portrait" text="Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor." />
         <InfoRow icon="notifications" text="Los recordatorios son notificaciones locales: funcionan sin internet, incluso con la app cerrada." />
       </View>
     </ScrollView>
+  );
+}
+
+interface ActionCardProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}
+
+/** Fila accionable del perfil (importar contactos, exportar, restaurar…). */
+function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) {
+  return (
+    <Pressable style={styles.actionCard} accessibilityLabel={title} onPress={onPress}>
+      <View style={[styles.actionIcon, { backgroundColor: `${color}22` }]}>
+        <Ionicons name={icon} size={22} color={color} />
+      </View>
+      <View style={styles.actionBody}>
+        <Text style={styles.actionTitle}>{title}</Text>
+        <Text style={styles.actionSubtitle}>{subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#bbb" />
+    </Pressable>
   );
 }
 

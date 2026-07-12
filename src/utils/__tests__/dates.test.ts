@@ -1,4 +1,5 @@
 import {
+  capitalize,
   dateToIso,
   dateToTime,
   formatLongDate,
@@ -92,6 +93,14 @@ describe('formatRelative', () => {
 
   it('marca fechas pasadas del mismo año', () => {
     expect(formatRelative(new Date(2026, 2, 5), from)).toBe('5 mar (pasado)');
+  });
+});
+
+describe('capitalize', () => {
+  it('pone en mayúscula SOLO la primera letra', () => {
+    // El textTransform: 'capitalize' de CSS haría 'Domingo 20 De Diciembre De 2026'.
+    expect(capitalize('domingo 20 de diciembre de 2026')).toBe('Domingo 20 de diciembre de 2026');
+    expect(capitalize('julio 2026')).toBe('Julio 2026');
   });
 });
 

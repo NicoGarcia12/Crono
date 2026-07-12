@@ -9,9 +9,15 @@ import { formatRelative, nextOccurrence, yearsSince } from '@/utils/dates';
  * Tarjeta de un evento en la lista de la agenda.
  * Componente "tonto"/presentacional: recibe todo por props, no toca Redux.
  */
-export function EventCard({ event }: { event: EventItem }) {
+interface EventCardProps {
+  event: EventItem;
+  /** Día concreto a mostrar. Por defecto, la próxima ocurrencia (en el calendario ya se sabe el día). */
+  occurrence?: Date;
+}
+
+export function EventCard({ event, occurrence }: EventCardProps) {
   const meta = EVENT_TYPE_META[event.type];
-  const next = nextOccurrence(event);
+  const next = occurrence ?? nextOccurrence(event);
   const years = event.yearly ? yearsSince(event.date, next) : 0;
 
   return (

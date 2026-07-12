@@ -76,6 +76,15 @@ export function formatRelative(next: Date, from: Date = new Date()): string {
   return short;
 }
 
+/**
+ * Primera letra en mayúscula ('julio 2026' → 'Julio 2026').
+ * Ojo: el `textTransform: 'capitalize'` de los estilos NO sirve acá porque
+ * capitaliza cada palabra ('Domingo 12 De Julio De 2026').
+ */
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** Edad/años que se cumplen (para cumpleaños y aniversarios): años entre la fecha original y la ocurrencia. */
 export function yearsSince(originalIso: string, occurrence: Date): number {
   const original = toLocalDate(originalIso);

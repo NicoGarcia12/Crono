@@ -42,6 +42,10 @@ export interface EventItem {
   /** Hora 'HH:mm', o null si es un evento de día completo (ej. un festivo). */
   time: string | null;
   description: string | null;
+  /** Id del contacto del celular del que salió este evento (null si se cargó a mano). */
+  contactId: string | null;
+  /** Teléfono del contacto, para saludarlo por WhatsApp sin buscarlo. */
+  phone: string | null;
   /** Avisos programados (tabla `reminders`, 1 evento → N avisos). Vacío = sin recordatorio. */
   reminders: EventReminder[];
   /** 1 = se repite todos los años (cumpleaños, aniversarios, festivos). SQLite no tiene boolean. */

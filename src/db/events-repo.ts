@@ -20,6 +20,8 @@ interface EventRow {
   date: string;
   time: string | null;
   description: string | null;
+  contactId: string | null;
+  phone: string | null;
   yearly: 0 | 1;
 }
 
@@ -44,7 +46,9 @@ export function attachReminders(events: EventRow[], reminders: ReminderRow[]): E
 export async function findAllEvents(): Promise<EventItem[]> {
   const db = getDb();
   const events = await db.getAllAsync<EventRow>(
-    'SELECT id, title, type, date, time, description, yearly FROM events ORDER BY date ASC',
+    `SELECT id, title, type, date, time, description, yearly,
+            contact_id AS contactId, phone
+     FROM events ORDER BY date ASC`,
   );
   const reminders = await db.getAllAsync<ReminderRow>(
     'SELECT event_id AS eventId, amount, unit, notification_id AS notificationId FROM reminders',
@@ -56,14 +60,16 @@ export async function insertEvent(data: NewEvent, reminders: EventReminder[]): P
   const db = getDb();
   // Los parámetros SIEMPRE con '?' (binding) — nunca concatenar strings (SQL injection).
   const result = await db.runAsync(
-    `INSERT INTO events (title, type, date, time, description, yearly)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     data.title,
     data.type,
     data.date,
     data.time,
     data.description,
     data.yearly,
+    data.contactId,
+    data.phone,
   );
   const eventId = result.lastInsertRowId;
   await insertReminders(eventId, reminders);
@@ -76,7 +82,8 @@ export async function updateEvent(event: EventItem): Promise<void> {
   const db = getDb();
   await db.runAsync(
     `UPDATE events
-     SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?
+     SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
+         contact_id = ?, phone = ?
      WHERE id = ?`,
     event.title,
     event.type,
@@ -84,6 +91,8 @@ export async function updateEvent(event: EventItem): Promise<void> {
     event.time,
     event.description,
     event.yearly,
+    event.contactId,
+    event.phone,
     event.id,
   );
   // Los avisos se reemplazan enteros: los viejos ya fueron cancelados en el thunk.

@@ -15,7 +15,7 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
@@ -122,7 +122,18 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 3;
   }
 
-  // Futuras migraciones: if (currentVersion === 3) { ...ALTER TABLE...; currentVersion = 4; }
+  if (currentVersion === 3) {
+    // v4: los eventos creados desde la agenda de contactos recuerdan de qué
+    // contacto salieron (para no cargarlo dos veces) y su teléfono (para
+    // saludarlo por WhatsApp sin tener que buscarlo).
+    await database.execAsync(`
+      ALTER TABLE events ADD COLUMN contact_id TEXT;
+      ALTER TABLE events ADD COLUMN phone TEXT;
+    `);
+    currentVersion = 4;
+  }
+
+  // Futuras migraciones: if (currentVersion === 4) { ...ALTER TABLE...; currentVersion = 5; }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

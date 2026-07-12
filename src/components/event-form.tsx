@@ -60,6 +60,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       date,
       time,
       description: description.trim() || null,
+      // Si el evento vino de un contacto, conserva de quién es (y su teléfono).
+      contactId: initial?.contactId ?? null,
+      phone: initial?.phone ?? null,
       reminders,
       yearly: yearly ? 1 : 0,
     });

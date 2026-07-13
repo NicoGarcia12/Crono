@@ -51,7 +51,6 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [yearly, setYearly] = useState<boolean>(
     initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
   );
-  const [isMine, setIsMine] = useState<boolean>(initial?.isMine === 1);
   // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
 
@@ -64,7 +63,6 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     setType(t);
     // Cambiar el tipo ajusta el default de repetición anual (editable igual).
     setYearly(EVENT_TYPE_META[t].defaultYearly);
-    if (t !== 'cumpleanos') setIsMine(false);
   };
 
   /**
@@ -97,7 +95,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       phone: phone.trim() || null,
       reminders,
       yearly: yearly ? 1 : 0,
-      isMine: isMine ? 1 : 0,
+      // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
+      isMine: initial?.isMine ?? 0,
     });
   };
 
@@ -198,22 +197,6 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         <Text style={styles.switchLabel}>Se repite todos los años</Text>
         <Switch value={yearly} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
       </View>
-
-      {/* Marcar MI cumpleaños habilita la lista de quién me saludó. */}
-      {isBirthday ? (
-        <View style={[styles.row, styles.switchRow]}>
-          <View style={styles.mineLabel}>
-            <Text style={styles.switchLabel}>Este es mi cumpleaños</Text>
-            <Text style={styles.mineHint}>Vas a poder anotar quién te saludó cada año</Text>
-          </View>
-          <Switch
-            accessibilityLabel="Este es mi cumpleaños"
-            value={isMine}
-            onValueChange={setIsMine}
-            trackColor={{ true: colors.primary }}
-          />
-        </View>
-      ) : null}
 
       <Pressable
         style={[styles.submit, !canSave && styles.submitDisabled]}

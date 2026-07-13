@@ -3,8 +3,10 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { MyBirthdayCard } from '@/components/my-birthday-card';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
+import { addEvent, editEvent } from '@/store/events-slice';
 import { saveDisplayName, saveThemePreference } from '@/store/settings-slice';
 import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -18,8 +20,11 @@ export default function PerfilScreen() {
   const router = useRouter();
   const displayName = useAppSelector((state) => state.settings.displayName);
   const themePreference = useAppSelector((state) => state.settings.themePreference);
-  const eventCount = useAppSelector((state) => state.events.items.length);
+  const events = useAppSelector((state) => state.events.items);
+  const eventCount = events.length;
   const noteCount = useAppSelector((state) => state.notes.items.length);
+
+  const myBirthday = events.find((event) => event.isMine === 1);
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(displayName ?? '');
@@ -28,6 +33,41 @@ export default function PerfilScreen() {
     if (name.trim().length === 0) return;
     dispatch(saveDisplayName(name));
     setEditing(false);
+  };
+
+  /**
+   * Mi cumpleaños se carga acá una sola vez: la app crea (o actualiza) el
+   * evento en la agenda, marcado como propio. Desde su detalle —o desde el
+   * botón de esta misma tarjeta— se lleva la lista de quién me saludó.
+   */
+  const handleSaveMyBirthday = async (isoDate: string) => {
+    const title = displayName ? `Cumpleaños de ${displayName}` : 'Mi cumpleaños';
+
+    if (myBirthday) {
+      await dispatch(
+        editEvent({
+          id: myBirthday.id,
+          data: { ...myBirthday, title, date: isoDate, reminders: myBirthday.reminders },
+          previousReminders: myBirthday.reminders,
+        }),
+      ).unwrap();
+      return;
+    }
+
+    await dispatch(
+      addEvent({
+        title,
+        type: 'cumpleanos',
+        date: isoDate,
+        time: null,
+        description: null,
+        contactId: null,
+        phone: null,
+        reminders: [{ amount: 1, unit: 'dias' }],
+        yearly: 1,
+        isMine: 1,
+      }),
+    ).unwrap();
   };
 
   const handleExport = async () => {
@@ -91,6 +131,12 @@ export default function PerfilScreen() {
           <Text style={styles.statLabel}>Notas</Text>
         </View>
       </View>
+
+      <MyBirthdayCard
+        event={myBirthday}
+        onSave={handleSaveMyBirthday}
+        onOpenGreetings={() => router.push('/saludos')}
+      />
 
       <Pressable
         style={styles.actionCard}

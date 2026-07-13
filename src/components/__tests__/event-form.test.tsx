@@ -97,21 +97,11 @@ describe('<EventForm />', () => {
     );
   });
 
-  it('permite marcar un cumpleaños como MI cumpleaños', async () => {
-    const onSubmit = await renderForm();
-
-    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Nico');
-    await fireEvent.press(screen.getByText('Cumpleaños'));
-    await fireEvent(screen.getByLabelText('Este es mi cumpleaños'), 'valueChange', true);
-    await fireEvent.press(screen.getByText('Crear evento'));
-
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isMine: 1 }));
-  });
-
-  it('la marca de "mi cumpleaños" solo existe en los cumpleaños', async () => {
+  it('mi cumpleaños se marca desde el perfil, no en el formulario', async () => {
     await renderForm();
 
-    // Tipo evento (el default): no aparece.
+    await fireEvent.press(screen.getByText('Cumpleaños'));
+
     expect(screen.queryByLabelText('Este es mi cumpleaños')).toBeNull();
   });
 

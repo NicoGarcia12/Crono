@@ -73,6 +73,14 @@ export interface Greeting {
 /** Datos que completa el usuario al crear un evento: elige las anticipaciones; los ids de notificación los pone la app. */
 export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminders: ReminderInput[] };
 
+/**
+ * Regla de dominio: el cumpleaños de la persona dueña de la agenda siempre
+ * es de tipo cumpleaños y se repite anualmente, incluso fuera del formulario.
+ */
+export function enforceMineBirthday(event: NewEvent): NewEvent {
+  return event.isMine === 1 ? { ...event, type: 'cumpleanos', yearly: 1 } : event;
+}
+
 export interface Note {
   id: number;
   title: string;

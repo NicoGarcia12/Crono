@@ -1,17 +1,9 @@
-import { getDb } from '@/db/database';
-import type { EventItem, EventReminder, EventType, NewEvent, ReminderUnit } from '@/types';
+import type { SQLiteDatabase, SQLiteRunResult } from 'expo-sqlite';
 
-/**
- * Repositorio de eventos: la ÚNICA capa que habla SQL sobre `events` y `reminders`.
- *
- * 💡 Aprendizaje: este patrón "repository" es el mismo que usarías con un
- * backend (Prisma/Sequelize). Las pantallas nunca escriben SQL; pasan por acá
- * a través de los thunks de Redux.
- *
- * Relación 1→N clásica: un evento tiene N recordatorios (tabla `reminders`
- * con FK a events y ON DELETE CASCADE). Se leen con dos queries y se agrupan
- * en memoria — más simple que un JOIN + agrupado a mano, y son pocos datos.
- */
+import { getDb } from '@/db/database';
+import { enforceMineBirthday, type EventItem, type EventReminder, type EventType, type NewEvent, type ReminderUnit } from '@/types';
+
+/** Repositorio: la única capa que traduce eventos y recordatorios a SQL. */
 
 interface EventRow {
   id: number;
@@ -36,12 +28,12 @@ interface ReminderRow {
 /** Une los eventos con sus recordatorios (pura, testeable sin BD). */
 export function attachReminders(events: EventRow[], reminders: ReminderRow[]): EventItem[] {
   const byEvent = new Map<number, EventReminder[]>();
-  for (const r of reminders) {
-    const list = byEvent.get(r.eventId) ?? [];
-    list.push({ amount: r.amount, unit: r.unit, notificationId: r.notificationId });
-    byEvent.set(r.eventId, list);
+  for (const reminder of reminders) {
+    const list = byEvent.get(reminder.eventId) ?? [];
+    list.push({ amount: reminder.amount, unit: reminder.unit, notificationId: reminder.notificationId });
+    byEvent.set(reminder.eventId, list);
   }
-  return events.map((e) => ({ ...e, reminders: byEvent.get(e.id) ?? [] }));
+  return events.map((event) => ({ ...event, reminders: byEvent.get(event.id) ?? [] }));
 }
 
 export async function findAllEvents(): Promise<EventItem[]> {
@@ -59,64 +51,84 @@ export async function findAllEvents(): Promise<EventItem[]> {
 
 export async function insertEvent(data: NewEvent, reminders: EventReminder[]): Promise<EventItem> {
   const db = getDb();
-  // Los parámetros SIEMPRE con '?' (binding) — nunca concatenar strings (SQL injection).
-  // Solo un evento puede ser "mi cumpleaños": si este lo es, se lo saca al anterior.
-  if (data.isMine) await clearMine(null);
+  const event = enforceMineBirthday(data);
+  if (event.isMine === 0) return writeEvent(db, event, reminders, null);
 
-  const result = await db.runAsync(
-    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    data.title,
-    data.type,
-    data.date,
-    data.time,
-    data.description,
-    data.yearly,
-    data.contactId,
-    data.phone,
-    data.isMine,
-  );
-  const eventId = result.lastInsertRowId;
-  await insertReminders(eventId, reminders);
-
-  const { reminders: _chosen, ...event } = data;
-  return { ...event, id: eventId, reminders };
+  // Web no soporta withExclusiveTransactionAsync en Expo. Esta cola corre en
+  // el hilo JS y ordena escrituras de esta instancia; el índice único parcial
+  // de la migración v6 conserva el invariante entre conexiones distintas.
+  await clearMine(db, null);
+  return serializeMineWrite(async () => {
+    await clearMine(db, null);
+    return writeEvent(db, event, reminders, null);
+  });
 }
 
 export async function updateEvent(event: EventItem): Promise<void> {
   const db = getDb();
+  // El helper acepta la forma de creación; al editar preservamos los campos
+  // propios de persistencia (id y notificationId de cada recordatorio).
+  const enforced = enforceMineBirthday(event);
+  const normalized: EventItem = { ...event, type: enforced.type, yearly: enforced.yearly };
+  if (normalized.isMine === 0) {
+    await writeEvent(db, normalized, normalized.reminders, normalized.id);
+    return;
+  }
 
-  if (event.isMine) await clearMine(event.id);
+  await clearMine(db, normalized.id);
+  await serializeMineWrite(async () => {
+    await clearMine(db, normalized.id);
+    await writeEvent(db, normalized, normalized.reminders, normalized.id);
+  });
+}
 
-  await db.runAsync(
-    `UPDATE events
-     SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
-         contact_id = ?, phone = ?, is_mine = ?
-     WHERE id = ?`,
-    event.title,
-    event.type,
-    event.date,
-    event.time,
-    event.description,
-    event.yearly,
-    event.contactId,
-    event.phone,
-    event.isMine,
-    event.id,
+let mineWriteTail: Promise<void> = Promise.resolve();
+
+function serializeMineWrite<T>(task: () => Promise<T>): Promise<T> {
+  const previous = mineWriteTail;
+  let release: (() => void) | undefined;
+  mineWriteTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return previous.then(task).finally(() => release?.());
+}
+
+async function writeEvent(
+  db: SQLiteDatabase,
+  data: NewEvent,
+  reminders: EventReminder[],
+  existingId: number | null,
+): Promise<EventItem> {
+  if (existingId !== null) {
+    await db.runAsync(
+      `UPDATE events
+       SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
+           contact_id = ?, phone = ?, is_mine = ?
+       WHERE id = ?`,
+      data.title, data.type, data.date, data.time, data.description, data.yearly,
+      data.contactId, data.phone, data.isMine, existingId,
+    );
+    await db.runAsync('DELETE FROM reminders WHERE event_id = ?', existingId);
+    await insertReminders(db, existingId, reminders);
+    return { ...data, id: existingId, reminders };
+  }
+
+  const result: SQLiteRunResult = await db.runAsync(
+    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    data.title, data.type, data.date, data.time, data.description, data.yearly,
+    data.contactId, data.phone, data.isMine,
   );
-  // Los avisos se reemplazan enteros: los viejos ya fueron cancelados en el thunk.
-  await db.runAsync('DELETE FROM reminders WHERE event_id = ?', event.id);
-  await insertReminders(event.id, event.reminders);
+  await insertReminders(db, result.lastInsertRowId, reminders);
+  const { reminders: _chosen, ...event } = data;
+  return { ...event, id: result.lastInsertRowId, reminders };
 }
 
 export async function deleteEvent(id: number): Promise<void> {
-  // ON DELETE CASCADE borra también sus filas de reminders.
   await getDb().runAsync('DELETE FROM events WHERE id = ?', id);
 }
 
-/** Le saca la marca de "mi cumpleaños" a cualquier otro evento que la tenga. */
-async function clearMine(exceptId: number | null): Promise<void> {
-  const db = getDb();
+async function clearMine(db: SQLiteDatabase, exceptId: number | null): Promise<void> {
   if (exceptId === null) {
     await db.runAsync('UPDATE events SET is_mine = 0 WHERE is_mine = 1');
   } else {
@@ -124,15 +136,11 @@ async function clearMine(exceptId: number | null): Promise<void> {
   }
 }
 
-async function insertReminders(eventId: number, reminders: EventReminder[]): Promise<void> {
-  const db = getDb();
+async function insertReminders(db: SQLiteDatabase, eventId: number, reminders: EventReminder[]): Promise<void> {
   for (const reminder of reminders) {
     await db.runAsync(
       'INSERT INTO reminders (event_id, amount, unit, notification_id) VALUES (?, ?, ?, ?)',
-      eventId,
-      reminder.amount,
-      reminder.unit,
-      reminder.notificationId,
+      eventId, reminder.amount, reminder.unit, reminder.notificationId,
     );
   }
 }

@@ -57,9 +57,11 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const canSave = title.trim().length > 0;
 
   const isBirthday = type === 'cumpleanos';
+  const isMine = initial?.isMine === 1;
   const canGreetType = isBirthday || type === 'aniversario';
 
   const selectType = (t: EventType) => {
+    if (isMine) return; // La UI no ofrece una acción que viole el invariante.
     setType(t);
     // Cambiar el tipo ajusta el default de repetición anual (editable igual).
     setYearly(EVENT_TYPE_META[t].defaultYearly);
@@ -86,7 +88,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const handleSubmit = () => {
     onSubmit({
       title: title.trim(),
-      type,
+      type: isMine ? 'cumpleanos' : type,
       date,
       time,
       description: description.trim() || null,
@@ -94,7 +96,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       contactId: initial?.contactId ?? null,
       phone: phone.trim() || null,
       reminders,
-      yearly: yearly ? 1 : 0,
+      yearly: isMine ? 1 : yearly ? 1 : 0,
       // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
       isMine: initial?.isMine ?? 0,
     });
@@ -120,6 +122,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
             <Pressable
               key={t}
               style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
+              disabled={isMine}
               onPress={() => selectType(t)}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
@@ -195,7 +198,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
 
       <View style={[styles.row, styles.switchRow]}>
         <Text style={styles.switchLabel}>Se repite todos los años</Text>
-        <Switch value={yearly} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
+        <Switch value={isMine ? true : yearly} disabled={isMine} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
       </View>
 
       <Pressable

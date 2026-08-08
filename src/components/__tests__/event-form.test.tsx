@@ -3,6 +3,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import { renderWithStore } from '@/test-utils';
 
 import { EventForm } from '@/components/event-form';
+import type { EventItem } from '@/types';
 import { todayIso } from '@/utils/dates';
 
 /**
@@ -16,6 +17,20 @@ import { todayIso } from '@/utils/dates';
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 
 describe('<EventForm />', () => {
+  const miCumple: EventItem = {
+    id: 8,
+    title: 'Mi cumpleaños',
+    type: 'cumpleanos',
+    date: '1990-08-08',
+    time: null,
+    description: null,
+    contactId: null,
+    phone: null,
+    reminders: [],
+    yearly: 1,
+    isMine: 1,
+  };
+
   const renderForm = async () => {
     const onSubmit = jest.fn();
     await renderWithStore(<EventForm submitLabel="Crear evento" onSubmit={onSubmit} />);
@@ -103,6 +118,26 @@ describe('<EventForm />', () => {
     await fireEvent.press(screen.getByText('Cumpleaños'));
 
     expect(screen.queryByLabelText('Este es mi cumpleaños')).toBeNull();
+  });
+
+  it('conserva el tipo cumpleaños al editar mi cumpleaños', async () => {
+    const onSubmit = jest.fn();
+    await renderWithStore(<EventForm initial={miCumple} submitLabel="Guardar" onSubmit={onSubmit} />);
+
+    await fireEvent.press(screen.getByText('Evento'));
+    await fireEvent.press(screen.getByText('Guardar'));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'cumpleanos' }));
+  });
+
+  it('conserva la repetición anual al editar mi cumpleaños', async () => {
+    const onSubmit = jest.fn();
+    await renderWithStore(<EventForm initial={miCumple} submitLabel="Guardar" onSubmit={onSubmit} />);
+
+    await fireEvent(screen.getByRole('switch'), 'valueChange', false);
+    await fireEvent.press(screen.getByText('Guardar'));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ yearly: 1 }));
   });
 
   it('permite quitar todos los recordatorios', async () => {

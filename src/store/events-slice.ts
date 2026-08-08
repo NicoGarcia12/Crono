@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import * as eventsRepo from '@/db/events-repo';
 import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
-import type { EventItem, EventReminder, NewEvent } from '@/types';
+import { enforceMineBirthday, type EventItem, type EventReminder, type NewEvent } from '@/types';
 
 /**
  * Slice de eventos (Redux Toolkit, el mismo patrón que usás en React web).
@@ -25,18 +25,20 @@ export const loadEvents = createAsyncThunk('events/load', async () => {
 });
 
 export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) => {
+  const normalized = enforceMineBirthday(data);
   // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
-  const reminders = await scheduleEventReminders(data);
-  return eventsRepo.insertEvent(data, reminders);
+  const reminders = await scheduleEventReminders(normalized);
+  return eventsRepo.insertEvent(normalized, reminders);
 });
 
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
+    const normalized = enforceMineBirthday(payload.data);
     // Al editar, los avisos viejos quedan obsoletos: se cancelan y se programan de nuevo.
     await cancelReminders(payload.previousReminders);
-    const reminders = await scheduleEventReminders(payload.data);
-    const { reminders: _chosen, ...eventData } = payload.data;
+    const reminders = await scheduleEventReminders(normalized);
+    const { reminders: _chosen, ...eventData } = normalized;
     const updated: EventItem = { ...eventData, id: payload.id, reminders };
     await eventsRepo.updateEvent(updated);
     return updated;

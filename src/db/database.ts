@@ -15,7 +15,7 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 5;
+const DATABASE_VERSION = 6;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
@@ -156,7 +156,21 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 5;
   }
 
-  // Futuras migraciones: if (currentVersion === 5) { ...ALTER TABLE...; currentVersion = 6; }
+  if (currentVersion === 5) {
+    // v6: antes de crear el índice, se normalizan instalaciones viejas que
+    // pudieran tener duplicados. Se conserva el evento más viejo y ningún
+    // evento se borra: los demás solo pierden la marca de "propio".
+    await database.execAsync(`
+      UPDATE events
+      SET is_mine = 0
+      WHERE is_mine = 1
+        AND id NOT IN (SELECT MIN(id) FROM events WHERE is_mine = 1);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS events_single_mine
+        ON events(is_mine) WHERE is_mine = 1;
+    `);
+    currentVersion = 6;
+  }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }

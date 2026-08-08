@@ -34,17 +34,17 @@ test('carga mi cumpleaños desde el perfil y registra quién me saludó', async 
 
   // Y se creó el evento en la agenda, marcado como propio.
   await page.getByRole('tab', { name: /Agenda/ }).click();
-  await expect(page.getByText('Cumpleaños de Nico')).toBeVisible();
+  await expect(page.getByText('Mi cumpleaños').first()).toBeVisible();
 
   // Entrando al evento se llega a la lista.
-  await page.getByText('Cumpleaños de Nico').click();
+  await page.getByText('Mi cumpleaños').first().click();
   await expect(page.getByText('Guardar cambios')).toBeVisible();
   await page.getByLabel('Ver quién me saludó').last().click();
 
   await expect(page.getByText(/¿Quién me saludó en \d{4}\?/)).toBeVisible();
   await expect(page.getByText('Te saludaron 0 de 2')).toBeVisible();
   // Mi propio cumpleaños no está en la lista.
-  await expect(page.getByLabel('Marcar saludo de Cumpleaños de Nico')).toHaveCount(0);
+  await expect(page.getByLabel('Marcar saludo de Mi cumpleaños')).toHaveCount(0);
 
   // Tildamos a Ana y sumamos a alguien que no está en la agenda.
   await page.getByLabel('Marcar saludo de Ana Perez').click();

@@ -136,6 +136,19 @@ describe('parseBackup', () => {
     });
   });
 
+  it('acepta backups previos que no tenían saludos', () => {
+    const raw = JSON.stringify({
+      app: 'crono',
+      formatVersion: 1,
+      events: [{ title: 'Ok', type: 'evento', date: '2026-07-20', yearly: 0 }],
+      notes: [],
+    });
+
+    const result = parseBackup(raw);
+
+    expect(result).toMatchObject({ ok: true, backup: { greetings: [] } });
+  });
+
   it('descarta avisos con unidad inventada', () => {
     const raw = JSON.stringify({
       app: 'crono',

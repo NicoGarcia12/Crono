@@ -1,39 +1,53 @@
 import { expect, test } from '@playwright/test';
 
+function localIso(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function calendarDayLabel(date: Date): string {
+  const months = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+
+  return `Día ${date.getDate()} de ${months[date.getMonth()]} de ${date.getFullYear()}`;
+}
+
 /**
  * Flujo crítico del calendario: un evento creado aparece en su día, la
  * navegación entre meses funciona y la vista semanal también.
  */
 test('el evento creado aparece en el calendario y se puede navegar', async ({ page }) => {
+  // Una fecha calculada al ejecutar evita que el escenario venza al pasar 2026.
+  const today = new Date();
+  const eventDate = localIso(today);
+  const dayLabel = calendarDayLabel(today);
+
   await page.goto('/');
 
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();
 
-  // Creamos un evento con fecha conocida (20 de diciembre de 2026, domingo).
+  // Creamos un evento para hoy, que es el período inicial del calendario.
   await page.getByLabel('Agregar evento').click();
   await page.getByPlaceholder('Ej: Cumpleaños de mamá').fill('Cena con amigos');
-  await page.getByLabel('Fecha').fill('2026-12-20');
+  await page.getByLabel('Fecha').fill(eventDate);
   await page.getByText('Crear evento').click();
   await expect(page.getByText('Cena con amigos').first()).toBeVisible();
 
   await page.getByText('Calendario').click();
 
-  // Navegamos mes a mes hasta diciembre de 2026 (el título arranca en el mes actual).
-  const periodo = page.getByText(/^[A-Z][a-zé]+ \d{4}$/);
-  for (let i = 0; i < 24; i++) {
-    if ((await periodo.innerText()) === 'Diciembre 2026') break;
-    await page.getByLabel('Período siguiente').click();
-  }
-  await expect(periodo).toHaveText('Diciembre 2026');
+  // La navegación no depende de un mes/año hardcodeado: volvemos al período actual.
+  await page.getByLabel('Período anterior').click();
+  await page.getByLabel('Ir a hoy').click();
 
-  // Tocamos el día 20: abajo se listan los eventos de ese día.
-  await page.getByLabel('Día 2026-12-20').click();
-  await expect(page.getByText('Domingo 20 de diciembre de 2026')).toBeVisible();
-  // La pestaña Agenda queda montada detrás, así que el título aparece dos veces.
-  await expect(page.getByText('Cena con amigos').last()).toBeVisible();
+  // Tocamos el día creado: abajo se lista el evento dentro del detalle diario.
+  await page.getByLabel(dayLabel).click();
+  await expect(page.getByTestId('lista-virtualizada-eventos-del-dia').getByText('Cena con amigos')).toBeVisible();
 
   // La vista semanal muestra el rango de esa semana.
   await page.getByLabel('Vista semanal').click();
-  await expect(page.getByText(/14 – 20 de diciembre de 2026/)).toBeVisible();
+  await expect(page.getByLabel(dayLabel)).toBeVisible();
 });

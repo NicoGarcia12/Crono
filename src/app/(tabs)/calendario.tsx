@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type JSX, useMemo, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CalendarGrid } from '@/components/calendar-grid';
 import { EventCard } from '@/components/event-card';
@@ -24,7 +24,7 @@ import { useThemeColors } from '@/theme/use-theme';
  * atrás, con los eventos marcados por color según su tipo. Al tocar un día se
  * listan los eventos de ese día.
  */
-export default function CalendarioScreen() {
+export default function CalendarioScreen(): JSX.Element {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -61,6 +61,10 @@ export default function CalendarioScreen() {
   };
 
   const selectedEvents = byDay.get(selectedIso) ?? [];
+  const sortedSelectedEvents = useMemo(
+    () => selectedEvents.slice().sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99')),
+    [selectedEvents],
+  );
 
   return (
     <View style={styles.container}>
@@ -103,25 +107,22 @@ export default function CalendarioScreen() {
       />
 
       {/* Eventos del día elegido */}
-      <ScrollView style={styles.dayList} contentContainerStyle={styles.dayListContent}>
-        <Text style={styles.dayTitle}>{capitalize(formatLongDate(selectedIso))}</Text>
-        {selectedEvents.length === 0 ? (
-          <Text style={styles.dayEmpty}>No hay nada agendado este día.</Text>
-        ) : (
-          selectedEvents
-            .slice()
-            .sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99'))
-            .map((event) => (
-              <Pressable
-                key={event.id}
-                onPress={() => router.push({ pathname: '/evento/[id]', params: { id: String(event.id) } })}
-              >
-                {/* La tarjeta muestra la próxima ocurrencia; en el calendario ya sabemos el día. */}
-                <EventCard event={event} occurrence={toLocalDate(selectedIso, event.time)} />
-              </Pressable>
-            ))
+      {/* FlatList delega el montaje de celdas al renderer nativo y virtualiza la lista; JS solo entrega datos y callbacks. */}
+      <FlatList
+        testID="lista-virtualizada-eventos-del-dia"
+        style={styles.dayList}
+        contentContainerStyle={styles.dayListContent}
+        data={sortedSelectedEvents}
+        keyExtractor={(event) => String(event.id)}
+        ListHeaderComponent={<Text style={styles.dayTitle}>{capitalize(formatLongDate(selectedIso))}</Text>}
+        ListEmptyComponent={<Text style={styles.dayEmpty}>No hay nada agendado este día.</Text>}
+        renderItem={({ item: event }) => (
+          <Pressable onPress={() => router.push({ pathname: '/evento/[id]', params: { id: String(event.id) } })}>
+            {/* La tarjeta muestra la próxima ocurrencia; en el calendario ya sabemos el día. */}
+            <EventCard event={event} occurrence={toLocalDate(selectedIso, event.time)} />
+          </Pressable>
         )}
-      </ScrollView>
+      />
     </View>
   );
 }

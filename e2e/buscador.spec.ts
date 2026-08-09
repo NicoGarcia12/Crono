@@ -14,8 +14,16 @@ test('busca eventos y muestra la cuenta regresiva en el detalle', async ({ page 
     await expect(page.getByText(titulo).first()).toBeVisible();
   };
 
+  const futureDate = new Date();
+  futureDate.setDate(futureDate.getDate() + 30);
+  const futureDateValue = [
+    futureDate.getFullYear(),
+    String(futureDate.getMonth() + 1).padStart(2, '0'),
+    String(futureDate.getDate()).padStart(2, '0'),
+  ].join('-');
+
   await crear('Cumple de mamá', '2026-12-20');
-  await crear('Cena con amigos', '2026-07-16');
+  await crear('Cena con amigos', futureDateValue);
 
   // Buscar sin tilde encuentra igual.
   await page.getByLabel('Buscar eventos').fill('mama');

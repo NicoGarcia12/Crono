@@ -106,6 +106,20 @@ describe('eventsByDay', () => {
     expect(byDay.get('2026-07-15')).toEqual([cumple]);
   });
 
+  it('mantiene el 29 de febrero para un anual durante un año bisiesto', () => {
+    const february2024 = buildMonthGrid(new Date(2024, 1, 1)).flat();
+    const cumpleBisiesto = evento({ id: 30, type: 'cumpleanos', date: '2000-02-29', yearly: 1 });
+
+    expect(eventsByDay([cumpleBisiesto], february2024).get('2024-02-29')).toEqual([cumpleBisiesto]);
+  });
+
+  it('muestra un anual del 29 de febrero el 28 de febrero en un año no bisiesto', () => {
+    const february2026 = buildMonthGrid(new Date(2026, 1, 1)).flat();
+    const cumpleBisiesto = evento({ id: 31, type: 'cumpleanos', date: '2000-02-29', yearly: 1 });
+
+    expect(eventsByDay([cumpleBisiesto], february2026).get('2026-02-28')).toEqual([cumpleBisiesto]);
+  });
+
   it('en una grilla que cruza el año, ubica el anual en el año que corresponde a cada día', () => {
     // La grilla de diciembre de 2026 termina el domingo 3 de enero de 2027.
     const diciembre2026 = buildMonthGrid(new Date(2026, 11, 1)).flat();

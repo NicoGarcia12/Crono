@@ -64,6 +64,24 @@ export function shiftWeek(anchor: Date, delta: number): Date {
   return result;
 }
 
+/** Indica si febrero tiene 29 días en el año indicado. */
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+/**
+ * Fecha ISO de la ocurrencia anual de un evento en un año concreto.
+ *
+ * `new Date(year, 1, 29)` se desborda a marzo en un año no bisiesto. La regla
+ * de producto elige el 28/02, por eso tratamos el caso antes de crear el Date.
+ */
+function annualOccurrenceIso(base: Date, year: number): string {
+  const isLeapDay = base.getMonth() === 1 && base.getDate() === 29;
+  const day = isLeapDay && !isLeapYear(year) ? 28 : base.getDate();
+
+  return dateToIso(new Date(year, base.getMonth(), day));
+}
+
 /**
  * Agrupa los eventos por día ('YYYY-MM-DD') dentro del rango visible.
  * Los eventos anuales se repiten en cada año del rango; los puntuales
@@ -93,7 +111,7 @@ export function eventsByDay(events: EventItem[], days: Date[]): Map<string, Even
 
     // Anual: la misma combinación día/mes, en cada año que toque la grilla.
     for (const year of years) {
-      push(dateToIso(new Date(year, base.getMonth(), base.getDate())), event);
+      push(annualOccurrenceIso(base, year), event);
     }
   }
 

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { type JSX, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { EVENT_TYPE_META } from '@/constants/event-types';
 import type { EventItem } from '@/types';
@@ -6,6 +6,21 @@ import { WEEKDAY_INITIALS } from '@/utils/calendar';
 import { dateToIso, todayIso } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
+
+const MONTHS_ES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+] as const;
+
+function dayAccessibilityLabel(day: Date, events: EventItem[], isSelected: boolean): string {
+  const eventCount = events.length;
+  const eventTypes = [...new Set(events.map((event) => EVENT_TYPE_META[event.type].label))];
+  const countLabel = `${eventCount} ${eventCount === 1 ? 'evento' : 'eventos'}`;
+  const eventsLabel = eventCount === 0 ? 'sin eventos' : `${countLabel}: ${eventTypes.join(' y ')}`;
+  const selectionLabel = isSelected ? ', seleccionado' : '';
+
+  return `Día ${day.getDate()} de ${MONTHS_ES[day.getMonth()]} de ${day.getFullYear()}, ${eventsLabel}${selectionLabel}`;
+}
 
 /**
  * Grilla del calendario (presentacional): recibe las semanas ya calculadas y
@@ -28,7 +43,7 @@ export function CalendarGrid({
   currentMonth,
   selectedIso,
   onSelect,
-}: CalendarGridProps) {
+}: CalendarGridProps): JSX.Element {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -60,7 +75,10 @@ export function CalendarGrid({
               <Pressable
                 key={iso}
                 style={styles.day}
-                accessibilityLabel={`Día ${iso}`}
+                // El lector recibe la misma información que comunican los puntos de color.
+                accessibilityRole="button"
+                accessibilityLabel={dayAccessibilityLabel(day, dayEvents, isSelected)}
+                accessibilityState={{ selected: isSelected }}
                 onPress={() => onSelect(iso)}
               >
                 <View style={[styles.dayCircle, isToday && styles.today, isSelected && styles.selected]}>

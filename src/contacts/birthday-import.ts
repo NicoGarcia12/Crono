@@ -63,7 +63,7 @@ export function buildCandidates(
       .map((e) => `${normalize(e.title)}|${e.date.slice(5)}`),
   );
 
-  return contacts
+  const candidates = contacts
     .filter(
       (c): c is ContactLike & { name: string; birthday: { day: number; month: number } } =>
         typeof c.name === 'string' &&
@@ -85,6 +85,17 @@ export function buildCandidates(
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+  // Un contacto puede estar duplicado por una sincronización de la agenda.
+  // La identidad funcional de un cumpleaños es nombre normalizado + mes/día;
+  // el año no importa porque el evento se repite anualmente.
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${normalize(candidate.name)}|${candidate.date.slice(5)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Convierte un candidato en el evento que se guarda en la agenda. */

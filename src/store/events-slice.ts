@@ -33,13 +33,24 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
-    // Al editar, los avisos viejos quedan obsoletos: se cancelan y se programan de nuevo.
-    await cancelReminders(payload.previousReminders);
+    /**
+     * Primero pedimos los reemplazos al SO. A diferencia de SQLite, las
+     * notificaciones nativas no tienen rollback: con este orden, si programar
+     * falla los avisos anteriores siguen activos y el evento no se modifica.
+     */
     const reminders = await scheduleEventReminders(payload.data);
-    const { reminders: _chosen, ...eventData } = payload.data;
-    const updated: EventItem = { ...eventData, id: payload.id, reminders };
-    await eventsRepo.updateEvent(updated);
-    return updated;
+
+    try {
+      await cancelReminders(payload.previousReminders);
+      const { reminders: _chosen, ...eventData } = payload.data;
+      const updated: EventItem = { ...eventData, id: payload.id, reminders };
+      await eventsRepo.updateEvent(updated);
+      return updated;
+    } catch (error) {
+      // Si falla un paso posterior, no dejamos reemplazos huérfanos en el SO.
+      await Promise.allSettled([cancelReminders(reminders)]);
+      throw error;
+    }
   },
 );
 

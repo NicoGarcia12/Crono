@@ -49,4 +49,29 @@ describe('<BirthdayPickList />', () => {
     // Carla sigue sin contar para el botón (solo Ana y Bruno).
     expect(screen.getByText('Importar 2 cumpleaños')).toBeTruthy();
   });
+
+  it('expone la lista con el rol accesible list', async () => {
+    await render(<BirthdayPickList candidates={candidates} onImport={jest.fn()} />);
+
+    expect(screen.getByRole('list')).toBeTruthy();
+  });
+
+  it('expone el botón de importación por nombre accesible', async () => {
+    await render(<BirthdayPickList candidates={candidates} onImport={jest.fn()} />);
+
+    expect(screen.getByRole('button', { name: 'Importar 2 cumpleaños' })).toBeTruthy();
+  });
+
+  it('comunica que el botón está deshabilitado sin candidatos seleccionados', async () => {
+    await render(
+      <BirthdayPickList
+        candidates={[{ ...candidates[2], key: 'solo-importado' }]}
+        onImport={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Importar 0 cumpleaños' }).props.accessibilityState).toEqual({
+      disabled: true,
+    });
+  });
 });

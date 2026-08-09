@@ -58,6 +58,19 @@ describe('buildCandidates', () => {
     expect(candidates.find((c) => c.name === 'Ana')?.alreadyImported).toBe(true);
     expect(candidates.find((c) => c.name === 'Zoe')?.alreadyImported).toBe(false);
   });
+
+  it('deduplica candidatos del mismo lote por nombre normalizado y día/mes', () => {
+    const candidates = buildCandidates(
+      [
+        { id: 'c1', name: '  Ana  ', birthday: { day: 20, month: 11, year: 1995 } },
+        { id: 'c2', name: 'ana', birthday: { day: 20, month: 11 } },
+      ],
+      [],
+      2026,
+    );
+
+    expect(candidates).toHaveLength(1);
+  });
 });
 
 describe('candidateToEvent', () => {

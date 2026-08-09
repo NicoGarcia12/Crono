@@ -37,40 +37,55 @@ export function BirthdayPickList({ candidates, importing, onImport }: BirthdayPi
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={candidates}
-        keyExtractor={(item) => item.key}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => {
-          const checked = selectedKeys.has(item.key) && !item.alreadyImported;
-          return (
-            <Pressable
-              style={[styles.row, item.alreadyImported && styles.rowDisabled]}
-              disabled={item.alreadyImported}
-              accessibilityLabel={`Cumpleaños de ${item.name}`}
-              onPress={() => toggle(item.key)}
-            >
-              <Ionicons
-                name={item.alreadyImported ? 'checkmark-done-circle' : checked ? 'checkbox' : 'square-outline'}
-                size={24}
-                color={item.alreadyImported ? '#bbb' : checked ? '#208AEF' : '#999'}
-              />
-              <View style={styles.rowBody}>
-                <Text style={styles.rowName} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.rowDate} numberOfLines={1}>
-                  {item.alreadyImported ? 'Ya está en tu agenda' : formatLongDate(item.date)}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
+      {/* RNTL no reconoce el host RCTScrollView de FlatList como lista; este
+          contenedor conserva la semántica para lectores de pantalla y tests. */}
+      <View accessible accessibilityRole="list">
+        <FlatList
+          data={candidates}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => {
+            const checked = selectedKeys.has(item.key) && !item.alreadyImported;
+            return (
+              <Pressable
+                style={[styles.row, item.alreadyImported && styles.rowDisabled]}
+                disabled={item.alreadyImported}
+                accessibilityRole="checkbox"
+                accessibilityLabel={`Cumpleaños de ${item.name}`}
+                accessibilityState={{ checked, disabled: item.alreadyImported }}
+                onPress={() => toggle(item.key)}
+              >
+                <Ionicons
+                  name={item.alreadyImported ? 'checkmark-done-circle' : checked ? 'checkbox' : 'square-outline'}
+                  size={24}
+                  color={item.alreadyImported ? '#bbb' : checked ? '#208AEF' : '#999'}
+                />
+                <View style={styles.rowBody}>
+                  <Text style={styles.rowName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.rowDate} numberOfLines={1}>
+                    {item.alreadyImported ? 'Ya está en tu agenda' : formatLongDate(item.date)}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          }}
+        />
+      </View>
 
       <Pressable
         style={[styles.importButton, !canImport && styles.importButtonDisabled]}
         disabled={!canImport}
+        accessibilityRole="button"
+        accessibilityLabel={
+          importing
+            ? 'Importando cumpleaños'
+            : selected.length === 1
+              ? 'Importar 1 cumpleaños'
+              : `Importar ${selected.length} cumpleaños`
+        }
+        accessibilityState={{ disabled: !canImport, busy: importing }}
         onPress={() => onImport(selected)}
       >
         <Text style={styles.importText}>

@@ -30,6 +30,29 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
   return eventsRepo.insertEvent(data, reminders);
 });
 
+/**
+ * Importa cumpleaños como lote. Las notificaciones pertenecen al SO, no a
+ * SQLite, así que no participan del rollback nativo: si falla la BD las
+ * cancelamos explícitamente para que no queden avisos sin su recordatorio.
+ */
+export const addContactBirthdays = createAsyncThunk(
+  'events/addContactBirthdays',
+  async (entries: readonly NewEvent[]) => {
+    const scheduledReminders: EventReminder[][] = [];
+    try {
+      for (const entry of entries) {
+        scheduledReminders.push(await scheduleEventReminders(entry));
+      }
+      return await eventsRepo.insertContactBirthdays(entries, scheduledReminders);
+    } catch (error: unknown) {
+      // Este cleanup corre en JS luego del rechazo async de SQLite; SQLite ya
+      // revirtió las filas y acá revertimos el efecto externo del scheduler.
+      await Promise.all(scheduledReminders.map((reminders) => cancelReminders(reminders)));
+      throw error;
+    }
+  },
+);
+
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
@@ -67,6 +90,9 @@ const eventsSlice = createSlice({
       })
       .addCase(addEvent.fulfilled, (state, action) => {
         state.items.push(action.payload);
+      })
+      .addCase(addContactBirthdays.fulfilled, (state, action) => {
+        state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {
         const index = state.items.findIndex((e) => e.id === action.payload.id);

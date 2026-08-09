@@ -7,7 +7,7 @@ import { BirthdayWizard } from '@/components/birthday-wizard';
 import { ContactPickList } from '@/components/contact-pick-list';
 import { candidateToEvent, fetchContacts, type ContactCandidate } from '@/contacts/birthday-import';
 import { store, useAppDispatch } from '@/store';
-import { addEvent, removeEvent } from '@/store/events-slice';
+import { addContactBirthdays, removeEvent } from '@/store/events-slice';
 
 /**
  * Ruta /cargar-cumpleanos — muestra todos los contactos del celular, se eligen
@@ -62,10 +62,11 @@ export default function CargarCumpleanosScreen() {
   const handleSave = async (entries: { candidate: ContactCandidate; date: string }[]) => {
     setSaving(true);
     try {
-      // Secuencial a propósito: SQLite escribe de a una y son pocos registros.
-      for (const { candidate, date } of entries) {
-        await dispatch(addEvent(candidateToEvent(candidate, date))).unwrap();
-      }
+      // Un solo thunk mantiene juntos eventos, recordatorios y rollback de
+      // avisos nativos; Redux se actualiza recién si SQLite hizo commit.
+      await dispatch(
+        addContactBirthdays(entries.map(({ candidate, date }) => candidateToEvent(candidate, date))),
+      ).unwrap();
       router.back();
     } finally {
       setSaving(false);

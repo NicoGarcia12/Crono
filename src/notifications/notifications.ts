@@ -94,10 +94,29 @@ export async function requestNotificationPermission(): Promise<boolean> {
  */
 export async function scheduleEventReminders(event: NewEvent): Promise<EventReminder[]> {
   const scheduled: EventReminder[] = [];
-  for (const reminder of event.reminders) {
-    scheduled.push({ ...reminder, notificationId: await scheduleOne(event, reminder) });
+  try {
+    for (const reminder of event.reminders) {
+      scheduled.push({ ...reminder, notificationId: await scheduleOne(event, reminder) });
+    }
+    return scheduled;
+  } catch (error) {
+    /**
+     * `scheduleNotificationAsync` cruza el límite JS → sistema operativo: no
+     * participa de una transacción SQLite. Si el segundo aviso falla, por
+     * ejemplo, debemos deshacer manualmente los IDs que el SO ya aceptó.
+     *
+     * `allSettled` hace la compensación "best effort": un error al cancelar
+     * un aviso no tapa el error original que explica por qué no se pudo crear
+     * el conjunto completo.
+     */
+    const Notifications = getNotifications();
+    const cancellationAttempts = scheduled
+      .flatMap(({ notificationId }) => (notificationId ? [notificationId] : []))
+      .map((notificationId) => Notifications?.cancelScheduledNotificationAsync(notificationId));
+
+    await Promise.allSettled(cancellationAttempts);
+    throw error;
   }
-  return scheduled;
 }
 
 /**
@@ -152,7 +171,20 @@ async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<st
 export async function cancelReminders(reminders: EventReminder[]): Promise<void> {
   const Notifications = getNotifications();
   if (!Notifications) return;
-  for (const { notificationId } of reminders) {
-    if (notificationId) await Notifications.cancelScheduledNotificationAsync(notificationId);
+
+  // Cada cancelación cruza JS → SO y puede fallar de forma independiente. No
+  // usamos un `for await`: si la primera falla, los avisos siguientes quedarían
+  // huérfanos. `allSettled` intenta limpiar todos y después conserva el error
+  // para que editar/borrar no informe un éxito que no ocurrió completamente.
+  const results = await Promise.allSettled(
+    reminders.flatMap(({ notificationId }) =>
+      notificationId ? [Notifications.cancelScheduledNotificationAsync(notificationId)] : [],
+    ),
+  );
+  const failedCancellation = results.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  );
+  if (failedCancellation) {
+    throw failedCancellation.reason;
   }
 }

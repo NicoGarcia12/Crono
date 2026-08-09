@@ -36,6 +36,7 @@ const event = (id: number): EventItem => ({
   phone: null,
   reminders: [],
   yearly: 0,
+  isMine: 0,
 });
 
 describe('<CalendarioScreen />', () => {

@@ -30,6 +30,57 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
   return eventsRepo.insertEvent(data, reminders);
 });
 
+/** Estado mínimo que necesita el lote; mantiene al slice testeable en aislamiento. */
+interface EventsRootState {
+  events: Pick<EventsState, 'items'>;
+}
+
+function birthdayIdentity(event: Pick<NewEvent, 'title' | 'date'>): string {
+  return `${event.title.trim().toLocaleLowerCase('es-AR')}|${event.date.slice(5)}`;
+}
+
+/**
+ * Importa cumpleaños como una unidad lógica usando el contrato de avisos 1→N.
+ *
+ * SQLite y las notificaciones nativas viven fuera del mismo límite
+ * transaccional: si falla una escritura, compensamos desde JavaScript
+ * borrando las filas creadas y cancelando todos los avisos ya programados.
+ */
+export const importBirthdayEvents = createAsyncThunk<EventItem[], NewEvent[], { state: EventsRootState }>(
+  'events/importBirthdays',
+  async (events, { getState }) => {
+    const existing = new Set(
+      getState().events.items.filter((event) => event.type === 'cumpleanos').map(birthdayIdentity),
+    );
+    const uniqueEvents = events.filter((event) => {
+      const identity = birthdayIdentity(event);
+      if (existing.has(identity)) return false;
+      existing.add(identity);
+      return true;
+    });
+
+    const saved: EventItem[] = [];
+    const scheduledReminders: EventReminder[] = [];
+
+    try {
+      for (const event of uniqueEvents) {
+        const reminders = await scheduleEventReminders(event);
+        scheduledReminders.push(...reminders);
+        const persisted = await eventsRepo.insertEvent(event, reminders);
+        saved.push(persisted);
+      }
+      return saved;
+    } catch (error: unknown) {
+      // `allSettled` intenta toda la compensación sin ocultar el error original.
+      await Promise.allSettled([
+        ...saved.map((event) => eventsRepo.deleteEvent(event.id)),
+        cancelReminders(scheduledReminders),
+      ]);
+      throw error;
+    }
+  },
+);
+
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
@@ -78,6 +129,9 @@ const eventsSlice = createSlice({
       })
       .addCase(addEvent.fulfilled, (state, action) => {
         state.items.push(action.payload);
+      })
+      .addCase(importBirthdayEvents.fulfilled, (state, action) => {
+        state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {
         const index = state.items.findIndex((e) => e.id === action.payload.id);

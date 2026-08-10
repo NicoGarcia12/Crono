@@ -36,6 +36,14 @@ describe('<RemindersField />', () => {
     expect(onChange).toHaveBeenCalledWith([{ amount: 3, unit: 'semanas' }]);
   });
 
+  it('expone la unidad elegida como opción seleccionada para lectores de pantalla', async () => {
+    await renderField([]);
+
+    await fireEvent.press(screen.getByLabelText('meses'));
+
+    expect(screen.getByRole('button', { name: 'meses', selected: true })).toBeTruthy();
+  });
+
   it('ordena los avisos del más lejano al más cercano', async () => {
     const onChange = await renderField([{ amount: 1, unit: 'horas' }]);
 

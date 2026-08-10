@@ -127,6 +127,49 @@ describe('editEvent', () => {
     );
     expect(store.getState().events.items[0].title).toBe('Cumple de papá');
   });
+
+  it('conserva los avisos anteriores si no logra programar el reemplazo', async () => {
+    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    mockSchedule.mockRejectedValue(new Error('El sistema de avisos no responde'));
+    const store = makeStore();
+    await store.dispatch(loadEvents());
+
+    await store.dispatch(
+      editEvent({
+        id: eventoGuardado.id,
+        data: { ...nuevoEvento, title: 'Cumple de papá' },
+        previousReminders: eventoGuardado.reminders,
+      }),
+    );
+
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  it('intenta limpiar los avisos nuevos si falla la cancelación de los anteriores', async () => {
+    const nuevosAvisos = [
+      { amount: 1, unit: 'horas' as const, notificationId: 'notif-reemplazo-1' },
+      { amount: 2, unit: 'dias' as const, notificationId: 'notif-reemplazo-2' },
+    ];
+    mockSchedule.mockResolvedValue(nuevosAvisos);
+    // El primer rechazo representa una cancelación vieja fallida. El segundo
+    // representa un fallo parcial durante el cleanup; el thunk debe absorberlo
+    // para conservar el error original sin omitir el intento de compensación.
+    mockCancel
+      .mockRejectedValueOnce(new Error('No se pudo cancelar un aviso anterior'))
+      .mockRejectedValueOnce(new Error('No se pudo cancelar un reemplazo'));
+    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    const store = makeStore();
+    await store.dispatch(loadEvents());
+
+    await store.dispatch(
+      editEvent({ id: eventoGuardado.id, data: nuevoEvento, previousReminders: eventoGuardado.reminders }),
+    );
+
+    expect(mockCancel).toHaveBeenNthCalledWith(1, eventoGuardado.reminders);
+    expect(mockCancel).toHaveBeenNthCalledWith(2, nuevosAvisos);
+    expect(mockRepo.updateEvent).not.toHaveBeenCalled();
+    expect(store.getState().events.items).toEqual([eventoGuardado]);
+  });
 });
 
 describe('removeEvent', () => {

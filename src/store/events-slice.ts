@@ -30,16 +30,51 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
   return eventsRepo.insertEvent(data, reminders);
 });
 
+/**
+ * Importa cumpleaños de contactos como una unidad lógica usando el contrato
+ * de avisos 1→N. La identidad es `contact_id`, que SQLite verifica dentro de
+ * la transacción para no depender de una copia potencialmente vieja de Redux.
+ */
+export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEvent[]>(
+  'events/addContactBirthdays',
+  async (entries: readonly NewEvent[]) => {
+    const scheduledReminders: EventReminder[][] = [];
+    try {
+      for (const entry of entries) {
+        scheduledReminders.push(await scheduleEventReminders(entry));
+      }
+      return await eventsRepo.insertContactBirthdays(entries, scheduledReminders);
+    } catch (error: unknown) {
+      // SQLite revierte sus filas dentro de la transacción; este cleanup corre
+      // en JS para revertir el efecto externo de TODOS los avisos ya creados.
+      // allSettled conserva el error original aunque falle una cancelación.
+      await Promise.allSettled(scheduledReminders.map((reminders) => cancelReminders(reminders)));
+      throw error;
+    }
+  },
+);
+
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
-    // Al editar, los avisos viejos quedan obsoletos: se cancelan y se programan de nuevo.
-    await cancelReminders(payload.previousReminders);
+    /**
+     * Primero pedimos los reemplazos al SO. A diferencia de SQLite, las
+     * notificaciones nativas no tienen rollback: con este orden, si programar
+     * falla los avisos anteriores siguen activos y el evento no se modifica.
+     */
     const reminders = await scheduleEventReminders(payload.data);
-    const { reminders: _chosen, ...eventData } = payload.data;
-    const updated: EventItem = { ...eventData, id: payload.id, reminders };
-    await eventsRepo.updateEvent(updated);
-    return updated;
+
+    try {
+      await cancelReminders(payload.previousReminders);
+      const { reminders: _chosen, ...eventData } = payload.data;
+      const updated: EventItem = { ...eventData, id: payload.id, reminders };
+      await eventsRepo.updateEvent(updated);
+      return updated;
+    } catch (error) {
+      // Si falla un paso posterior, no dejamos reemplazos huérfanos en el SO.
+      await Promise.allSettled([cancelReminders(reminders)]);
+      throw error;
+    }
   },
 );
 
@@ -67,6 +102,9 @@ const eventsSlice = createSlice({
       })
       .addCase(addEvent.fulfilled, (state, action) => {
         state.items.push(action.payload);
+      })
+      .addCase(addContactBirthdays.fulfilled, (state, action) => {
+        state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {
         const index = state.items.findIndex((e) => e.id === action.payload.id);

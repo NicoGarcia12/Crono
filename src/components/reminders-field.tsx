@@ -95,7 +95,11 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
           {REMINDER_UNITS.map((u) => (
             <Pressable
               key={u}
+              accessibilityRole="button"
               accessibilityLabel={REMINDER_UNIT_LABELS[u]}
+              // `selected` comunica la elección al árbol nativo de accesibilidad;
+              // el color solo no alcanza para lectores de pantalla.
+              accessibilityState={{ selected: u === unit }}
               style={[styles.unitChip, u === unit && styles.unitChipActive]}
               onPress={() => setUnit(u)}
             >

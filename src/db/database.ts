@@ -19,11 +19,20 @@ const DATABASE_VERSION = 4;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
-  db = await SQLite.openDatabaseAsync('crono.db');
-  // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
-  // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
-  await db.execAsync('PRAGMA foreign_keys = ON');
-  await migrate(db);
+  try {
+    const database = await SQLite.openDatabaseAsync('crono.db');
+    // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
+    // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
+    await database.execAsync('PRAGMA foreign_keys = ON');
+    await migrate(database);
+    // El singleton se publica únicamente después de una migración confirmada.
+    db = database;
+  } catch (error) {
+    // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
+    // siguiente initDatabase() retorna temprano en vez de reintentar.
+    db = null;
+    throw error;
+  }
 }
 
 /** Acceso a la conexión. Falla rápido si alguien la usa antes de initDatabase(). */
@@ -83,23 +92,30 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   if (currentVersion === 1) {
     // v2: recordatorios múltiples. El aviso único (columnas reminder_minutes /
     // notification_id en events) pasa a una tabla propia: 1 evento → N avisos.
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS reminders (
-        id INTEGER PRIMARY KEY NOT NULL,
-        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-        minutes INTEGER NOT NULL,
-        notification_id TEXT
-      );
-
-      -- Backfill: cada evento que tenía UN aviso pasa a tener UNA fila acá.
-      INSERT INTO reminders (event_id, minutes, notification_id)
-        SELECT id, reminder_minutes, notification_id
-        FROM events
-        WHERE reminder_minutes IS NOT NULL;
-
-      ALTER TABLE events DROP COLUMN reminder_minutes;
-      ALTER TABLE events DROP COLUMN notification_id;
-    `);
+    // `withTransactionAsync` ejecuta BEGIN/COMMIT/ROLLBACK del lado nativo.
+    // Si cualquiera de estas sentencias rechaza en el hilo JS, Expo hace
+    // rollback antes de propagar el error; el próximo arranque puede reintentar
+    // desde v1 sin un BEGIN abierto ni un esquema a medio transformar.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS reminders (
+          id INTEGER PRIMARY KEY NOT NULL,
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          minutes INTEGER NOT NULL,
+          notification_id TEXT
+        );
+      `);
+      // Backfill: cada evento que tenía UN aviso pasa a tener UNA fila acá.
+      await database.execAsync(`
+        INSERT INTO reminders (event_id, minutes, notification_id)
+          SELECT id, reminder_minutes, notification_id
+          FROM events
+          WHERE reminder_minutes IS NOT NULL;
+      `);
+      await database.execAsync('ALTER TABLE events DROP COLUMN reminder_minutes');
+      await database.execAsync('ALTER TABLE events DROP COLUMN notification_id');
+      await database.execAsync('PRAGMA user_version = 2');
+    });
     currentVersion = 2;
   }
 

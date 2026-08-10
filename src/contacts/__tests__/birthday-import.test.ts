@@ -96,6 +96,21 @@ describe('buildCandidates', () => {
 
     expect(candidates.every((c) => c.loaded === null)).toBe(true);
   });
+
+  it('conserva contactos distintos aunque compartan nombre y cumpleaños', () => {
+    const candidates = buildCandidates(
+      [
+        { id: 'c1', name: '  Ana  ', birthday: { day: 20, month: 11, year: 1995 } },
+        { id: 'c2', name: 'ana', birthday: { day: 20, month: 11 } },
+      ],
+      [],
+      2026,
+    );
+
+    // La identidad de esta pantalla es el id nativo del contacto. Deduplicar
+    // por nombre+fecha ocultaría personas distintas de la agenda.
+    expect(candidates.map((candidate) => candidate.key).sort()).toEqual(['c1', 'c2']);
+  });
 });
 
 describe('candidateToEvent', () => {

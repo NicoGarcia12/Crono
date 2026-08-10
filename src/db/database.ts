@@ -19,11 +19,20 @@ const DATABASE_VERSION = 4;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
-  db = await SQLite.openDatabaseAsync('crono.db');
-  // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
-  // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
-  await db.execAsync('PRAGMA foreign_keys = ON');
-  await migrate(db);
+  try {
+    const database = await SQLite.openDatabaseAsync('crono.db');
+    // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
+    // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
+    await database.execAsync('PRAGMA foreign_keys = ON');
+    await migrate(database);
+    // El singleton se publica únicamente después de una migración confirmada.
+    db = database;
+  } catch (error) {
+    // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
+    // siguiente initDatabase() retorna temprano en vez de reintentar.
+    db = null;
+    throw error;
+  }
 }
 
 /** Acceso a la conexión. Falla rápido si alguien la usa antes de initDatabase(). */
@@ -83,23 +92,30 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   if (currentVersion === 1) {
     // v2: recordatorios múltiples. El aviso único (columnas reminder_minutes /
     // notification_id en events) pasa a una tabla propia: 1 evento → N avisos.
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS reminders (
-        id INTEGER PRIMARY KEY NOT NULL,
-        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-        minutes INTEGER NOT NULL,
-        notification_id TEXT
-      );
-
-      -- Backfill: cada evento que tenía UN aviso pasa a tener UNA fila acá.
-      INSERT INTO reminders (event_id, minutes, notification_id)
-        SELECT id, reminder_minutes, notification_id
-        FROM events
-        WHERE reminder_minutes IS NOT NULL;
-
-      ALTER TABLE events DROP COLUMN reminder_minutes;
-      ALTER TABLE events DROP COLUMN notification_id;
-    `);
+    // `withTransactionAsync` ejecuta BEGIN/COMMIT/ROLLBACK del lado nativo.
+    // Si cualquiera de estas sentencias rechaza en el hilo JS, Expo hace
+    // rollback antes de propagar el error; el próximo arranque puede reintentar
+    // desde v1 sin un BEGIN abierto ni un esquema a medio transformar.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS reminders (
+          id INTEGER PRIMARY KEY NOT NULL,
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          minutes INTEGER NOT NULL,
+          notification_id TEXT
+        );
+      `);
+      // Backfill: cada evento que tenía UN aviso pasa a tener UNA fila acá.
+      await database.execAsync(`
+        INSERT INTO reminders (event_id, minutes, notification_id)
+          SELECT id, reminder_minutes, notification_id
+          FROM events
+          WHERE reminder_minutes IS NOT NULL;
+      `);
+      await database.execAsync('ALTER TABLE events DROP COLUMN reminder_minutes');
+      await database.execAsync('ALTER TABLE events DROP COLUMN notification_id');
+      await database.execAsync('PRAGMA user_version = 2');
+    });
     currentVersion = 2;
   }
 
@@ -126,14 +142,32 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     // v4: los eventos creados desde la agenda de contactos recuerdan de qué
     // contacto salieron (para no cargarlo dos veces) y su teléfono (para
     // saludarlo por WhatsApp sin tener que buscarlo).
-    await database.execAsync(`
-      ALTER TABLE events ADD COLUMN contact_id TEXT;
-      ALTER TABLE events ADD COLUMN phone TEXT;
-    `);
+    // SQLite no soporta `ADD COLUMN IF NOT EXISTS`. Si el proceso se cortó
+    // entre ambos ALTER, detectar el error de columna duplicada permite
+    // retomar desde ese esquema parcial sin ocultar otros errores reales.
+    await addColumnIfMissing(database, 'contact_id', 'TEXT');
+    await addColumnIfMissing(database, 'phone', 'TEXT');
     currentVersion = 4;
   }
 
   // Futuras migraciones: if (currentVersion === 4) { ...ALTER TABLE...; currentVersion = 5; }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+async function addColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  columnName: 'contact_id' | 'phone',
+  definition: 'TEXT',
+): Promise<void> {
+  try {
+    await database.execAsync(`ALTER TABLE events ADD COLUMN ${columnName} ${definition}`);
+  } catch (error: unknown) {
+    // Sólo absorbemos el estado parcial que sabemos reanudar. Por ejemplo,
+    // un error de disco se propaga y evita subir `user_version` prematuramente.
+    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) {
+      return;
+    }
+    throw error;
+  }
 }

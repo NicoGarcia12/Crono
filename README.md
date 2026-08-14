@@ -30,6 +30,22 @@ Agenda personal para el celular: eventos, cumpleaños, aniversarios, días festi
 
 También podés correrla en el navegador con `npm run web` (SQLite corre compilado a WebAssembly; sin bloqueo del sistema ni recordatorios).
 
+## Instalarla de verdad (APK)
+
+Para usar Crono como app propia (ícono, nombre, recordatorios completos, sin Expo Go):
+
+```bash
+npx eas-cli build --platform android --profile preview
+```
+
+El build corre en la nube de [EAS](https://expo.dev/accounts/nicogarcia12/projects/Crono) (cuenta gratuita) y al terminar da un **link con QR** para descargar el APK e instalarlo en cualquier Android — ese mismo link se le puede pasar a un amigo. Perfiles en `eas.json`:
+
+| Perfil | Genera | Para qué |
+| --- | --- | --- |
+| `preview` | APK | Instalar directo en el celular y compartir |
+| `development` | APK (dev client) | Desarrollo con módulos nativos |
+| `production` | AAB | Publicar en Play Store (a futuro) |
+
 ## Tests
 
 | Comando | Qué corre |

@@ -43,7 +43,7 @@ describe('<EventForm />', () => {
       date: todayIso(),
       time: null,
       description: null,
-      reminderMinutes: 60 * 24,
+      reminders: [{ amount: 1, unit: 'dias' }],
       yearly: 0,
     });
   });
@@ -58,13 +58,33 @@ describe('<EventForm />', () => {
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'cumpleanos', yearly: 1 }));
   });
 
-  it('permite quitar el recordatorio', async () => {
+  it('permite acumular varios avisos, del más lejano al más cercano', async () => {
+    const onSubmit = await renderForm();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Mamá');
+    // '1 día antes' ya viene por defecto; sumamos '1 mes antes' y '1 hora antes'.
+    await fireEvent.press(screen.getByText('1 mes antes'));
+    await fireEvent.press(screen.getByText('1 hora antes'));
+    await fireEvent.press(screen.getByText('Crear evento'));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reminders: [
+          { amount: 1, unit: 'meses' },
+          { amount: 1, unit: 'dias' },
+          { amount: 1, unit: 'horas' },
+        ],
+      }),
+    );
+  });
+
+  it('permite quitar todos los recordatorios', async () => {
     const onSubmit = await renderForm();
 
     await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Turno médico');
-    await fireEvent.press(screen.getByText('Sin recordatorio'));
+    await fireEvent.press(screen.getByLabelText('Quitar aviso 1 día antes'));
     await fireEvent.press(screen.getByText('Crear evento'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ reminderMinutes: null }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ reminders: [] }));
   });
 });

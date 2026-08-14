@@ -12,6 +12,27 @@ export const EVENT_TYPES = ['evento', 'cumpleanos', 'aniversario', 'festivo', 'c
 
 export type EventType = (typeof EVENT_TYPES)[number];
 
+/** Unidades en las que se puede expresar la anticipación de un aviso. */
+export const REMINDER_UNITS = ['minutos', 'horas', 'dias', 'semanas', 'meses'] as const;
+
+export type ReminderUnit = (typeof REMINDER_UNITS)[number];
+
+/** Anticipación elegida por el usuario: "3 días antes" = { amount: 3, unit: 'dias' }. */
+export interface ReminderInput {
+  /** 0 = en el momento del evento. */
+  amount: number;
+  unit: ReminderUnit;
+}
+
+/**
+ * Un aviso programado de un evento. Un evento puede tener varios
+ * (ej: 1 mes antes para el regalo + 1 hora antes para no llegar tarde).
+ */
+export interface EventReminder extends ReminderInput {
+  /** Id de la notificación en el sistema, para cancelarla al editar/borrar (null si el entorno no soporta avisos). */
+  notificationId: string | null;
+}
+
 export interface EventItem {
   id: number;
   title: string;
@@ -21,16 +42,14 @@ export interface EventItem {
   /** Hora 'HH:mm', o null si es un evento de día completo (ej. un festivo). */
   time: string | null;
   description: string | null;
-  /** Minutos de anticipación para el recordatorio; null = sin recordatorio. */
-  reminderMinutes: number | null;
+  /** Avisos programados (tabla `reminders`, 1 evento → N avisos). Vacío = sin recordatorio. */
+  reminders: EventReminder[];
   /** 1 = se repite todos los años (cumpleaños, aniversarios, festivos). SQLite no tiene boolean. */
   yearly: 0 | 1;
-  /** Id de la notificación programada en el sistema, para poder cancelarla al editar/borrar. */
-  notificationId: string | null;
 }
 
-/** Datos que completa el usuario al crear un evento (el id y la notificación los pone la app). */
-export type NewEvent = Omit<EventItem, 'id' | 'notificationId'>;
+/** Datos que completa el usuario al crear un evento: elige las anticipaciones; los ids de notificación los pone la app. */
+export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminders: ReminderInput[] };
 
 export interface Note {
   id: number;

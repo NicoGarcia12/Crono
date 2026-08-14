@@ -1,7 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 
 import * as eventsRepo from '@/db/events-repo';
-import { cancelReminder, scheduleEventReminder } from '@/notifications/notifications';
+import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
 import reducer, { addEvent, editEvent, loadEvents, removeEvent } from '@/store/events-slice';
 import type { EventItem, NewEvent } from '@/types';
 
@@ -16,8 +16,8 @@ jest.mock('@/db/events-repo');
 jest.mock('@/notifications/notifications');
 
 const mockRepo = jest.mocked(eventsRepo);
-const mockSchedule = jest.mocked(scheduleEventReminder);
-const mockCancel = jest.mocked(cancelReminder);
+const mockSchedule = jest.mocked(scheduleEventReminders);
+const mockCancel = jest.mocked(cancelReminders);
 
 const makeStore = () => configureStore({ reducer: { events: reducer } });
 
@@ -27,11 +27,29 @@ const nuevoEvento: NewEvent = {
   date: '2026-08-01',
   time: null,
   description: null,
-  reminderMinutes: 60 * 24,
+  // Un mes antes (para el regalo) + un día antes (para no olvidarse).
+  reminders: [
+    { amount: 1, unit: 'meses' },
+    { amount: 1, unit: 'dias' },
+  ],
   yearly: 1,
 };
 
-const eventoGuardado: EventItem = { ...nuevoEvento, id: 1, notificationId: 'notif-1' };
+const avisosProgramados = [
+  { amount: 1, unit: 'meses' as const, notificationId: 'notif-1' },
+  { amount: 1, unit: 'dias' as const, notificationId: 'notif-2' },
+];
+
+const eventoGuardado: EventItem = {
+  id: 1,
+  title: nuevoEvento.title,
+  type: nuevoEvento.type,
+  date: nuevoEvento.date,
+  time: null,
+  description: null,
+  yearly: 1,
+  reminders: avisosProgramados,
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -59,55 +77,106 @@ describe('loadEvents', () => {
 });
 
 describe('addEvent', () => {
-  it('programa el recordatorio, persiste con su id y agrega al estado', async () => {
-    mockSchedule.mockResolvedValue('notif-1');
+  it('programa TODOS los avisos, persiste con sus ids y agrega al estado', async () => {
+    mockSchedule.mockResolvedValue(avisosProgramados);
     mockRepo.insertEvent.mockResolvedValue(eventoGuardado);
     const store = makeStore();
 
     await store.dispatch(addEvent(nuevoEvento));
 
     expect(mockSchedule).toHaveBeenCalledWith(nuevoEvento);
-    expect(mockRepo.insertEvent).toHaveBeenCalledWith(nuevoEvento, 'notif-1');
+    expect(mockRepo.insertEvent).toHaveBeenCalledWith(nuevoEvento, avisosProgramados);
     expect(store.getState().events.items).toEqual([eventoGuardado]);
   });
 
-  it('persiste sin notificación cuando el entorno no las soporta', async () => {
-    mockSchedule.mockResolvedValue(null);
-    mockRepo.insertEvent.mockResolvedValue({ ...eventoGuardado, notificationId: null });
+  it('persiste los avisos sin id cuando el entorno no soporta notificaciones', async () => {
+    const sinIds = avisosProgramados.map((r) => ({ ...r, notificationId: null }));
+    mockSchedule.mockResolvedValue(sinIds);
+    mockRepo.insertEvent.mockResolvedValue({ ...eventoGuardado, reminders: sinIds });
     const store = makeStore();
 
     await store.dispatch(addEvent(nuevoEvento));
 
-    expect(mockRepo.insertEvent).toHaveBeenCalledWith(nuevoEvento, null);
+    expect(mockRepo.insertEvent).toHaveBeenCalledWith(nuevoEvento, sinIds);
   });
 });
 
 describe('editEvent', () => {
-  it('cancela la notificación vieja, programa una nueva y actualiza el estado', async () => {
-    mockSchedule.mockResolvedValue('notif-2');
+  it('cancela los avisos viejos, programa los nuevos y actualiza el estado', async () => {
+    const nuevosAvisos = [{ amount: 0, unit: 'minutos' as const, notificationId: 'notif-3' }];
+    mockSchedule.mockResolvedValue(nuevosAvisos);
     mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
     const store = makeStore();
     await store.dispatch(loadEvents());
 
-    const data: NewEvent = { ...nuevoEvento, title: 'Cumple de papá' };
-    await store.dispatch(editEvent({ id: 1, data, previousNotificationId: 'notif-1' }));
+    const data: NewEvent = {
+      ...nuevoEvento,
+      title: 'Cumple de papá',
+      reminders: [{ amount: 0, unit: 'minutos' }],
+    };
+    await store.dispatch(editEvent({ id: 1, data, previousReminders: eventoGuardado.reminders }));
 
-    expect(mockCancel).toHaveBeenCalledWith('notif-1');
+    expect(mockCancel).toHaveBeenCalledWith(avisosProgramados);
     expect(mockSchedule).toHaveBeenCalledWith(data);
-    expect(mockRepo.updateEvent).toHaveBeenCalledWith({ ...data, id: 1, notificationId: 'notif-2' });
+    expect(mockRepo.updateEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, title: 'Cumple de papá', reminders: nuevosAvisos }),
+    );
     expect(store.getState().events.items[0].title).toBe('Cumple de papá');
+  });
+
+  it('conserva los avisos anteriores si no logra programar el reemplazo', async () => {
+    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    mockSchedule.mockRejectedValue(new Error('El sistema de avisos no responde'));
+    const store = makeStore();
+    await store.dispatch(loadEvents());
+
+    await store.dispatch(
+      editEvent({
+        id: eventoGuardado.id,
+        data: { ...nuevoEvento, title: 'Cumple de papá' },
+        previousReminders: eventoGuardado.reminders,
+      }),
+    );
+
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  it('intenta limpiar los avisos nuevos si falla la cancelación de los anteriores', async () => {
+    const nuevosAvisos = [
+      { amount: 1, unit: 'horas' as const, notificationId: 'notif-reemplazo-1' },
+      { amount: 2, unit: 'dias' as const, notificationId: 'notif-reemplazo-2' },
+    ];
+    mockSchedule.mockResolvedValue(nuevosAvisos);
+    // El primer rechazo representa una cancelación vieja fallida. El segundo
+    // representa un fallo parcial durante el cleanup; el thunk debe absorberlo
+    // para conservar el error original sin omitir el intento de compensación.
+    mockCancel
+      .mockRejectedValueOnce(new Error('No se pudo cancelar un aviso anterior'))
+      .mockRejectedValueOnce(new Error('No se pudo cancelar un reemplazo'));
+    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    const store = makeStore();
+    await store.dispatch(loadEvents());
+
+    await store.dispatch(
+      editEvent({ id: eventoGuardado.id, data: nuevoEvento, previousReminders: eventoGuardado.reminders }),
+    );
+
+    expect(mockCancel).toHaveBeenNthCalledWith(1, eventoGuardado.reminders);
+    expect(mockCancel).toHaveBeenNthCalledWith(2, nuevosAvisos);
+    expect(mockRepo.updateEvent).not.toHaveBeenCalled();
+    expect(store.getState().events.items).toEqual([eventoGuardado]);
   });
 });
 
 describe('removeEvent', () => {
-  it('cancela la notificación, borra de la BD y saca del estado', async () => {
+  it('cancela los avisos, borra de la BD y saca del estado', async () => {
     mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
     const store = makeStore();
     await store.dispatch(loadEvents());
 
     await store.dispatch(removeEvent(eventoGuardado));
 
-    expect(mockCancel).toHaveBeenCalledWith('notif-1');
+    expect(mockCancel).toHaveBeenCalledWith(avisosProgramados);
     expect(mockRepo.deleteEvent).toHaveBeenCalledWith(1);
     expect(store.getState().events.items).toEqual([]);
   });

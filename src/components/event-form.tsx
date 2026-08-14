@@ -2,8 +2,15 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { DateField, TimeField } from '@/components/date-time-field';
-import { EVENT_TYPE_META, REMINDER_OPTIONS } from '@/constants/event-types';
-import { EVENT_TYPES, type EventItem, type EventType, type NewEvent } from '@/types';
+import { RemindersField } from '@/components/reminders-field';
+import { EVENT_TYPE_META } from '@/constants/event-types';
+import {
+  EVENT_TYPES,
+  type EventItem,
+  type EventType,
+  type NewEvent,
+  type ReminderInput,
+} from '@/types';
 import { dateToIso } from '@/utils/dates';
 
 /**
@@ -28,8 +35,11 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [date, setDate] = useState(initial?.date ?? dateToIso(new Date()));
   const [time, setTime] = useState<string | null>(initial?.time ?? null);
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [reminderMinutes, setReminderMinutes] = useState<number | null>(
-    initial ? initial.reminderMinutes : 60 * 24,
+  // Varios avisos por evento, cada uno con su anticipación (cantidad + unidad).
+  const [reminders, setReminders] = useState<ReminderInput[]>(
+    initial
+      ? initial.reminders.map(({ amount, unit }) => ({ amount, unit }))
+      : [{ amount: 1, unit: 'dias' }],
   );
   const [yearly, setYearly] = useState<boolean>(
     initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
@@ -50,7 +60,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       date,
       time,
       description: description.trim() || null,
-      reminderMinutes,
+      reminders,
       yearly: yearly ? 1 : 0,
     });
   };
@@ -106,21 +116,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         multiline
       />
 
-      <Text style={styles.label}>Recordatorio</Text>
-      <View style={styles.chipRow}>
-        {REMINDER_OPTIONS.map((option) => {
-          const active = option.minutes === reminderMinutes;
-          return (
-            <Pressable
-              key={option.label}
-              style={[styles.chip, active && styles.chipActiveBlue]}
-              onPress={() => setReminderMinutes(option.minutes)}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Text style={styles.label}>Recordatorios (podés poner todos los que quieras)</Text>
+      <RemindersField value={reminders} onChange={setReminders} />
 
       <View style={[styles.row, styles.switchRow]}>
         <Text style={styles.switchLabel}>Se repite todos los años</Text>

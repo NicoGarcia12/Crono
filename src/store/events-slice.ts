@@ -1,8 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import * as eventsRepo from '@/db/events-repo';
-import { cancelReminder, scheduleEventReminder } from '@/notifications/notifications';
-import type { EventItem, NewEvent } from '@/types';
+import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
+import type { EventItem, EventReminder, NewEvent } from '@/types';
 
 /**
  * Slice de eventos (Redux Toolkit, el mismo patrón que usás en React web).
@@ -25,9 +25,9 @@ export const loadEvents = createAsyncThunk('events/load', async () => {
 });
 
 export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) => {
-  // 1) Programar el recordatorio en el sistema, 2) guardar en SQLite con el id de la notificación.
-  const notificationId = await scheduleEventReminder(data);
-  return eventsRepo.insertEvent(data, notificationId);
+  // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
+  const reminders = await scheduleEventReminders(data);
+  return eventsRepo.insertEvent(data, reminders);
 });
 
 /** Estado mínimo que necesita el lote; mantiene al slice testeable en aislamiento. */
@@ -40,12 +40,11 @@ function birthdayIdentity(event: Pick<NewEvent, 'title' | 'date'>): string {
 }
 
 /**
- * Importa cumpleaños como una unidad lógica.
+ * Importa cumpleaños como una unidad lógica usando el contrato de avisos 1→N.
  *
- * SQLite y las notificaciones son dos recursos distintos: JavaScript no puede
- * abrir una transacción nativa que incluya ambos. Por eso el rollback es
- * compensatorio: ante un error deshace las filas ya insertadas y cancela todos
- * los avisos programados. Redux recibe el lote recién al finalizar todo.
+ * SQLite y las notificaciones nativas viven fuera del mismo límite
+ * transaccional: si falla una escritura, compensamos desde JavaScript
+ * borrando las filas creadas y cancelando todos los avisos ya programados.
  */
 export const importBirthdayEvents = createAsyncThunk<EventItem[], NewEvent[], { state: EventsRootState }>(
   'events/importBirthdays',
@@ -61,23 +60,21 @@ export const importBirthdayEvents = createAsyncThunk<EventItem[], NewEvent[], { 
     });
 
     const saved: EventItem[] = [];
-    const notificationIds: string[] = [];
+    const scheduledReminders: EventReminder[] = [];
 
     try {
       for (const event of uniqueEvents) {
-        const notificationId = await scheduleEventReminder(event);
-        if (notificationId) notificationIds.push(notificationId);
-        const persisted = await eventsRepo.insertEvent(event, notificationId);
-        // El repositorio sólo asigna identidad persistida; los campos del
-        // evento vienen del input validado, no de una respuesta externa.
-        saved.push({ ...event, id: persisted.id, notificationId });
+        const reminders = await scheduleEventReminders(event);
+        scheduledReminders.push(...reminders);
+        const persisted = await eventsRepo.insertEvent(event, reminders);
+        saved.push(persisted);
       }
       return saved;
     } catch (error: unknown) {
-      // allSettled evita que una limpieza fallida tape el error original.
+      // `allSettled` intenta toda la compensación sin ocultar el error original.
       await Promise.allSettled([
         ...saved.map((event) => eventsRepo.deleteEvent(event.id)),
-        ...notificationIds.map((notificationId) => cancelReminder(notificationId)),
+        cancelReminders(scheduledReminders),
       ]);
       throw error;
     }
@@ -86,18 +83,30 @@ export const importBirthdayEvents = createAsyncThunk<EventItem[], NewEvent[], { 
 
 export const editEvent = createAsyncThunk(
   'events/edit',
-  async (payload: { id: number; data: NewEvent; previousNotificationId: string | null }) => {
-    // Al editar, la notificación vieja queda obsoleta: se cancela y se programa una nueva.
-    await cancelReminder(payload.previousNotificationId);
-    const notificationId = await scheduleEventReminder(payload.data);
-    const updated: EventItem = { ...payload.data, id: payload.id, notificationId };
-    await eventsRepo.updateEvent(updated);
-    return updated;
+  async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
+    /**
+     * Primero pedimos los reemplazos al SO. A diferencia de SQLite, las
+     * notificaciones nativas no tienen rollback: con este orden, si programar
+     * falla los avisos anteriores siguen activos y el evento no se modifica.
+     */
+    const reminders = await scheduleEventReminders(payload.data);
+
+    try {
+      await cancelReminders(payload.previousReminders);
+      const { reminders: _chosen, ...eventData } = payload.data;
+      const updated: EventItem = { ...eventData, id: payload.id, reminders };
+      await eventsRepo.updateEvent(updated);
+      return updated;
+    } catch (error) {
+      // Si falla un paso posterior, no dejamos reemplazos huérfanos en el SO.
+      await Promise.allSettled([cancelReminders(reminders)]);
+      throw error;
+    }
   },
 );
 
 export const removeEvent = createAsyncThunk('events/remove', async (event: EventItem) => {
-  await cancelReminder(event.notificationId);
+  await cancelReminders(event.reminders);
   await eventsRepo.deleteEvent(event.id);
   return event.id;
 });

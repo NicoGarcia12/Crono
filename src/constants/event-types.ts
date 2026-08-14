@@ -1,4 +1,4 @@
-import type { EventType } from '@/types';
+import type { EventType, ReminderInput, ReminderUnit } from '@/types';
 
 /**
  * Metadatos de presentación por tipo de evento: etiqueta en español,
@@ -21,11 +21,23 @@ export const EVENT_TYPE_META: Record<EventType, EventTypeMeta> = {
   cita_medica: { label: 'Cita médica', icon: 'medkit', color: '#4CAF50', defaultYearly: false },
 };
 
-/** Opciones de anticipación del recordatorio que se muestran en el formulario. */
-export const REMINDER_OPTIONS: { label: string; minutes: number | null }[] = [
-  { label: 'Sin recordatorio', minutes: null },
-  { label: 'En el momento', minutes: 0 },
-  { label: '1 hora antes', minutes: 60 },
-  { label: '1 día antes', minutes: 60 * 24 },
-  { label: '1 semana antes', minutes: 60 * 24 * 7 },
+/**
+ * Atajos de anticipación que se ofrecen como chips. Además de estos, el
+ * usuario puede armar cualquier aviso a medida (número + unidad).
+ */
+export const REMINDER_PRESETS: ReminderInput[] = [
+  { amount: 0, unit: 'minutos' }, // en el momento
+  { amount: 1, unit: 'horas' },
+  { amount: 1, unit: 'dias' },
+  { amount: 1, unit: 'semanas' },
+  { amount: 1, unit: 'meses' },
 ];
+
+/** Etiquetas de las unidades en el selector del aviso a medida. */
+export const REMINDER_UNIT_LABELS: Record<ReminderUnit, string> = {
+  minutos: 'minutos',
+  horas: 'horas',
+  dias: 'días',
+  semanas: 'semanas',
+  meses: 'meses',
+};

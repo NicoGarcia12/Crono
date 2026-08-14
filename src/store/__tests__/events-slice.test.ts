@@ -27,6 +27,8 @@ const nuevoEvento: NewEvent = {
   date: '2026-08-01',
   time: null,
   description: null,
+  contactId: null,
+  phone: null,
   // Un mes antes (para el regalo) + un día antes (para no olvidarse).
   reminders: [
     { amount: 1, unit: 'meses' },
@@ -47,6 +49,8 @@ const eventoGuardado: EventItem = {
   date: nuevoEvento.date,
   time: null,
   description: null,
+  contactId: null,
+  phone: null,
   yearly: 1,
   reminders: avisosProgramados,
 };

@@ -4,30 +4,44 @@ import { Platform } from 'react-native';
 import type { EventItem, NewEvent } from '@/types';
 
 /**
- * Importación de cumpleaños desde los contactos del celular.
+ * Cargar cumpleaños desde la agenda de contactos del celular.
  *
- * 💡 Aprendizaje: la lógica de "convertir contactos en eventos" es pura
+ * Flujo: se listan TODOS los contactos → el usuario tilda a quiénes quiere
+ * cargarles el cumpleaños → se les pone la fecha de a uno (si el contacto ya
+ * la trae en la agenda del celular, viene precargada).
+ *
+ * 💡 Aprendizaje: la lógica de armar la lista y convertir a evento es pura
  * (funciones sin efectos) y se testea con Jest sin celular. Solo
- * `fetchBirthdayCandidates` habla con el módulo nativo (permiso + lectura),
- * que es el límite del sistema — igual que hicimos con SQLite y notificaciones.
+ * `fetchContacts` habla con el módulo nativo (permiso + lectura), que es el
+ * límite del sistema — igual que hicimos con SQLite y notificaciones.
  */
 
-export interface BirthdayCandidate {
-  /** Id del contacto (o el nombre si el OS no da id). */
+/** Cumpleaños ya cargado en la agenda de Crono para ese contacto. */
+export interface LoadedBirthday {
+  eventId: number;
+  /** Fecha 'YYYY-MM-DD' con la que quedó cargado. */
+  date: string;
+}
+
+export interface ContactCandidate {
+  /** Id del contacto en el celular (o el nombre si el OS no da id). */
   key: string;
   name: string;
-  /** Fecha 'YYYY-MM-DD'. Si el contacto no tiene año, se usa fallbackYear. */
-  date: string;
-  /** true si el contacto tenía año de nacimiento (permite mostrar la edad). */
-  hasYear: boolean;
-  /** true si ya existe un cumpleaños igual en la agenda (no se re-importa). */
-  alreadyImported: boolean;
+  /** Teléfono principal; se guarda con el evento para poder saludarlo. */
+  phone: string | null;
+  /** Fecha sugerida 'YYYY-MM-DD' si el contacto ya tiene cumpleaños en la agenda del celular. */
+  suggestedDate: string | null;
+  /** Si el contacto no tenía año de nacimiento, la fecha sugerida usa el año actual. */
+  suggestedHasYear: boolean;
+  /** Presente si su cumpleaños YA está cargado en Crono. */
+  loaded: LoadedBirthday | null;
 }
 
 /** Lo mínimo que necesitamos de un contacto (shape de expo-contacts). */
 export interface ContactLike {
   id?: string;
   name?: string;
+  phoneNumbers?: { number?: string }[];
   birthday?: { day?: number; month?: number; year?: number };
 }
 
@@ -47,91 +61,80 @@ export function birthdayToIso(
 }
 
 /**
- * Arma la lista de candidatos a importar a partir de los contactos:
- * filtra los que no tienen nombre o cumpleaños válido, marca los que ya
- * están en la agenda y ordena alfabéticamente.
+ * Arma la lista de contactos para la pantalla: TODOS los que tengan nombre,
+ * marcando cuáles ya tienen su cumpleaños cargado en Crono y precargando la
+ * fecha de los que la traen del celular. Ordenados alfabéticamente.
  */
 export function buildCandidates(
   contacts: ContactLike[],
-  existingEvents: Pick<EventItem, 'title' | 'type' | 'date'>[],
+  existingEvents: EventItem[],
   fallbackYear: number = new Date().getFullYear(),
-): BirthdayCandidate[] {
-  // Índice de cumpleaños ya cargados: nombre normalizado + mes-día.
-  const existing = new Set(
-    existingEvents
-      .filter((e) => e.type === 'cumpleanos')
-      .map((e) => `${normalize(e.title)}|${e.date.slice(5)}`),
-  );
+): ContactCandidate[] {
+  // Índice de los cumpleaños ya cargados desde contactos, por id de contacto.
+  const loadedByContact = new Map<string, LoadedBirthday>();
+  for (const event of existingEvents) {
+    if (event.type === 'cumpleanos' && event.contactId) {
+      loadedByContact.set(event.contactId, { eventId: event.id, date: event.date });
+    }
+  }
 
-  const candidates = contacts
-    .filter(
-      (c): c is ContactLike & { name: string; birthday: { day: number; month: number } } =>
-        typeof c.name === 'string' &&
-        c.name.trim().length > 0 &&
-        typeof c.birthday?.day === 'number' &&
-        typeof c.birthday?.month === 'number',
-    )
-    .map((c) => {
-      const { date, hasYear } = birthdayToIso(
-        { day: c.birthday.day, month: c.birthday.month, year: c.birthday.year },
-        fallbackYear,
-      );
+  return contacts
+    .filter((c): c is ContactLike & { name: string } => (c.name ?? '').trim().length > 0)
+    .map((contact) => {
+      const key = contact.id ?? contact.name;
+      const birthday = contact.birthday;
+      const suggested =
+        typeof birthday?.day === 'number' && typeof birthday?.month === 'number'
+          ? birthdayToIso(
+              { day: birthday.day, month: birthday.month, year: birthday.year },
+              fallbackYear,
+            )
+          : null;
+
       return {
-        key: c.id ?? c.name,
-        name: c.name.trim(),
-        date,
-        hasYear,
-        alreadyImported: existing.has(`${normalize(c.name)}|${date.slice(5)}`),
+        key,
+        name: contact.name.trim(),
+        phone: contact.phoneNumbers?.[0]?.number?.trim() ?? null,
+        suggestedDate: suggested?.date ?? null,
+        suggestedHasYear: suggested?.hasYear ?? false,
+        loaded: loadedByContact.get(key) ?? null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
-
-  // Un contacto puede estar duplicado por una sincronización de la agenda.
-  // La identidad funcional de un cumpleaños es nombre normalizado + mes/día;
-  // el año no importa porque el evento se repite anualmente.
-  const seen = new Set<string>();
-  return candidates.filter((candidate) => {
-    const key = `${normalize(candidate.name)}|${candidate.date.slice(5)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
-/** Convierte un candidato en el evento que se guarda en la agenda. */
-export function candidateToEvent(candidate: BirthdayCandidate): NewEvent {
+/** Convierte un contacto + la fecha elegida en el evento que se guarda en la agenda. */
+export function candidateToEvent(candidate: ContactCandidate, date: string): NewEvent {
   return {
     title: candidate.name,
     type: 'cumpleanos',
-    date: candidate.date,
+    date,
     time: null,
     description: null,
+    contactId: candidate.key,
+    phone: candidate.phone,
     reminders: [{ amount: 1, unit: 'dias' }], // aviso 1 día antes, igual que el default del formulario
     yearly: 1,
   };
 }
 
-function normalize(text: string): string {
-  return text.trim().toLowerCase();
-}
-
-export type FetchCandidatesResult =
-  | { status: 'ok'; candidates: BirthdayCandidate[] }
+export type FetchContactsResult =
+  | { status: 'ok'; candidates: ContactCandidate[] }
   | { status: 'denied' }
   | { status: 'unavailable' };
 
 /**
  * Pide el permiso de contactos (recién acá, no al abrir la app) y devuelve
- * los candidatos. En web no existe la agenda de contactos.
+ * la lista completa. En web no existe la agenda de contactos.
  */
-export async function fetchBirthdayCandidates(
-  existingEvents: Pick<EventItem, 'title' | 'type' | 'date'>[],
-): Promise<FetchCandidatesResult> {
+export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchContactsResult> {
   if (Platform.OS === 'web') return { status: 'unavailable' };
 
   const { status } = await Contacts.requestPermissionsAsync();
   if (status !== 'granted') return { status: 'denied' };
 
-  const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.Birthday] });
+  const { data } = await Contacts.getContactsAsync({
+    fields: [Contacts.Fields.Birthday, Contacts.Fields.PhoneNumbers],
+  });
   return { status: 'ok', candidates: buildCandidates(data, existingEvents) };
 }

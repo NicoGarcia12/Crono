@@ -2,7 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 
 import * as eventsRepo from '@/db/events-repo';
 import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
-import reducer, { importBirthdayEvents } from '@/store/events-slice';
+import reducer, { addContactBirthdays } from '@/store/events-slice';
 import type { EventItem, EventReminder, NewEvent } from '@/types';
 
 // BD y scheduler nativo son límites externos; se mockean para probar sólo la
@@ -21,6 +21,8 @@ const birthdays: NewEvent[] = [
     date: '2026-12-20',
     time: null,
     description: null,
+    contactId: 'contact-ana',
+    phone: null,
     reminders: [{ amount: 1, unit: 'dias' }],
     yearly: 1,
   },
@@ -30,6 +32,8 @@ const birthdays: NewEvent[] = [
     date: '2026-03-05',
     time: null,
     description: null,
+    contactId: 'contact-bruno',
+    phone: null,
     reminders: [{ amount: 1, unit: 'dias' }],
     yearly: 1,
   },
@@ -40,36 +44,33 @@ const brunoReminders: EventReminder[] = [{ amount: 1, unit: 'dias', notification
 
 const makeStore = () => configureStore({ reducer: { events: reducer } });
 
-describe('importBirthdayEvents', () => {
+describe('addContactBirthdays', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('compensa todos los avisos programados si falla una escritura del lote', async () => {
+  it('compensa todos los avisos programados si falla la transacción del lote', async () => {
     mockSchedule.mockResolvedValueOnce(anaReminders).mockResolvedValueOnce(brunoReminders);
-    const persistedAna: EventItem = { ...birthdays[0], id: 1, reminders: anaReminders };
-    mockRepo.insertEvent.mockResolvedValueOnce(persistedAna);
-    mockRepo.insertEvent.mockRejectedValueOnce(new Error('SQLite sin espacio'));
+    mockRepo.insertContactBirthdays.mockRejectedValueOnce(new Error('SQLite sin espacio'));
     const store = makeStore();
 
-    await store.dispatch(importBirthdayEvents(birthdays));
+    await store.dispatch(addContactBirthdays(birthdays));
 
-    expect(mockRepo.deleteEvent).toHaveBeenCalledWith(1);
-    expect(mockCancel).toHaveBeenCalledWith([...anaReminders, ...brunoReminders]);
+    expect(mockRepo.insertContactBirthdays).toHaveBeenCalledWith(birthdays, [anaReminders, brunoReminders]);
+    expect(mockCancel).toHaveBeenCalledWith(anaReminders);
+    expect(mockCancel).toHaveBeenCalledWith(brunoReminders);
     expect(store.getState().events.items).toEqual([]);
   });
 
-  it('no vuelve a importar cumpleaños ya presentes después de un lote exitoso', async () => {
+  it('agrega sólo el resultado confirmado de SQLite, que deduplica por contact_id', async () => {
     mockSchedule.mockResolvedValue(anaReminders);
-    mockRepo.insertEvent
-      .mockResolvedValueOnce({ ...birthdays[0], id: 1, reminders: anaReminders })
-      .mockResolvedValueOnce({ ...birthdays[1], id: 2, reminders: anaReminders });
+    const persisted = birthdays.map((birthday, index) => ({ ...birthday, id: index + 1, reminders: anaReminders }));
+    mockRepo.insertContactBirthdays.mockResolvedValueOnce(persisted);
     const store = makeStore();
 
-    await store.dispatch(importBirthdayEvents(birthdays));
-    await store.dispatch(importBirthdayEvents(birthdays));
+    await store.dispatch(addContactBirthdays(birthdays));
 
     expect(store.getState().events.items).toHaveLength(2);
-    expect(mockRepo.insertEvent).toHaveBeenCalledTimes(2);
+    expect(mockRepo.insertContactBirthdays).toHaveBeenCalledTimes(1);
   });
 });

@@ -18,6 +18,8 @@ const evento: NewEvent = {
   date: '2027-03-31',
   time: '10:00',
   description: null,
+  contactId: null,
+  phone: null,
   yearly: 0,
   reminders: [
     { amount: 1, unit: 'meses' },

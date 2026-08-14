@@ -30,52 +30,25 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
   return eventsRepo.insertEvent(data, reminders);
 });
 
-/** Estado mínimo que necesita el lote; mantiene al slice testeable en aislamiento. */
-interface EventsRootState {
-  events: Pick<EventsState, 'items'>;
-}
-
-function birthdayIdentity(event: Pick<NewEvent, 'title' | 'date'>): string {
-  return `${event.title.trim().toLocaleLowerCase('es-AR')}|${event.date.slice(5)}`;
-}
-
 /**
- * Importa cumpleaños como una unidad lógica usando el contrato de avisos 1→N.
- *
- * SQLite y las notificaciones nativas viven fuera del mismo límite
- * transaccional: si falla una escritura, compensamos desde JavaScript
- * borrando las filas creadas y cancelando todos los avisos ya programados.
+ * Importa cumpleaños de contactos como una unidad lógica usando el contrato
+ * de avisos 1→N. La identidad es `contact_id`, que SQLite verifica dentro de
+ * la transacción para no depender de una copia potencialmente vieja de Redux.
  */
-export const importBirthdayEvents = createAsyncThunk<EventItem[], NewEvent[], { state: EventsRootState }>(
-  'events/importBirthdays',
-  async (events, { getState }) => {
-    const existing = new Set(
-      getState().events.items.filter((event) => event.type === 'cumpleanos').map(birthdayIdentity),
-    );
-    const uniqueEvents = events.filter((event) => {
-      const identity = birthdayIdentity(event);
-      if (existing.has(identity)) return false;
-      existing.add(identity);
-      return true;
-    });
-
-    const saved: EventItem[] = [];
-    const scheduledReminders: EventReminder[] = [];
-
+export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEvent[]>(
+  'events/addContactBirthdays',
+  async (entries: readonly NewEvent[]) => {
+    const scheduledReminders: EventReminder[][] = [];
     try {
-      for (const event of uniqueEvents) {
-        const reminders = await scheduleEventReminders(event);
-        scheduledReminders.push(...reminders);
-        const persisted = await eventsRepo.insertEvent(event, reminders);
-        saved.push(persisted);
+      for (const entry of entries) {
+        scheduledReminders.push(await scheduleEventReminders(entry));
       }
-      return saved;
+      return await eventsRepo.insertContactBirthdays(entries, scheduledReminders);
     } catch (error: unknown) {
-      // `allSettled` intenta toda la compensación sin ocultar el error original.
-      await Promise.allSettled([
-        ...saved.map((event) => eventsRepo.deleteEvent(event.id)),
-        cancelReminders(scheduledReminders),
-      ]);
+      // SQLite revierte sus filas dentro de la transacción; este cleanup corre
+      // en JS para revertir el efecto externo de TODOS los avisos ya creados.
+      // allSettled conserva el error original aunque falle una cancelación.
+      await Promise.allSettled(scheduledReminders.map((reminders) => cancelReminders(reminders)));
       throw error;
     }
   },
@@ -130,7 +103,7 @@ const eventsSlice = createSlice({
       .addCase(addEvent.fulfilled, (state, action) => {
         state.items.push(action.payload);
       })
-      .addCase(importBirthdayEvents.fulfilled, (state, action) => {
+      .addCase(addContactBirthdays.fulfilled, (state, action) => {
         state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {

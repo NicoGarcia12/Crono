@@ -63,16 +63,16 @@ export default function PerfilScreen() {
 
       <Pressable
         style={styles.actionCard}
-        accessibilityLabel="Importar cumpleaños"
-        onPress={() => router.push('/importar-cumpleanos')}
+        accessibilityLabel="Cargar cumpleaños de contactos"
+        onPress={() => router.push('/cargar-cumpleanos')}
       >
         <View style={styles.actionIcon}>
           <Ionicons name="people" size={22} color="#E91E63" />
         </View>
         <View style={styles.actionBody}>
-          <Text style={styles.actionTitle}>Importar cumpleaños</Text>
+          <Text style={styles.actionTitle}>Cargar cumpleaños de contactos</Text>
           <Text style={styles.actionSubtitle}>
-            Traé de una sola vez las fechas guardadas en tus contactos
+            Elegí a quiénes de tu agenda querés cargarles el cumpleaños
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color="#bbb" />

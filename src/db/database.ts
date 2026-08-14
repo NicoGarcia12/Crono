@@ -15,7 +15,7 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
@@ -138,7 +138,36 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 3;
   }
 
-  // Futuras migraciones: if (currentVersion === 3) { ...ALTER TABLE...; currentVersion = 4; }
+  if (currentVersion === 3) {
+    // v4: los eventos creados desde la agenda de contactos recuerdan de qué
+    // contacto salieron (para no cargarlo dos veces) y su teléfono (para
+    // saludarlo por WhatsApp sin tener que buscarlo).
+    // SQLite no soporta `ADD COLUMN IF NOT EXISTS`. Si el proceso se cortó
+    // entre ambos ALTER, detectar el error de columna duplicada permite
+    // retomar desde ese esquema parcial sin ocultar otros errores reales.
+    await addColumnIfMissing(database, 'contact_id', 'TEXT');
+    await addColumnIfMissing(database, 'phone', 'TEXT');
+    currentVersion = 4;
+  }
+
+  // Futuras migraciones: if (currentVersion === 4) { ...ALTER TABLE...; currentVersion = 5; }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+async function addColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  columnName: 'contact_id' | 'phone',
+  definition: 'TEXT',
+): Promise<void> {
+  try {
+    await database.execAsync(`ALTER TABLE events ADD COLUMN ${columnName} ${definition}`);
+  } catch (error: unknown) {
+    // Sólo absorbemos el estado parcial que sabemos reanudar. Por ejemplo,
+    // un error de disco se propaga y evita subir `user_version` prematuramente.
+    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) {
+      return;
+    }
+    throw error;
+  }
 }

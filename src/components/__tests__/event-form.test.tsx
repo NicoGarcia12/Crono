@@ -43,6 +43,8 @@ describe('<EventForm />', () => {
       date: todayIso(),
       time: null,
       description: null,
+      contactId: null, // cargado a mano: no viene de ningún contacto
+      phone: null,
       reminders: [{ amount: 1, unit: 'dias' }],
       yearly: 0,
     });

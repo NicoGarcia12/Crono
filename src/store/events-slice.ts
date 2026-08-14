@@ -30,6 +30,60 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
   return eventsRepo.insertEvent(data, notificationId);
 });
 
+/** Estado mínimo que necesita el lote; mantiene al slice testeable en aislamiento. */
+interface EventsRootState {
+  events: Pick<EventsState, 'items'>;
+}
+
+function birthdayIdentity(event: Pick<NewEvent, 'title' | 'date'>): string {
+  return `${event.title.trim().toLocaleLowerCase('es-AR')}|${event.date.slice(5)}`;
+}
+
+/**
+ * Importa cumpleaños como una unidad lógica.
+ *
+ * SQLite y las notificaciones son dos recursos distintos: JavaScript no puede
+ * abrir una transacción nativa que incluya ambos. Por eso el rollback es
+ * compensatorio: ante un error deshace las filas ya insertadas y cancela todos
+ * los avisos programados. Redux recibe el lote recién al finalizar todo.
+ */
+export const importBirthdayEvents = createAsyncThunk<EventItem[], NewEvent[], { state: EventsRootState }>(
+  'events/importBirthdays',
+  async (events, { getState }) => {
+    const existing = new Set(
+      getState().events.items.filter((event) => event.type === 'cumpleanos').map(birthdayIdentity),
+    );
+    const uniqueEvents = events.filter((event) => {
+      const identity = birthdayIdentity(event);
+      if (existing.has(identity)) return false;
+      existing.add(identity);
+      return true;
+    });
+
+    const saved: EventItem[] = [];
+    const notificationIds: string[] = [];
+
+    try {
+      for (const event of uniqueEvents) {
+        const notificationId = await scheduleEventReminder(event);
+        if (notificationId) notificationIds.push(notificationId);
+        const persisted = await eventsRepo.insertEvent(event, notificationId);
+        // El repositorio sólo asigna identidad persistida; los campos del
+        // evento vienen del input validado, no de una respuesta externa.
+        saved.push({ ...event, id: persisted.id, notificationId });
+      }
+      return saved;
+    } catch (error: unknown) {
+      // allSettled evita que una limpieza fallida tape el error original.
+      await Promise.allSettled([
+        ...saved.map((event) => eventsRepo.deleteEvent(event.id)),
+        ...notificationIds.map((notificationId) => cancelReminder(notificationId)),
+      ]);
+      throw error;
+    }
+  },
+);
+
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousNotificationId: string | null }) => {
@@ -66,6 +120,9 @@ const eventsSlice = createSlice({
       })
       .addCase(addEvent.fulfilled, (state, action) => {
         state.items.push(action.payload);
+      })
+      .addCase(importBirthdayEvents.fulfilled, (state, action) => {
+        state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {
         const index = state.items.findIndex((e) => e.id === action.payload.id);

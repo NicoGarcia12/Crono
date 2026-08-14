@@ -1,15 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput } from 'react-native';
 
 import { useAppDispatch } from '@/store';
 import { saveDisplayName } from '@/store/settings-slice';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Bienvenida del primer uso: pide el nombre del usuario y lo guarda en SQLite.
  * Solo se muestra una vez (mientras displayName sea null).
  */
 export function NameSetup() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const dispatch = useAppDispatch();
   const [name, setName] = useState('');
 
@@ -21,7 +26,7 @@ export function NameSetup() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Ionicons name="time" size={64} color="#208AEF" />
+      <Ionicons name="time" size={64} color={colors.primary} />
       <Text style={styles.title}>¡Bienvenido a Crono!</Text>
       <Text style={styles.subtitle}>
         Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado
@@ -30,7 +35,7 @@ export function NameSetup() {
       <TextInput
         style={styles.input}
         placeholder="¿Cómo te llamás?"
-        placeholderTextColor="#999"
+        placeholderTextColor={colors.textSubtle}
         value={name}
         onChangeText={setName}
         autoFocus
@@ -48,28 +53,29 @@ export function NameSetup() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
     padding: 32,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  title: { fontSize: 26, fontWeight: '700', color: '#1a1a2e' },
-  subtitle: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22 },
+  title: { fontSize: 26, fontWeight: '700', color: c.text },
+  subtitle: { fontSize: 15, color: c.textMuted, textAlign: 'center', lineHeight: 22 },
   input: {
     alignSelf: 'stretch',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: c.border,
     borderRadius: 12,
     padding: 14,
     fontSize: 16,
-    color: '#1a1a2e',
+    color: c.text,
   },
   button: {
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     paddingHorizontal: 48,
     paddingVertical: 14,
     borderRadius: 24,

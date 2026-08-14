@@ -10,6 +10,8 @@ import { useAppSelector } from '@/store';
 import { EVENT_TYPES, type EventType } from '@/types';
 import { nextOccurrence } from '@/utils/dates';
 import { filterEvents } from '@/utils/search';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Pantalla principal: la agenda.
@@ -17,6 +19,9 @@ import { filterEvents } from '@/utils/search';
  * "rotan" solos: un cumpleaños que ya pasó este año aparece para el próximo).
  */
 export default function AgendaScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const router = useRouter();
   const events = useAppSelector((state) => state.events.items);
   const [filter, setFilter] = useState<EventType | 'todos'>('todos');
@@ -40,7 +45,7 @@ export default function AgendaScreen() {
 
       {/* Filtros por tipo */}
       <View style={styles.filterRow}>
-        <FilterChip label="Todos" active={filter === 'todos'} color="#1a1a2e" onPress={() => setFilter('todos')} />
+        <FilterChip label="Todos" active={filter === 'todos'} color={colors.contrast} onPress={() => setFilter('todos')} />
         {EVENT_TYPES.map((t) => (
           <FilterChip
             key={t}
@@ -64,7 +69,7 @@ export default function AgendaScreen() {
         contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color="#bbb" />
+            <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color={colors.textSubtle} />
             <Text style={styles.emptyTitle}>
               {query
                 ? 'Sin resultados'
@@ -101,6 +106,9 @@ interface FilterChipProps {
 }
 
 function FilterChip({ label, color, active, onPress }: FilterChipProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <Pressable
       style={[styles.chip, active && { backgroundColor: color, borderColor: color }]}
@@ -111,8 +119,9 @@ function FilterChip({ label, color, active, onPress }: FilterChipProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -122,19 +131,19 @@ const styles = StyleSheet.create({
   },
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 5,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  chipText: { fontSize: 12, color: '#555' },
+  chipText: { fontSize: 12, color: c.textMuted },
   chipTextActive: { color: '#fff', fontWeight: '600' },
   listContent: { paddingBottom: 96 },
   emptyContainer: { flexGrow: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', gap: 8, padding: 32 },
-  emptyTitle: { fontSize: 17, fontWeight: '600', color: '#555' },
-  emptyText: { fontSize: 14, color: '#999', textAlign: 'center' },
+  emptyTitle: { fontSize: 17, fontWeight: '600', color: c.textMuted },
+  emptyText: { fontSize: 14, color: c.textSubtle, textAlign: 'center' },
   fab: {
     position: 'absolute',
     right: 20,
@@ -142,11 +151,11 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: c.shadow,
     shadowOpacity: 0.2,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },

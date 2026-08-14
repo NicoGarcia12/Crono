@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { EVENT_TYPE_META } from '@/constants/event-types';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 import type { EventItem } from '@/types';
 import { formatRelative, nextOccurrence, yearsSince } from '@/utils/dates';
 
@@ -16,6 +19,9 @@ interface EventCardProps {
 }
 
 export function EventCard({ event, occurrence }: EventCardProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const meta = EVENT_TYPE_META[event.type];
   const next = occurrence ?? nextOccurrence(event);
   const years = event.yearly ? yearsSince(event.date, next) : 0;
@@ -39,40 +45,41 @@ export function EventCard({ event, occurrence }: EventCardProps) {
       <View style={styles.right}>
         <Text style={[styles.when, { color: meta.color }]}>{formatRelative(next)}</Text>
         {event.reminders.length > 0 ? (
-          <Ionicons name="notifications" size={14} color="#999" />
+          <Ionicons name="notifications" size={14} color={colors.textSubtle} />
         ) : null}
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    padding: 14,
-    marginHorizontal: 16,
-    marginVertical: 5,
-    // Sombra multiplataforma: elevation es Android, shadow* es iOS.
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  body: { flex: 1, gap: 2 },
-  title: { fontSize: 16, fontWeight: '600', color: '#1a1a2e' },
-  subtitle: { fontSize: 13, color: '#777' },
-  right: { alignItems: 'flex-end', gap: 4 },
-  when: { fontSize: 13, fontWeight: '600' },
-});
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      marginHorizontal: 16,
+      marginVertical: 5,
+      // Sombra multiplataforma: elevation es Android, shadow* es iOS.
+      elevation: 1,
+      shadowColor: c.shadow,
+      shadowOpacity: 0.06,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 2 },
+    },
+    iconCircle: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    body: { flex: 1, gap: 2 },
+    title: { fontSize: 16, fontWeight: '600', color: c.text },
+    subtitle: { fontSize: 13, color: c.textMuted },
+    right: { alignItems: 'flex-end', gap: 4 },
+    when: { fontSize: 13, fontWeight: '600' },
+  });

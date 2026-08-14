@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+
+import { renderWithStore } from '@/test-utils';
 
 import { BirthdayWizard } from '@/components/birthday-wizard';
 import type { ContactCandidate } from '@/contacts/birthday-import';
@@ -27,7 +29,7 @@ const bruno: ContactCandidate = {
 
 describe('<BirthdayWizard />', () => {
   it('recorre los contactos elegidos de a uno', async () => {
-    await render(<BirthdayWizard candidates={[ana, bruno]} onFinish={jest.fn()} />);
+    await renderWithStore(<BirthdayWizard candidates={[ana, bruno]} onFinish={jest.fn()} />);
 
     expect(screen.getByText('Contacto 1 de 2')).toBeTruthy();
     expect(screen.getByText('Ana')).toBeTruthy();
@@ -42,7 +44,7 @@ describe('<BirthdayWizard />', () => {
 
   it('guarda la fecha que traía el contacto y la de hoy para el que no tenía', async () => {
     const onFinish = jest.fn();
-    await render(<BirthdayWizard candidates={[ana, bruno]} onFinish={onFinish} />);
+    await renderWithStore(<BirthdayWizard candidates={[ana, bruno]} onFinish={onFinish} />);
 
     await fireEvent.press(screen.getByText('Guardar y siguiente'));
     await fireEvent.press(screen.getByText('Guardar y terminar'));
@@ -55,7 +57,7 @@ describe('<BirthdayWizard />', () => {
 
   it('los salteados no se guardan', async () => {
     const onFinish = jest.fn();
-    await render(<BirthdayWizard candidates={[ana, bruno]} onFinish={onFinish} />);
+    await renderWithStore(<BirthdayWizard candidates={[ana, bruno]} onFinish={onFinish} />);
 
     await fireEvent.press(screen.getByLabelText('Saltear contacto'));
     await fireEvent.press(screen.getByText('Guardar y terminar'));
@@ -64,7 +66,7 @@ describe('<BirthdayWizard />', () => {
   });
 
   it('avisa cuando el contacto no tiene cumpleaños guardado en el celular', async () => {
-    await render(<BirthdayWizard candidates={[bruno]} onFinish={jest.fn()} />);
+    await renderWithStore(<BirthdayWizard candidates={[bruno]} onFinish={jest.fn()} />);
 
     expect(screen.getByText('Este contacto no tiene cumpleaños guardado en el celular.')).toBeTruthy();
   });

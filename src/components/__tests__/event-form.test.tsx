@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+
+import { renderWithStore } from '@/test-utils';
 
 import { EventForm } from '@/components/event-form';
 import { todayIso } from '@/utils/dates';
@@ -16,7 +18,7 @@ jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 describe('<EventForm />', () => {
   const renderForm = async () => {
     const onSubmit = jest.fn();
-    await render(<EventForm submitLabel="Crear evento" onSubmit={onSubmit} />);
+    await renderWithStore(<EventForm submitLabel="Crear evento" onSubmit={onSubmit} />);
     return onSubmit;
   };
 

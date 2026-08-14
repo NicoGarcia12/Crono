@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+
+import { renderWithStore } from '@/test-utils';
 
 import { RemindersField } from '@/components/reminders-field';
 import type { ReminderInput } from '@/types';
@@ -6,7 +8,7 @@ import type { ReminderInput } from '@/types';
 describe('<RemindersField />', () => {
   const renderField = async (value: ReminderInput[] = []) => {
     const onChange = jest.fn();
-    await render(<RemindersField value={value} onChange={onChange} />);
+    await renderWithStore(<RemindersField value={value} onChange={onChange} />);
     return onChange;
   };
 

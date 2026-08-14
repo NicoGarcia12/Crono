@@ -1,4 +1,6 @@
-import { render, screen } from '@testing-library/react-native';
+import { screen } from '@testing-library/react-native';
+
+import { renderWithStore } from '@/test-utils';
 
 import { CalendarGrid } from '@/components/calendar-grid';
 import type { EventItem } from '@/types';
@@ -26,7 +28,7 @@ describe('<CalendarGrid />', () => {
       event({ id: 2, type: 'cita_medica' }),
     ];
 
-    await render(
+    await renderWithStore(
       <CalendarGrid
         weeks={[[new Date(2026, 6, 15)]]}
         eventsByDay={new Map([[selectedIso, dayEvents]])}

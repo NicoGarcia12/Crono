@@ -1,16 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
+import { useThemeColors } from '@/theme/use-theme';
+
 /**
  * Barra de pestañas inferior (patrón estándar en mobile).
  * La carpeta se llama "(tabs)" — los paréntesis crean un "grupo" de rutas
  * que no agrega segmento a la URL (index sigue siendo la ruta raíz).
  */
 export default function TabsLayout() {
+  const colors = useThemeColors();
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#208AEF',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSubtle,
+        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '700' },
       }}
     >

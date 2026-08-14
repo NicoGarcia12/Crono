@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+
+import { renderWithStore } from '@/test-utils';
 
 import { ContactPickList } from '@/components/contact-pick-list';
 import type { ContactCandidate } from '@/contacts/birthday-import';
@@ -21,7 +23,7 @@ const candidates: ContactCandidate[] = [
 
 describe('<ContactPickList />', () => {
   it('lista todos los contactos y muestra los ya cargados con su fecha', async () => {
-    await render(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={jest.fn()} />);
+    await renderWithStore(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={jest.fn()} />);
 
     expect(screen.getByText('Ana')).toBeTruthy();
     expect(screen.getByText('Bruno')).toBeTruthy();
@@ -29,14 +31,14 @@ describe('<ContactPickList />', () => {
   });
 
   it('arranca sin nadie seleccionado', async () => {
-    await render(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={jest.fn()} />);
+    await renderWithStore(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={jest.fn()} />);
 
     expect(screen.getByText('Cargar 0 cumpleaños')).toBeTruthy();
   });
 
   it('permite elegir contactos y continuar con los seleccionados', async () => {
     const onContinue = jest.fn();
-    await render(<ContactPickList candidates={candidates} onContinue={onContinue} onDelete={jest.fn()} />);
+    await renderWithStore(<ContactPickList candidates={candidates} onContinue={onContinue} onDelete={jest.fn()} />);
 
     await fireEvent.press(screen.getByLabelText('Contacto Ana'));
     await fireEvent.press(screen.getByLabelText('Contacto Bruno'));
@@ -52,7 +54,7 @@ describe('<ContactPickList />', () => {
 
   it('deja borrar el cumpleaños de un contacto ya cargado', async () => {
     const onDelete = jest.fn();
-    await render(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={onDelete} />);
+    await renderWithStore(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={onDelete} />);
 
     await fireEvent.press(screen.getByLabelText('Borrar cumpleaños de Carla'));
 
@@ -60,7 +62,7 @@ describe('<ContactPickList />', () => {
   });
 
   it('filtra la lista con el buscador', async () => {
-    await render(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={jest.fn()} />);
+    await renderWithStore(<ContactPickList candidates={candidates} onContinue={jest.fn()} onDelete={jest.fn()} />);
 
     await fireEvent.changeText(screen.getByLabelText('Buscar contacto'), 'bru');
 

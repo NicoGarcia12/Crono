@@ -16,6 +16,8 @@ import {
   type CalendarMode,
 } from '@/utils/calendar';
 import { capitalize, formatLongDate, todayIso, toLocalDate } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Pestaña Calendario: grilla mensual o semanal, navegable hacia adelante y
@@ -23,6 +25,9 @@ import { capitalize, formatLongDate, todayIso, toLocalDate } from '@/utils/dates
  * listan los eventos de ese día.
  */
 export default function CalendarioScreen(): JSX.Element {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const router = useRouter();
   const events = useAppSelector((state) => state.events.items);
 
@@ -85,11 +90,11 @@ export default function CalendarioScreen(): JSX.Element {
       {/* Navegación entre períodos */}
       <View style={styles.navRow}>
         <Pressable accessibilityLabel="Período anterior" hitSlop={10} onPress={() => move(-1)}>
-          <Ionicons name="chevron-back" size={22} color="#208AEF" />
+          <Ionicons name="chevron-back" size={22} color={colors.primary} />
         </Pressable>
         <Text style={styles.period}>{capitalize(periodLabel(anchor, mode))}</Text>
         <Pressable accessibilityLabel="Período siguiente" hitSlop={10} onPress={() => move(1)}>
-          <Ionicons name="chevron-forward" size={22} color="#208AEF" />
+          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
         </Pressable>
       </View>
 
@@ -122,22 +127,23 @@ export default function CalendarioScreen(): JSX.Element {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   modeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 16, paddingBottom: 6 },
   modeChip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 5,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  modeChipActive: { backgroundColor: '#1a1a2e', borderColor: '#1a1a2e' },
-  modeText: { fontSize: 13, color: '#555' },
+  modeChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
+  modeText: { fontSize: 13, color: c.textMuted },
   modeTextActive: { color: '#fff', fontWeight: '600' },
   todayButton: { marginLeft: 'auto', paddingHorizontal: 12, paddingVertical: 5 },
-  todayText: { fontSize: 13, color: '#208AEF', fontWeight: '600' },
+  todayText: { fontSize: 13, color: c.primary, fontWeight: '600' },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -145,15 +151,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 8,
   },
-  period: { fontSize: 16, fontWeight: '700', color: '#1a1a2e' },
+  period: { fontSize: 16, fontWeight: '700', color: c.text },
   dayList: { flex: 1, marginTop: 12 },
   dayListContent: { paddingBottom: 24 },
   dayTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#777',
+    color: c.textMuted,
     paddingHorizontal: 16,
     paddingBottom: 4,
   },
-  dayEmpty: { fontSize: 14, color: '#999', paddingHorizontal: 16, paddingVertical: 8 },
+  dayEmpty: { fontSize: 14, color: c.textSubtle, paddingHorizontal: 16, paddingVertical: 8 },
 });

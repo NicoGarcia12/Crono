@@ -1,17 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAppDispatch, useAppSelector } from '@/store';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
-import { saveDisplayName } from '@/store/settings-slice';
+import { saveDisplayName, saveThemePreference } from '@/store/settings-slice';
+import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
 export default function PerfilScreen() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const dispatch = useAppDispatch();
   const router = useRouter();
   const displayName = useAppSelector((state) => state.settings.displayName);
+  const themePreference = useAppSelector((state) => state.settings.themePreference);
   const eventCount = useAppSelector((state) => state.events.items.length);
   const noteCount = useAppSelector((state) => state.notes.items.length);
 
@@ -51,7 +57,7 @@ export default function PerfilScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.avatar}>
-        <Ionicons name="person" size={44} color="#208AEF" />
+        <Ionicons name="person" size={44} color={colors.primary} />
       </View>
 
       {editing ? (
@@ -71,7 +77,7 @@ export default function PerfilScreen() {
       ) : (
         <Pressable style={styles.nameRow} onPress={() => setEditing(true)}>
           <Text style={styles.name}>{displayName}</Text>
-          <Ionicons name="pencil" size={16} color="#999" />
+          <Ionicons name="pencil" size={16} color={colors.textSubtle} />
         </Pressable>
       )}
 
@@ -92,7 +98,7 @@ export default function PerfilScreen() {
         onPress={() => router.push('/cargar-cumpleanos')}
       >
         <View style={styles.actionIcon}>
-          <Ionicons name="people" size={22} color="#E91E63" />
+          <Ionicons name="people" size={22} color={colors.danger} />
         </View>
         <View style={styles.actionBody}>
           <Text style={styles.actionTitle}>Cargar cumpleaños de contactos</Text>
@@ -100,12 +106,12 @@ export default function PerfilScreen() {
             Elegí a quiénes de tu agenda querés cargarles el cumpleaños
           </Text>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#bbb" />
+        <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
       </Pressable>
 
       <ActionCard
         icon="cloud-upload"
-        color="#208AEF"
+        color={colors.primary}
         title="Exportar copia de seguridad"
         subtitle="Guardá un archivo con tus eventos y notas (Drive, WhatsApp, donde quieras)"
         onPress={handleExport}
@@ -113,11 +119,36 @@ export default function PerfilScreen() {
 
       <ActionCard
         icon="cloud-download"
-        color="#4CAF50"
+        color={colors.success}
         title="Restaurar desde un archivo"
         subtitle="Traé tu agenda desde una copia. No se duplica lo que ya tenés"
         onPress={handleRestore}
       />
+
+      {/* Tema: automático (sigue al celular), claro u oscuro. */}
+      <View style={styles.themeCard}>
+        <View style={styles.themeHeader}>
+          <Ionicons name="moon" size={20} color={colors.primary} />
+          <Text style={styles.themeTitle}>Tema</Text>
+        </View>
+        <View style={styles.themeRow}>
+          {THEME_PREFERENCES.map((preference) => {
+            const active = preference === themePreference;
+            return (
+              <Pressable
+                key={preference}
+                accessibilityLabel={`Tema ${THEME_LABELS[preference]}`}
+                style={[styles.themeChip, active && styles.themeChipActive]}
+                onPress={() => dispatch(saveThemePreference(preference))}
+              >
+                <Text style={[styles.themeChipText, active && styles.themeChipTextActive]}>
+                  {THEME_LABELS[preference]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       <View style={styles.infoCard}>
         <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
@@ -138,6 +169,9 @@ interface ActionCardProps {
 
 /** Fila accionable del perfil (importar contactos, exportar, restaurar…). */
 function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <Pressable style={styles.actionCard} accessibilityLabel={title} onPress={onPress}>
       <View style={[styles.actionIcon, { backgroundColor: `${color}22` }]}>
@@ -147,22 +181,26 @@ function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) 
         <Text style={styles.actionTitle}>{title}</Text>
         <Text style={styles.actionSubtitle}>{subtitle}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={20} color="#bbb" />
+      <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
     </Pressable>
   );
 }
 
 function InfoRow({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   return (
     <View style={styles.infoRow}>
-      <Ionicons name={icon} size={20} color="#208AEF" />
+      <Ionicons name={icon} size={20} color={colors.primary} />
       <Text style={styles.infoText}>{text}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   content: { alignItems: 'center', padding: 24, gap: 16 },
   avatar: {
     width: 88,
@@ -173,36 +211,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { fontSize: 24, fontWeight: '700', color: '#1a1a2e' },
+  name: { fontSize: 24, fontWeight: '700', color: c.text },
   editRow: { flexDirection: 'row', gap: 8, alignItems: 'center', alignSelf: 'stretch' },
   input: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: c.border,
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
-    color: '#1a1a2e',
+    color: c.text,
   },
-  saveButton: { backgroundColor: '#208AEF', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
+  saveButton: { backgroundColor: c.primary, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
   saveText: { color: '#fff', fontWeight: '600' },
   statsRow: { flexDirection: 'row', gap: 12, alignSelf: 'stretch' },
   statBox: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
     gap: 2,
   },
-  statNumber: { fontSize: 26, fontWeight: '700', color: '#208AEF' },
-  statLabel: { fontSize: 13, color: '#777' },
+  statNumber: { fontSize: 26, fontWeight: '700', color: c.primary },
+  statLabel: { fontSize: 13, color: c.textMuted },
   actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
     alignSelf: 'stretch',
@@ -216,9 +254,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionBody: { flex: 1, gap: 2 },
-  actionTitle: { fontSize: 15.5, fontWeight: '600', color: '#1a1a2e' },
-  actionSubtitle: { fontSize: 12.5, color: '#777' },
-  infoCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, gap: 14, alignSelf: 'stretch' },
+  actionTitle: { fontSize: 15.5, fontWeight: '600', color: c.text },
+  actionSubtitle: { fontSize: 12.5, color: c.textMuted },
+  themeCard: {
+    backgroundColor: c.surface,
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    alignSelf: 'stretch',
+  },
+  themeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  themeTitle: { fontSize: 15.5, fontWeight: '600', color: c.text },
+  themeRow: { flexDirection: 'row', gap: 6 },
+  themeChip: {
+    flex: 1,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: c.border,
+    borderRadius: 16,
+    paddingVertical: 7,
+  },
+  themeChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
+  themeChipText: { fontSize: 13, color: c.textMuted },
+  themeChipTextActive: { color: '#fff', fontWeight: '600' },
+  infoCard: { backgroundColor: c.surface, borderRadius: 14, padding: 16, gap: 14, alignSelf: 'stretch' },
   infoRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  infoText: { flex: 1, fontSize: 13.5, color: '#555', lineHeight: 19 },
+  infoText: { flex: 1, fontSize: 13.5, color: c.textMuted, lineHeight: 19 },
 });

@@ -6,14 +6,23 @@ import { addContactBirthdays } from '@/store/events-slice';
 
 const mockBack = jest.fn();
 const mockDispatch = jest.fn(() => ({ unwrap: jest.fn().mockResolvedValue([]) }));
+const mockStoreState = {
+  events: { items: [] },
+  settings: { themePreference: 'sistema' as const },
+};
 
 jest.mock('expo-contacts', () => ({}));
 jest.mock('@react-native-community/datetimepicker', () => 'DateTimePicker');
 jest.mock('expo-router', () => ({ useRouter: () => ({ back: mockBack }) }));
-jest.mock('@/store', () => ({
-  store: { getState: () => ({ events: { items: [] } }) },
-  useAppDispatch: () => mockDispatch,
-}));
+jest.mock('@/store', () => {
+  return {
+    store: { getState: () => mockStoreState },
+    useAppDispatch: () => mockDispatch,
+    useAppSelector: <Selected,>(
+      selector: (state: typeof mockStoreState) => Selected,
+    ): Selected => selector(mockStoreState),
+  };
+});
 jest.mock('@/store/events-slice', () => ({
   addContactBirthdays: jest.fn(),
   removeEvent: jest.fn(),

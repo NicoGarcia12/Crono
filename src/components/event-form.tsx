@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { DateField, TimeField } from '@/components/date-time-field';
@@ -12,6 +12,8 @@ import {
   type ReminderInput,
 } from '@/types';
 import { dateToIso } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Formulario de evento, compartido entre "crear" y "editar".
@@ -30,6 +32,9 @@ interface EventFormProps {
 }
 
 export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [title, setTitle] = useState(initial?.title ?? '');
   const [type, setType] = useState<EventType>(initial?.type ?? 'evento');
   const [date, setDate] = useState(initial?.date ?? dateToIso(new Date()));
@@ -76,7 +81,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       <TextInput
         style={styles.input}
         placeholder="Ej: Cumpleaños de mamá"
-        placeholderTextColor="#999"
+        placeholderTextColor={colors.textSubtle}
         value={title}
         onChangeText={setTitle}
       />
@@ -119,7 +124,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
             style={styles.input}
             accessibilityLabel="Teléfono"
             placeholder="+54 9 11 5555-5555"
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.textSubtle}
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
@@ -131,7 +136,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       <TextInput
         style={[styles.input, styles.multiline]}
         placeholder="Detalles, dirección, qué llevar…"
-        placeholderTextColor="#999"
+        placeholderTextColor={colors.textSubtle}
         value={description}
         onChangeText={setDescription}
         multiline
@@ -142,7 +147,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
 
       <View style={[styles.row, styles.switchRow]}>
         <Text style={styles.switchLabel}>Se repite todos los años</Text>
-        <Switch value={yearly} onValueChange={setYearly} trackColor={{ true: '#208AEF' }} />
+        <Switch value={yearly} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
       </View>
 
       <Pressable
@@ -156,40 +161,41 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.background },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
-  label: { fontSize: 13, fontWeight: '600', color: '#555', marginTop: 8 },
+  label: { fontSize: 13, fontWeight: '600', color: c.textMuted, marginTop: 8 },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: c.border,
     borderRadius: 12,
     padding: 13,
     fontSize: 16,
-    color: '#1a1a2e',
+    color: c.text,
   },
   multiline: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   grow: { flex: 1 },
   clearButton: { padding: 10 },
-  clearText: { color: '#E91E63', fontWeight: '600' },
+  clearText: { color: c.danger, fontWeight: '600' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 7,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  chipActiveBlue: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
-  chipText: { fontSize: 13, color: '#555' },
+  chipActiveBlue: { backgroundColor: c.primary, borderColor: c.primary },
+  chipText: { fontSize: 13, color: c.textMuted },
   chipTextActive: { color: '#fff', fontWeight: '600' },
   switchRow: { justifyContent: 'space-between', marginTop: 12 },
-  switchLabel: { fontSize: 15, color: '#1a1a2e' },
+  switchLabel: { fontSize: 15, color: c.text },
   submit: {
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     borderRadius: 24,
     padding: 15,
     alignItems: 'center',

@@ -1,4 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
+
+import { renderWithStore } from '@/test-utils';
 import { Linking } from 'react-native';
 
 import { GreetButton } from '@/components/greet-button';
@@ -28,7 +30,7 @@ describe('<GreetButton />', () => {
   });
 
   it('abre WhatsApp con el saludo ya escrito', async () => {
-    await render(<GreetButton event={evento({})} />);
+    await renderWithStore(<GreetButton event={evento({})} />);
 
     await fireEvent.press(screen.getByLabelText('Saludar por WhatsApp'));
 
@@ -38,13 +40,13 @@ describe('<GreetButton />', () => {
   });
 
   it('no se muestra si el cumpleaños no tiene teléfono', async () => {
-    await render(<GreetButton event={evento({ phone: null })} />);
+    await renderWithStore(<GreetButton event={evento({ phone: null })} />);
 
     expect(screen.queryByLabelText('Saludar por WhatsApp')).toBeNull();
   });
 
   it('no se muestra en tipos donde no corresponde saludar', async () => {
-    await render(<GreetButton event={evento({ type: 'cita_medica' })} />);
+    await renderWithStore(<GreetButton event={evento({ type: 'cita_medica' })} />);
 
     expect(screen.queryByLabelText('Saludar por WhatsApp')).toBeNull();
   });

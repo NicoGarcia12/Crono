@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import type { ContactCandidate } from '@/contacts/birthday-import';
 import { formatLongDate } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Lista de TODOS los contactos del celular con selección múltiple.
@@ -18,6 +20,9 @@ interface ContactPickListProps {
 }
 
 export function ContactPickList({ candidates, onContinue, onDelete }: ContactPickListProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
 
@@ -41,7 +46,7 @@ export function ContactPickList({ candidates, onContinue, onDelete }: ContactPic
         style={styles.search}
         accessibilityLabel="Buscar contacto"
         placeholder="Buscar contacto…"
-        placeholderTextColor="#999"
+        placeholderTextColor={colors.textSubtle}
         value={search}
         onChangeText={setSearch}
       />
@@ -58,7 +63,7 @@ export function ContactPickList({ candidates, onContinue, onDelete }: ContactPic
           if (item.loaded) {
             return (
               <View style={[styles.row, styles.rowLoaded]}>
-                <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+                <Ionicons name="checkmark-circle" size={24} color={colors.success} />
                 <View style={styles.rowBody}>
                   <Text style={styles.rowName} numberOfLines={1}>
                     {item.name}
@@ -72,7 +77,7 @@ export function ContactPickList({ candidates, onContinue, onDelete }: ContactPic
                   hitSlop={10}
                   onPress={() => onDelete(item)}
                 >
-                  <Ionicons name="trash-outline" size={20} color="#E91E63" />
+                  <Ionicons name="trash-outline" size={20} color={colors.danger} />
                 </Pressable>
               </View>
             );
@@ -119,38 +124,39 @@ export function ContactPickList({ candidates, onContinue, onDelete }: ContactPic
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   container: { flex: 1 },
   search: {
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 12,
     margin: 16,
     marginBottom: 4,
     padding: 12,
     fontSize: 15,
-    color: '#1a1a2e',
+    color: c.text,
   },
   listContent: { padding: 16, gap: 8, paddingBottom: 96 },
-  empty: { textAlign: 'center', color: '#999', padding: 24 },
+  empty: { textAlign: 'center', color: c.textSubtle, padding: 24 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 14,
   },
-  rowLoaded: { backgroundColor: '#f0f8f1' },
+  rowLoaded: { backgroundColor: c.surfaceAlt },
   rowBody: { flex: 1, gap: 2 },
-  rowName: { fontSize: 16, fontWeight: '600', color: '#1a1a2e' },
-  rowHint: { fontSize: 12.5, color: '#999' },
-  rowLoadedText: { fontSize: 12.5, color: '#4CAF50' },
+  rowName: { fontSize: 16, fontWeight: '600', color: c.text },
+  rowHint: { fontSize: 12.5, color: c.textSubtle },
+  rowLoadedText: { fontSize: 12.5, color: c.success },
   continueButton: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: 20,
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     borderRadius: 24,
     padding: 15,
     alignItems: 'center',

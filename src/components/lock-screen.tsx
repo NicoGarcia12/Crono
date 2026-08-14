@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Pantalla de bloqueo.
@@ -17,6 +19,9 @@ interface LockScreenProps {
 }
 
 export function LockScreen({ onUnlock }: LockScreenProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [message, setMessage] = useState<string | null>(null);
 
   const authenticate = useCallback(async () => {
@@ -56,7 +61,7 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
 
   return (
     <View style={styles.container}>
-      <Ionicons name="lock-closed" size={64} color="#208AEF" />
+      <Ionicons name="lock-closed" size={64} color={colors.primary} />
       <Text style={styles.title}>Crono está bloqueada</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
       <Pressable style={styles.button} onPress={authenticate}>
@@ -66,19 +71,20 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
     padding: 32,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  title: { fontSize: 22, fontWeight: '600', color: '#1a1a2e' },
-  message: { fontSize: 14, color: '#666', textAlign: 'center' },
+  title: { fontSize: 22, fontWeight: '600', color: c.text },
+  message: { fontSize: 14, color: c.textMuted, textAlign: 'center' },
   button: {
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 24,

@@ -1,10 +1,11 @@
-import type { JSX } from 'react';
+import { type JSX, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-
 import { EVENT_TYPE_META } from '@/constants/event-types';
 import type { EventItem } from '@/types';
 import { WEEKDAY_INITIALS } from '@/utils/calendar';
 import { dateToIso, todayIso } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 const MONTHS_ES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -43,6 +44,9 @@ export function CalendarGrid({
   selectedIso,
   onSelect,
 }: CalendarGridProps): JSX.Element {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const today = todayIso();
 
   return (
@@ -102,10 +106,11 @@ export function CalendarGrid({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { backgroundColor: '#fff', borderRadius: 16, padding: 8, marginHorizontal: 16 },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { backgroundColor: c.surface, borderRadius: 16, padding: 8, marginHorizontal: 16 },
   weekdayRow: { flexDirection: 'row', paddingBottom: 6 },
-  weekday: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: '#999' },
+  weekday: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '600', color: c.textSubtle },
   week: { flexDirection: 'row' },
   day: { flex: 1, alignItems: 'center', paddingVertical: 3, gap: 2 },
   dayCircle: {
@@ -116,8 +121,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   today: { backgroundColor: '#208AEF22' },
-  selected: { backgroundColor: '#208AEF' },
-  dayNumber: { fontSize: 14, color: '#1a1a2e' },
+  selected: { backgroundColor: c.primary },
+  dayNumber: { fontSize: 14, color: c.text },
   dayNumberHighlighted: { fontWeight: '700' },
   dayOutside: { color: '#ccc' },
   dots: { flexDirection: 'row', gap: 2, height: 6 },

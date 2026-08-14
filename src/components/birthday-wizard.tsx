@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DateField } from '@/components/date-time-field';
 import type { ContactCandidate } from '@/contacts/birthday-import';
 import { todayIso } from '@/utils/dates';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Asistente que recorre los contactos elegidos de a uno y les pone la fecha
@@ -20,6 +22,9 @@ interface BirthdayWizardProps {
 }
 
 export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [index, setIndex] = useState(0);
   const [entries, setEntries] = useState<{ candidate: ContactCandidate; date: string }[]>([]);
 
@@ -52,7 +57,7 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
 
       <View style={styles.card}>
         <View style={styles.avatar}>
-          <Ionicons name="person" size={28} color="#E91E63" />
+          <Ionicons name="person" size={28} color={colors.danger} />
         </View>
         <Text style={styles.name}>{current.name}</Text>
         {current.phone ? <Text style={styles.phone}>{current.phone}</Text> : null}
@@ -93,13 +98,14 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, gap: 10, backgroundColor: '#f5f6fa' },
-  progress: { fontSize: 13, color: '#999', textAlign: 'center' },
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
+  container: { flex: 1, padding: 20, gap: 10, backgroundColor: c.background },
+  progress: { fontSize: 13, color: c.textSubtle, textAlign: 'center' },
   card: {
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderRadius: 16,
     padding: 20,
     marginBottom: 8,
@@ -112,22 +118,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  name: { fontSize: 20, fontWeight: '700', color: '#1a1a2e' },
-  phone: { fontSize: 13, color: '#777' },
-  label: { fontSize: 13, fontWeight: '600', color: '#555' },
-  hint: { fontSize: 12, color: '#999', lineHeight: 17 },
+  name: { fontSize: 20, fontWeight: '700', color: c.text },
+  phone: { fontSize: 13, color: c.textMuted },
+  label: { fontSize: 13, fontWeight: '600', color: c.textMuted },
+  hint: { fontSize: 12, color: c.textSubtle, lineHeight: 17 },
   actions: { flexDirection: 'row', gap: 10, marginTop: 'auto' },
   skipButton: {
     paddingHorizontal: 20,
     paddingVertical: 15,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
   },
-  skipText: { color: '#666', fontSize: 15, fontWeight: '600' },
+  skipText: { color: c.textMuted, fontSize: 15, fontWeight: '600' },
   saveButton: {
     flex: 1,
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     borderRadius: 24,
     padding: 15,
     alignItems: 'center',

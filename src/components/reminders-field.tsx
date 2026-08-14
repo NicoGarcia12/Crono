@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { REMINDER_PRESETS, REMINDER_UNIT_LABELS } from '@/constants/event-types';
 import { REMINDER_UNITS, type ReminderInput, type ReminderUnit } from '@/types';
 import { formatReminder, reminderRank, sameReminder } from '@/utils/reminders';
+import type { ThemeColors } from '@/theme/theme';
+import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Editor de los avisos de un evento: atajos rápidos (chips) + avisos a medida
@@ -18,6 +20,9 @@ interface RemindersFieldProps {
 }
 
 export function RemindersField({ value, onChange }: RemindersFieldProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [amount, setAmount] = useState('');
   const [unit, setUnit] = useState<ReminderUnit>('dias');
 
@@ -71,7 +76,7 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
               style={styles.presetChip}
               onPress={() => add(preset)}
             >
-              <Ionicons name="add" size={14} color="#208AEF" />
+              <Ionicons name="add" size={14} color={colors.primary} />
               <Text style={styles.presetText}>{formatReminder(preset)}</Text>
             </Pressable>
           ),
@@ -84,7 +89,7 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
           style={styles.amountInput}
           accessibilityLabel="Cantidad del recordatorio"
           placeholder="2"
-          placeholderTextColor="#bbb"
+          placeholderTextColor={colors.textSubtle}
           keyboardType="number-pad"
           value={amount}
           onChangeText={setAmount}
@@ -122,15 +127,16 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (c: ThemeColors) =>
+  StyleSheet.create({
   container: { gap: 8 },
-  empty: { fontSize: 13, color: '#999', fontStyle: 'italic' },
+  empty: { fontSize: 13, color: c.textSubtle, fontStyle: 'italic' },
   selectedList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   selectedChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#208AEF',
+    backgroundColor: c.primary,
     borderRadius: 20,
     paddingLeft: 12,
     paddingRight: 10,
@@ -147,40 +153,40 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  presetText: { fontSize: 12.5, color: '#208AEF' },
+  presetText: { fontSize: 12.5, color: c.primary },
   customRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   amountInput: {
     width: 64,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#e2e2e2',
+    borderColor: c.border,
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
-    color: '#1a1a2e',
+    color: c.text,
     textAlign: 'center',
   },
   unitRow: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   unitChip: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: c.border,
     borderRadius: 16,
     paddingHorizontal: 9,
     paddingVertical: 5,
-    backgroundColor: '#fff',
+    backgroundColor: c.surface,
   },
-  unitChipActive: { backgroundColor: '#1a1a2e', borderColor: '#1a1a2e' },
-  unitText: { fontSize: 12, color: '#666' },
+  unitChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
+  unitText: { fontSize: 12, color: c.textMuted },
   unitTextActive: { color: '#fff', fontWeight: '600' },
   addButton: {
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#208AEF',
+    borderColor: c.primary,
     paddingVertical: 10,
     alignItems: 'center',
   },
   addButtonDisabled: { opacity: 0.35 },
-  addButtonText: { color: '#208AEF', fontSize: 14, fontWeight: '600' },
+  addButtonText: { color: c.primary, fontSize: 14, fontWeight: '600' },
 });

@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
@@ -12,6 +13,7 @@ import { store, useAppSelector } from '@/store';
 import { loadEvents } from '@/store/events-slice';
 import { loadNotes } from '@/store/notes-slice';
 import { loadSettings } from '@/store/settings-slice';
+import { useTheme } from '@/theme/use-theme';
 
 /**
  * Layout raíz de la app (Expo Router).
@@ -77,6 +79,7 @@ export default function RootLayout() {
 function Gates() {
   const [unlocked, setUnlocked] = useState(false);
   const displayName = useAppSelector((state) => state.settings.displayName);
+  const { name: themeName, colors } = useTheme();
 
   // Si la app pasa a segundo plano, se vuelve a bloquear (como una app de banco).
   useEffect(() => {
@@ -86,21 +89,48 @@ function Gates() {
     return () => subscription.remove(); // cleanup obligatorio de listeners nativos
   }, []);
 
-  if (!unlocked) return <LockScreen onUnlock={() => setUnlocked(true)} />;
-  if (!displayName) return <NameSetup />;
+  // La barra de estado (hora, batería) necesita íconos claros sobre fondo oscuro.
+  const statusBar = <StatusBar style={themeName === 'oscuro' ? 'light' : 'dark'} />;
+
+  if (!unlocked) {
+    return (
+      <>
+        {statusBar}
+        <LockScreen onUnlock={() => setUnlocked(true)} />
+      </>
+    );
+  }
+
+  if (!displayName) {
+    return (
+      <>
+        {statusBar}
+        <NameSetup />
+      </>
+    );
+  }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="evento/nuevo" options={{ title: 'Nuevo evento', presentation: 'modal' }} />
-      <Stack.Screen name="evento/[id]" options={{ title: 'Editar evento' }} />
-      <Stack.Screen name="nota/nueva" options={{ title: 'Nueva nota', presentation: 'modal' }} />
-      <Stack.Screen name="nota/[id]" options={{ title: 'Editar nota' }} />
-      <Stack.Screen
-        name="cargar-cumpleanos"
-        options={{ title: 'Cargar cumpleaños', presentation: 'modal' }}
-      />
-    </Stack>
+    <>
+      {statusBar}
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.surface },
+          headerTintColor: colors.text,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="evento/nuevo" options={{ title: 'Nuevo evento', presentation: 'modal' }} />
+        <Stack.Screen name="evento/[id]" options={{ title: 'Editar evento' }} />
+        <Stack.Screen name="nota/nueva" options={{ title: 'Nueva nota', presentation: 'modal' }} />
+        <Stack.Screen name="nota/[id]" options={{ title: 'Editar nota' }} />
+        <Stack.Screen
+          name="cargar-cumpleanos"
+          options={{ title: 'Cargar cumpleaños', presentation: 'modal' }}
+        />
+      </Stack>
+    </>
   );
 }
 

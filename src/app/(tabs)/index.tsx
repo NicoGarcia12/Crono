@@ -63,7 +63,11 @@ export default function AgendaScreen() {
       />
 
       {/* FAB: botón flotante de acción, patrón clásico de mobile. */}
-      <Pressable style={styles.fab} onPress={() => router.push('/evento/nuevo')}>
+      <Pressable
+        style={styles.fab}
+        accessibilityLabel="Agregar evento"
+        onPress={() => router.push('/evento/nuevo')}
+      >
         <Ionicons name="add" size={30} color="#fff" />
       </Pressable>
     </View>

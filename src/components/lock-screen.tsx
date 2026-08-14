@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 /**
  * Pantalla de bloqueo.
@@ -20,6 +20,12 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
   const [message, setMessage] = useState<string | null>(null);
 
   const authenticate = useCallback(async () => {
+    // En web no existe el bloqueo del sistema (huella/PIN): se deja pasar directo.
+    if (Platform.OS === 'web') {
+      onUnlock();
+      return;
+    }
+
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
     const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 

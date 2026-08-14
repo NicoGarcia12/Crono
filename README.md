@@ -28,6 +28,18 @@ Agenda personal para el celular: eventos, cumpleaños, aniversarios, días festi
 
 > ⚠️ Nota: en Expo Go las notificaciones locales de Android pueden tener limitaciones. Para la experiencia completa se genera un *development build* con `npx eas build` (no hace falta para desarrollar el resto).
 
+También podés correrla en el navegador con `npm run web` (SQLite corre compilado a WebAssembly; sin bloqueo del sistema ni recordatorios).
+
+## Tests
+
+| Comando | Qué corre |
+| --- | --- |
+| `npm test` | Unitarios con Jest (`jest-expo` + React Native Testing Library) |
+| `npm run test:watch` | Jest en modo watch |
+| `npm run e2e` | E2E con Playwright sobre la versión web (levanta el dev server solo) |
+
+Los e2e cubren el flujo crítico (primer uso → crear evento → persistencia). CI (GitHub Actions) corre typecheck + Jest + Playwright en cada PR.
+
 ## Arquitectura
 
 ```

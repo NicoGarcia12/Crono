@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 
 /**
  * Capa de base de datos local (SQLite).
@@ -41,9 +42,12 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
 
   if (currentVersion === 0) {
     // WAL = write-ahead logging: mejora la concurrencia lectura/escritura.
-    await database.execAsync(`
-      PRAGMA journal_mode = 'wal';
+    // Solo en nativo: el backend WebAssembly de web no soporta WAL.
+    if (Platform.OS !== 'web') {
+      await database.execAsync(`PRAGMA journal_mode = 'wal'`);
+    }
 
+    await database.execAsync(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,

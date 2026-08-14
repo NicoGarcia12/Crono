@@ -35,6 +35,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [date, setDate] = useState(initial?.date ?? dateToIso(new Date()));
   const [time, setTime] = useState<string | null>(initial?.time ?? null);
   const [description, setDescription] = useState(initial?.description ?? '');
+  // Teléfono: se usa para el botón de saludar por WhatsApp.
+  const [phone, setPhone] = useState(initial?.phone ?? '');
   // Varios avisos por evento, cada uno con su anticipación (cantidad + unidad).
   const [reminders, setReminders] = useState<ReminderInput[]>(
     initial
@@ -60,9 +62,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       date,
       time,
       description: description.trim() || null,
-      // Si el evento vino de un contacto, conserva de quién es (y su teléfono).
+      // Si el evento vino de un contacto, conserva de quién es.
       contactId: initial?.contactId ?? null,
-      phone: initial?.phone ?? null,
+      phone: phone.trim() || null,
       reminders,
       yearly: yearly ? 1 : 0,
     });
@@ -108,6 +110,22 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
           </Pressable>
         ) : null}
       </View>
+
+      {/* Solo donde tiene sentido saludar: el teléfono habilita el botón de WhatsApp. */}
+      {type === 'cumpleanos' || type === 'aniversario' ? (
+        <>
+          <Text style={styles.label}>Teléfono (opcional, para saludar por WhatsApp)</Text>
+          <TextInput
+            style={styles.input}
+            accessibilityLabel="Teléfono"
+            placeholder="+54 9 11 5555-5555"
+            placeholderTextColor="#999"
+            keyboardType="phone-pad"
+            value={phone}
+            onChangeText={setPhone}
+          />
+        </>
+      ) : null}
 
       <Text style={styles.label}>Descripción (opcional)</Text>
       <TextInput

@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventForm } from '@/components/event-form';
+import { GreetButton } from '@/components/greet-button';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { editEvent, removeEvent } from '@/store/events-slice';
 import type { NewEvent } from '@/types';
@@ -59,6 +60,7 @@ export default function EditarEventoScreen() {
           ),
         }}
       />
+      <GreetButton event={event} />
       <EventForm initial={event} submitLabel="Guardar cambios" onSubmit={handleSubmit} />
     </>
   );

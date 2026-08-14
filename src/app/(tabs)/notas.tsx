@@ -1,18 +1,31 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { SearchField } from '@/components/search-field';
 import { useAppSelector } from '@/store';
+import { filterNotes } from '@/utils/search';
 
 /** Pestaña de notas personales, ordenadas por última modificación. */
 export default function NotasScreen() {
   const router = useRouter();
   const notes = useAppSelector((state) => state.notes.items);
+  const [query, setQuery] = useState('');
+
+  const found = useMemo(() => filterNotes(notes, query), [notes, query]);
 
   return (
     <View style={styles.container}>
+      <SearchField
+        value={query}
+        onChange={setQuery}
+        label="Buscar notas"
+        placeholder="Buscar en tus notas…"
+      />
+
       <FlatList
-        data={notes}
+        data={found}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <Pressable
@@ -32,16 +45,24 @@ export default function NotasScreen() {
             </Text>
           </Pressable>
         )}
-        contentContainerStyle={notes.length === 0 ? styles.emptyContainer : styles.listContent}
+        contentContainerStyle={found.length === 0 ? styles.emptyContainer : styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Ionicons name="document-text-outline" size={56} color="#bbb" />
-            <Text style={styles.emptyTitle}>Sin notas todavía</Text>
-            <Text style={styles.emptyText}>Tocá el botón + para escribir tu primera nota.</Text>
+            <Ionicons name={query ? 'search' : 'document-text-outline'} size={56} color="#bbb" />
+            <Text style={styles.emptyTitle}>{query ? 'Sin resultados' : 'Sin notas todavía'}</Text>
+            <Text style={styles.emptyText}>
+              {query
+                ? `Ninguna nota coincide con “${query}”.`
+                : 'Tocá el botón + para escribir tu primera nota.'}
+            </Text>
           </View>
         }
       />
-      <Pressable style={styles.fab} onPress={() => router.push('/nota/nueva')}>
+      <Pressable
+        style={styles.fab}
+        accessibilityLabel="Agregar nota"
+        onPress={() => router.push('/nota/nueva')}
+      >
         <Ionicons name="add" size={30} color="#fff" />
       </Pressable>
     </View>

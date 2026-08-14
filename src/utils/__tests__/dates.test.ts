@@ -1,7 +1,9 @@
 import {
   capitalize,
+  countdownLabel,
   dateToIso,
   dateToTime,
+  daysUntil,
   formatLongDate,
   formatRelative,
   nextOccurrence,
@@ -93,6 +95,25 @@ describe('formatRelative', () => {
 
   it('marca fechas pasadas del mismo año', () => {
     expect(formatRelative(new Date(2026, 2, 5), from)).toBe('5 mar (pasado)');
+  });
+});
+
+describe('daysUntil / countdownLabel', () => {
+  const from = new Date(2026, 6, 12, 23, 30); // 12 de julio de 2026, casi medianoche
+
+  it('cuenta días completos ignorando la hora', () => {
+    // Faltan minutos para el 13, pero es "mañana": 1 día.
+    expect(daysUntil(new Date(2026, 6, 13, 0, 5), from)).toBe(1);
+    expect(daysUntil(new Date(2026, 6, 24), from)).toBe(12);
+    expect(daysUntil(new Date(2026, 6, 9), from)).toBe(-3);
+  });
+
+  it('arma la cuenta regresiva en español', () => {
+    expect(countdownLabel(new Date(2026, 6, 12, 8, 0), from)).toBe('Es hoy');
+    expect(countdownLabel(new Date(2026, 6, 13), from)).toBe('Falta 1 día');
+    expect(countdownLabel(new Date(2026, 6, 24), from)).toBe('Faltan 12 días');
+    expect(countdownLabel(new Date(2026, 6, 11), from)).toBe('Fue ayer');
+    expect(countdownLabel(new Date(2026, 6, 9), from)).toBe('Hace 3 días');
   });
 });
 

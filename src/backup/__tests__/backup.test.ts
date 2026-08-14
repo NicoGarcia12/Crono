@@ -18,6 +18,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   phone: null,
   reminders: [{ amount: 1, unit: 'dias', notificationId: 'notif-1' }],
   yearly: 1,
+  isMine: 0,
   ...over,
 });
 
@@ -49,6 +50,7 @@ describe('buildBackup', () => {
           phone: null,
           reminders: [{ amount: 1, unit: 'dias' }], // sin notificationId
           yearly: 1,
+          isMine: 0,
         },
       ],
       notes: [{ title: 'Lista del súper', content: 'Pan, leche' }],
@@ -132,6 +134,19 @@ describe('parseBackup', () => {
       phone: null,
       reminders: [], // sin avisos, no rompe
     });
+  });
+
+  it('acepta backups previos que no tenían saludos', () => {
+    const raw = JSON.stringify({
+      app: 'crono',
+      formatVersion: 1,
+      events: [{ title: 'Ok', type: 'evento', date: '2026-07-20', yearly: 0 }],
+      notes: [],
+    });
+
+    const result = parseBackup(raw);
+
+    expect(result).toMatchObject({ ok: true, backup: { greetings: [] } });
   });
 
   it('descarta avisos con unidad inventada', () => {

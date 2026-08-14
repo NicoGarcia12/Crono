@@ -25,6 +25,7 @@ const birthdays: NewEvent[] = [
     phone: null,
     reminders: [{ amount: 1, unit: 'dias' }],
     yearly: 1,
+    isMine: 0,
   },
   {
     title: 'Bruno',
@@ -36,6 +37,7 @@ const birthdays: NewEvent[] = [
     phone: null,
     reminders: [{ amount: 1, unit: 'dias' }],
     yearly: 1,
+    isMine: 0,
   },
 ];
 

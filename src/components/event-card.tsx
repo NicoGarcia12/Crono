@@ -25,6 +25,8 @@ export function EventCard({ event, occurrence }: EventCardProps) {
   const meta = EVENT_TYPE_META[event.type];
   const next = occurrence ?? nextOccurrence(event);
   const years = event.yearly ? yearsSince(event.date, next) : 0;
+  // El modelo usa 1/0; este texto es una decisión de presentación local a la tarjeta.
+  const title = event.isMine === 1 ? 'Mi cumpleaños' : event.title;
 
   return (
     <View style={styles.card}>
@@ -34,7 +36,7 @@ export function EventCard({ event, occurrence }: EventCardProps) {
       </View>
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
-          {event.title}
+          {title}
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>
           {meta.label}

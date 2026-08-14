@@ -35,6 +35,7 @@ const nuevoEvento: NewEvent = {
     { amount: 1, unit: 'dias' },
   ],
   yearly: 1,
+  isMine: 0,
 };
 
 const avisosProgramados = [
@@ -52,6 +53,7 @@ const eventoGuardado: EventItem = {
   contactId: null,
   phone: null,
   yearly: 1,
+  isMine: 0,
   reminders: avisosProgramados,
 };
 

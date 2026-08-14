@@ -25,6 +25,7 @@ const contactBirthday = (contactId: string, title: string): NewEvent => ({
   phone: null,
   reminders: [{ amount: 1, unit: 'dias' }],
   yearly: 1,
+  isMine: 0,
 });
 
 /**

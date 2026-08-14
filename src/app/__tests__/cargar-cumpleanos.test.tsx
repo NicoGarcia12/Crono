@@ -66,6 +66,8 @@ describe('<CargarCumpleanosScreen />', () => {
           phone: '+54 11 5555-0001',
           reminders: [{ amount: 1, unit: 'dias' }],
           yearly: 1,
+          // Los cumpleaños importados nunca pueden ser el cumpleaños propio.
+          isMine: 0,
         },
       ]),
     );

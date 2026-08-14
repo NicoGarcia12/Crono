@@ -1,5 +1,5 @@
 import { EVENT_TYPES, REMINDER_UNITS } from '@/types';
-import type { EventItem, NewEvent, NewNote, Note, ReminderInput } from '@/types';
+import type { EventItem, Greeting, NewEvent, NewNote, Note, ReminderInput } from '@/types';
 
 /**
  * Copia de seguridad: exportar toda la agenda a un archivo de texto (JSON) y
@@ -13,6 +13,9 @@ import type { EventItem, NewEvent, NewNote, Note, ReminderInput } from '@/types'
 
 export const BACKUP_FORMAT_VERSION = 1;
 
+/** Un saludo no conserva ids del dispositivo de origen. */
+export type BackupGreeting = Omit<Greeting, 'id' | 'eventId'> & { eventId: null };
+
 export interface BackupFile {
   app: 'crono';
   formatVersion: number;
@@ -20,6 +23,8 @@ export interface BackupFile {
   displayName: string | null;
   events: NewEvent[];
   notes: NewNote[];
+  /** Opcional para mantener compatibilidad con backups v1 ya exportados. */
+  greetings?: BackupGreeting[];
 }
 
 /** Arma el contenido del backup a partir de lo que hay en la app. */
@@ -28,8 +33,9 @@ export function buildBackup(
   notes: Note[],
   displayName: string | null,
   now: Date = new Date(),
+  greetings?: Greeting[],
 ): BackupFile {
-  return {
+  const backup: BackupFile = {
     app: 'crono',
     formatVersion: BACKUP_FORMAT_VERSION,
     exportedAt: now.toISOString(),
@@ -41,6 +47,12 @@ export function buildBackup(
     })),
     notes: notes.map(({ title, content }) => ({ title, content })),
   };
+  if (greetings !== undefined) {
+    // eventId es local a la SQLite origen; restaurarlo sería enlazar a un
+    // evento arbitrario. Se recupera el saludo como invitado independiente.
+    backup.greetings = greetings.map(({ year, name, phone, greeted }) => ({ year, eventId: null, name, phone, greeted }));
+  }
+  return backup;
 }
 
 export function serializeBackup(backup: BackupFile): string {
@@ -78,8 +90,9 @@ export function parseBackup(raw: string): ParseResult {
   // Cada ítem se normaliza (no se confía en el archivo): los inválidos se descartan.
   const events = Array.isArray(data.events) ? data.events.flatMap(toEvent) : [];
   const notes = Array.isArray(data.notes) ? data.notes.flatMap(toNote) : [];
+  const greetings = Array.isArray(data.greetings) ? data.greetings.flatMap(toGreeting) : [];
 
-  if (events.length === 0 && notes.length === 0) {
+  if (events.length === 0 && notes.length === 0 && greetings.length === 0) {
     return { ok: false, error: 'El backup no tiene eventos ni notas para restaurar.' };
   }
 
@@ -92,6 +105,7 @@ export function parseBackup(raw: string): ParseResult {
       displayName: typeof data.displayName === 'string' ? data.displayName : null,
       events,
       notes,
+      greetings,
     },
   };
 }
@@ -145,6 +159,7 @@ function toEvent(value: unknown): NewEvent[] {
       type: type as NewEvent['type'],
       date,
       yearly: yearly as 0 | 1,
+      isMine: value.isMine === 1 ? 1 : 0,
       time: typeof value.time === 'string' ? value.time : null,
       description: typeof value.description === 'string' ? value.description : null,
       contactId: typeof value.contactId === 'string' ? value.contactId : null,
@@ -178,4 +193,13 @@ function toNote(value: unknown): NewNote[] {
   if (title.trim().length === 0 && content.trim().length === 0) return [];
 
   return [{ title, content }];
+}
+
+function toGreeting(value: unknown): BackupGreeting[] {
+  if (!isRecord(value)) return [];
+  const { year, name, phone, greeted } = value;
+  if (typeof year !== 'number' || !Number.isInteger(year) || year < 0 || typeof name !== 'string' || name.trim().length === 0) return [];
+  if (phone !== null && typeof phone !== 'string') return [];
+  if (greeted !== 0 && greeted !== 1) return [];
+  return [{ year, eventId: null, name: name.trim(), phone, greeted }];
 }

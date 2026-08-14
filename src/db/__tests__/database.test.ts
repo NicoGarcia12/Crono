@@ -6,7 +6,7 @@ jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn() }));
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 describe('initDatabase', () => {
-  it('reanuda v3→v4 desde el fixture que ya tiene contact_id y completa phone antes de subir user_version', async () => {
+  it('reanuda v3→v4 desde el fixture que ya tiene contact_id y completa phone antes de finalizar las migraciones', async () => {
     const columns = new Set(['contact_id']);
     let userVersion = 3;
     const database: Pick<SQLite.SQLiteDatabase, 'execAsync' | 'getFirstAsync'> = {
@@ -17,7 +17,7 @@ describe('initDatabase', () => {
         }
         if (sql.includes('ADD COLUMN contact_id')) columns.add('contact_id');
         if (sql.includes('ADD COLUMN phone')) columns.add('phone');
-        if (sql.includes('PRAGMA user_version = 4')) userVersion = 4;
+        if (sql.includes('PRAGMA user_version = 6')) userVersion = 6;
       }),
     };
     jest
@@ -33,7 +33,7 @@ describe('initDatabase', () => {
 
     expect({ columns: [...columns].sort(), userVersion }).toEqual({
       columns: ['contact_id', 'phone'],
-      userVersion: 4,
+      userVersion: 6,
     });
   });
 });

@@ -115,6 +115,7 @@ export function candidateToEvent(candidate: ContactCandidate, date: string): New
     phone: candidate.phone,
     reminders: [{ amount: 1, unit: 'dias' }], // aviso 1 día antes, igual que el default del formulario
     yearly: 1,
+    isMine: 0, // el cumpleaños propio se carga aparte desde Perfil
   };
 }
 

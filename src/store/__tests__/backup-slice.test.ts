@@ -3,23 +3,27 @@ import { configureStore } from '@reduxjs/toolkit';
 import { backupFileName, buildBackup, serializeBackup } from '@/backup/backup';
 import { pickTextFile, saveAndShare } from '@/backup/file-io';
 import * as eventsRepo from '@/db/events-repo';
+import * as greetingsRepo from '@/db/greetings-repo';
 import * as notesRepo from '@/db/notes-repo';
 import { scheduleEventReminders } from '@/notifications/notifications';
 import eventsReducer from '@/store/events-slice';
+import greetingsReducer from '@/store/greetings-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
-import type { EventItem, Note } from '@/types';
+import type { EventItem, Greeting, Note } from '@/types';
 
 // Límites del sistema mockeados: archivos, BD y notificaciones.
 jest.mock('@/backup/file-io');
 jest.mock('@/db/events-repo');
+jest.mock('@/db/greetings-repo');
 jest.mock('@/db/notes-repo');
 jest.mock('@/notifications/notifications');
 
 const mockPick = jest.mocked(pickTextFile);
 const mockSave = jest.mocked(saveAndShare);
 const mockEventsRepo = jest.mocked(eventsRepo);
+const mockGreetingsRepo = jest.mocked(greetingsRepo);
 const mockNotesRepo = jest.mocked(notesRepo);
 
 const evento: EventItem = {
@@ -33,6 +37,7 @@ const evento: EventItem = {
   phone: null,
   reminders: [{ amount: 1, unit: 'dias', notificationId: 'notif-1' }],
   yearly: 1,
+  isMine: 0,
 };
 
 const nota: Note = {
@@ -43,11 +48,26 @@ const nota: Note = {
   updatedAt: '2026-07-01T10:00:00.000Z',
 };
 
-const makeStore = () =>
+const saludo: Greeting = {
+  id: 14,
+  year: 2026,
+  eventId: null,
+  name: 'Carla',
+  phone: '+54 11 5555-0014',
+  greeted: 1,
+};
+
+const makeStore = (greetings: Greeting[] = []) =>
   configureStore({
-    reducer: { events: eventsReducer, notes: notesReducer, settings: settingsReducer },
+    reducer: {
+      events: eventsReducer,
+      greetings: greetingsReducer,
+      notes: notesReducer,
+      settings: settingsReducer,
+    },
     preloadedState: {
       events: { items: [evento], status: 'ready' as const },
+      greetings: { year: 2026, items: greetings, status: 'ready' as const },
       notes: { items: [nota], status: 'ready' as const },
       settings: { displayName: 'Nico', themePreference: 'sistema' as const, loaded: true },
     },
@@ -74,6 +94,24 @@ describe('exportBackup', () => {
       notes: [expect.objectContaining({ title: 'Lista del súper' })],
     });
     expect(result).toEqual({ events: 1, notes: 1 });
+  });
+
+  it('incluye los saludos sin ids locales', async () => {
+    const store = makeStore([saludo]);
+
+    await store.dispatch(exportBackup()).unwrap();
+
+    expect(JSON.parse(mockSave.mock.calls[0][1])).toMatchObject({
+      greetings: [
+        {
+          year: 2026,
+          eventId: null,
+          name: 'Carla',
+          phone: '+54 11 5555-0014',
+          greeted: 1,
+        },
+      ],
+    });
   });
 });
 
@@ -114,5 +152,23 @@ describe('restoreBackup', () => {
     await expect(store.dispatch(restoreBackup()).unwrap()).rejects.toBe(
       'El archivo no es un backup válido de Crono.',
     );
+  });
+
+  it('restaura los saludos de un backup', async () => {
+    mockPick.mockResolvedValue(
+      JSON.stringify({
+        app: 'crono',
+        formatVersion: 1,
+        events: [],
+        notes: [],
+        greetings: [{ year: 2026, eventId: null, name: 'Carla', phone: '+54 11 5555-0014', greeted: 1 }],
+      }),
+    );
+    mockGreetingsRepo.insertGuest.mockResolvedValue(saludo);
+    const store = makeStore();
+
+    await store.dispatch(restoreBackup()).unwrap();
+
+    expect(mockGreetingsRepo.insertGuest).toHaveBeenCalledWith(2026, 'Carla', '+54 11 5555-0014', true);
   });
 });

@@ -1,8 +1,10 @@
 import {
+  ageThisYear,
   capitalize,
   countdownLabel,
   dateToIso,
   dateToTime,
+  dateWithAgeThisYear,
   daysUntil,
   formatLongDate,
   formatRelative,
@@ -114,6 +116,25 @@ describe('daysUntil / countdownLabel', () => {
     expect(countdownLabel(new Date(2026, 6, 24), from)).toBe('Faltan 12 días');
     expect(countdownLabel(new Date(2026, 6, 11), from)).toBe('Fue ayer');
     expect(countdownLabel(new Date(2026, 6, 9), from)).toBe('Hace 3 días');
+  });
+});
+
+describe('ageThisYear / dateWithAgeThisYear', () => {
+  const from = new Date(2026, 6, 12);
+
+  it('calcula los años que cumple en el año en curso (aunque el cumple no haya llegado)', () => {
+    expect(ageThisYear('1996-12-20', from)).toBe(30); // todavía no cumplió, pero cumple 30 este año
+    expect(ageThisYear('1996-01-05', from)).toBe(30); // ya cumplió: los mismos 30
+  });
+
+  it('escribir la edad fija el año de nacimiento y conserva día y mes', () => {
+    expect(dateWithAgeThisYear('2026-12-20', 30, from)).toBe('1996-12-20');
+    expect(dateWithAgeThisYear('1990-03-05', 1, from)).toBe('2025-03-05');
+  });
+
+  it('edad y fecha son inversas una de la otra', () => {
+    const fecha = dateWithAgeThisYear('2026-08-01', 45, from);
+    expect(ageThisYear(fecha, from)).toBe(45);
   });
 });
 

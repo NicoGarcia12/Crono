@@ -11,7 +11,7 @@ import {
   type NewEvent,
   type ReminderInput,
 } from '@/types';
-import { dateToIso } from '@/utils/dates';
+import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -51,19 +51,44 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [yearly, setYearly] = useState<boolean>(
     initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
   );
+  // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
+  const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
 
   const canSave = title.trim().length > 0;
 
+  const isBirthday = type === 'cumpleanos';
+  const isMine = initial?.isMine === 1;
+  const canGreetType = isBirthday || type === 'aniversario';
+
   const selectType = (t: EventType) => {
+    if (isMine) return; // La UI no ofrece una acción que viole el invariante.
     setType(t);
     // Cambiar el tipo ajusta el default de repetición anual (editable igual).
     setYearly(EVENT_TYPE_META[t].defaultYearly);
   };
 
+  /**
+   * Escribir la edad que cumple este año fija el año de nacimiento (día y mes
+   * no cambian). Se guarda también lo tipeado para poder borrar el campo sin
+   * que "salte" solo mientras se escribe.
+   */
+  const handleAgeChange = (value: string) => {
+    setAgeText(value);
+    const age = Number.parseInt(value, 10);
+    if (!Number.isInteger(age) || age < 0 || age > 130) return;
+    setDate(dateWithAgeThisYear(date, age));
+  };
+
+  /** Al elegir la fecha, la edad mostrada se recalcula sola. */
+  const handleDateChange = (isoDate: string) => {
+    setDate(isoDate);
+    setAgeText(String(ageThisYear(isoDate)));
+  };
+
   const handleSubmit = () => {
     onSubmit({
       title: title.trim(),
-      type,
+      type: isMine ? 'cumpleanos' : type,
       date,
       time,
       description: description.trim() || null,
@@ -71,7 +96,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       contactId: initial?.contactId ?? null,
       phone: phone.trim() || null,
       reminders,
-      yearly: yearly ? 1 : 0,
+      yearly: isMine ? 1 : yearly ? 1 : 0,
+      // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
+      isMine: initial?.isMine ?? 0,
     });
   };
 
@@ -95,6 +122,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
             <Pressable
               key={t}
               style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
+              disabled={isMine}
               onPress={() => selectType(t)}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
@@ -104,7 +132,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       </View>
 
       <Text style={styles.label}>Fecha</Text>
-      <DateField value={date} onChange={setDate} />
+      <DateField value={date} onChange={handleDateChange} />
 
       <Text style={styles.label}>Hora (opcional)</Text>
       <View style={styles.row}>
@@ -116,8 +144,31 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         ) : null}
       </View>
 
+      {/* Edad: se puede cargar en vez del año de nacimiento (útil si no lo sabés). */}
+      {canGreetType ? (
+        <>
+          <Text style={styles.label}>
+            {isBirthday ? 'Cumple este año (opcional)' : 'Cumplen este año (opcional)'}
+          </Text>
+          <View style={styles.row}>
+            <TextInput
+              style={[styles.input, styles.ageInput]}
+              accessibilityLabel="Edad que cumple este año"
+              placeholder="30"
+              placeholderTextColor={colors.textSubtle}
+              keyboardType="number-pad"
+              value={ageText}
+              onChangeText={handleAgeChange}
+            />
+            <Text style={styles.ageHint}>
+              {`años en ${new Date().getFullYear()} · nació en ${date.slice(0, 4)}`}
+            </Text>
+          </View>
+        </>
+      ) : null}
+
       {/* Solo donde tiene sentido saludar: el teléfono habilita el botón de WhatsApp. */}
-      {type === 'cumpleanos' || type === 'aniversario' ? (
+      {canGreetType ? (
         <>
           <Text style={styles.label}>Teléfono (opcional, para saludar por WhatsApp)</Text>
           <TextInput
@@ -147,7 +198,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
 
       <View style={[styles.row, styles.switchRow]}>
         <Text style={styles.switchLabel}>Se repite todos los años</Text>
-        <Switch value={yearly} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
+        <Switch value={isMine ? true : yearly} disabled={isMine} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
       </View>
 
       <Pressable
@@ -166,6 +217,10 @@ const makeStyles = (c: ThemeColors) =>
   container: { flex: 1, backgroundColor: c.background },
   content: { padding: 16, paddingBottom: 48, gap: 8 },
   label: { fontSize: 13, fontWeight: '600', color: c.textMuted, marginTop: 8 },
+  ageInput: { width: 80, textAlign: 'center' },
+  ageHint: { flex: 1, fontSize: 13, color: c.textSubtle },
+  mineLabel: { flex: 1, gap: 2 },
+  mineHint: { fontSize: 12, color: c.textSubtle },
   input: {
     backgroundColor: c.surface,
     borderWidth: 1,

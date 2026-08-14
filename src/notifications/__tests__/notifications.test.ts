@@ -21,6 +21,7 @@ const evento: NewEvent = {
   contactId: null,
   phone: null,
   yearly: 0,
+  isMine: 0,
   reminders: [
     { amount: 1, unit: 'meses' },
     { amount: 1, unit: 'dias' },

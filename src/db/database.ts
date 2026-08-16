@@ -13,26 +13,37 @@ import { Platform } from 'react-native';
  */
 
 let db: SQLite.SQLiteDatabase | null = null;
+let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
 const DATABASE_VERSION = 7;
 
-export async function initDatabase(): Promise<void> {
-  if (db) return; // ya inicializada
-  try {
-    const database = await SQLite.openDatabaseAsync('crono.db');
-    // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
-    // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
-    await database.execAsync('PRAGMA foreign_keys = ON');
-    await migrate(database);
-    // El singleton se publica únicamente después de una migración confirmada.
-    db = database;
-  } catch (error) {
-    // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
-    // siguiente initDatabase() retorna temprano en vez de reintentar.
-    db = null;
-    throw error;
+export function initDatabase(): Promise<void> {
+  if (db) return Promise.resolve(); // ya inicializada
+  // React StrictMode (y el doble-mount del root layout en web) puede llamar
+  // initDatabase() dos veces en paralelo; sin esta memoización ambas abren
+  // 'crono.db' a la vez y la segunda falla (OPFS solo permite un writer).
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        const database = await SQLite.openDatabaseAsync('crono.db');
+        // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
+        // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
+        await database.execAsync('PRAGMA foreign_keys = ON');
+        await migrate(database);
+        // El singleton se publica únicamente después de una migración confirmada.
+        db = database;
+      } catch (error) {
+        // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
+        // siguiente initDatabase() retorna temprano en vez de reintentar.
+        db = null;
+        throw error;
+      } finally {
+        initPromise = null;
+      }
+    })();
   }
+  return initPromise;
 }
 
 /** Acceso a la conexión. Falla rápido si alguien la usa antes de initDatabase(). */

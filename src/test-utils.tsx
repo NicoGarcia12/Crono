@@ -6,6 +6,7 @@ import { Provider } from 'react-redux';
 import eventsReducer from '@/store/events-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
+import greetingsSentReducer from '@/store/greetings-sent-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 
@@ -22,6 +23,7 @@ export function renderWithStore(ui: ReactElement) {
       events: eventsReducer,
       giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
+      greetingsSent: greetingsSentReducer,
       notes: notesReducer,
       settings: settingsReducer,
     },

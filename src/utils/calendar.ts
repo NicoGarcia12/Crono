@@ -118,6 +118,26 @@ export function eventsByDay(events: EventItem[], days: Date[]): Map<string, Even
   return byDay;
 }
 
+/**
+ * Cumpleaños y aniversarios AJENOS (no `isMine`) que caen en el mes de
+ * `anchor`. Los anuales se repiten todos los años (se compara solo el mes);
+ * los puntuales, además, tienen que ser de ese año. Ordenados por día.
+ */
+export function birthdaysAndAnniversariesInMonth(events: EventItem[], anchor: Date): EventItem[] {
+  const month = anchor.getMonth();
+  const year = anchor.getFullYear();
+
+  return events
+    .filter((event) => event.type === 'cumpleanos' || event.type === 'aniversario')
+    .filter((event) => event.isMine !== 1)
+    .filter((event) => {
+      const base = toLocalDate(event.date);
+      if (base.getMonth() !== month) return false;
+      return event.yearly ? true : base.getFullYear() === year;
+    })
+    .sort((a, b) => toLocalDate(a.date).getDate() - toLocalDate(b.date).getDate());
+}
+
 const MONTHS_ES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',

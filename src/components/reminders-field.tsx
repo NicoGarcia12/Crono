@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { REMINDER_PRESETS, REMINDER_UNIT_LABELS } from '@/constants/event-types';
+import { remindersAvailable } from '@/notifications/notifications';
 import { REMINDER_UNITS, type ReminderInput, type ReminderUnit } from '@/types';
 import { formatReminder, reminderRank, sameReminder } from '@/utils/reminders';
 import type { ThemeColors } from '@/theme/theme';
@@ -46,6 +47,17 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
 
   return (
     <View style={styles.container}>
+      {/* En Expo Go (Android) y en web no hay scheduler nativo: se pueden
+          armar los avisos igual, pero no van a disparar hasta instalar el APK. */}
+      {!remindersAvailable ? (
+        <View style={styles.unavailableNotice}>
+          <Ionicons name="warning" size={16} color={colors.danger} />
+          <Text style={styles.unavailableText}>
+            En Expo Go los recordatorios no se disparan. Instalá la app para recibirlos.
+          </Text>
+        </View>
+      ) : null}
+
       {/* Avisos ya elegidos, del más lejano al más cercano. */}
       {value.length === 0 ? (
         <Text style={styles.empty}>Sin recordatorios. Agregá los que quieras.</Text>
@@ -130,6 +142,15 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
   container: { gap: 8 },
+  unavailableNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: `${c.danger}18`,
+    borderRadius: 10,
+    padding: 8,
+  },
+  unavailableText: { flex: 1, fontSize: 12.5, color: c.danger },
   empty: { fontSize: 13, color: c.textSubtle, fontStyle: 'italic' },
   selectedList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   selectedChip: {

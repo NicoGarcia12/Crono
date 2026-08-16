@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MyBirthdayCard } from '@/components/my-birthday-card';
+import { remindersAvailable } from '@/notifications/notifications';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { addEvent, editEvent } from '@/store/events-slice';
@@ -200,6 +201,13 @@ export default function PerfilScreen() {
         <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
         <InfoRow icon="phone-portrait" text="Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor." />
         <InfoRow icon="notifications" text="Los recordatorios son notificaciones locales: funcionan sin internet, incluso con la app cerrada." />
+        {!remindersAvailable ? (
+          <InfoRow
+            icon="warning"
+            danger
+            text="Estás en Expo Go: los recordatorios no se disparan acá. Instalá la app (APK) para recibirlos completos."
+          />
+        ) : null}
       </View>
     </ScrollView>
   );
@@ -232,14 +240,22 @@ function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) 
   );
 }
 
-function InfoRow({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+function InfoRow({
+  icon,
+  text,
+  danger,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  danger?: boolean;
+}) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <View style={styles.infoRow}>
-      <Ionicons name={icon} size={20} color={colors.primary} />
-      <Text style={styles.infoText}>{text}</Text>
+      <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.primary} />
+      <Text style={[styles.infoText, danger && { color: colors.danger }]}>{text}</Text>
     </View>
   );
 }

@@ -83,6 +83,19 @@ export default function EditarEventoScreen() {
         </Pressable>
       ) : null}
 
+      {/* Ideas de regalo: no aplica a festivos ni citas médicas, que no son de una persona. */}
+      {event.type !== 'festivo' && event.type !== 'cita_medica' ? (
+        <Pressable
+          style={styles.greetings}
+          accessibilityLabel="Ver ideas de regalo"
+          onPress={() => router.push({ pathname: '/regalos/[eventId]', params: { eventId: String(event.id) } })}
+        >
+          <Ionicons name="gift" size={20} color={colors.primary} />
+          <Text style={styles.greetingsText}>Ideas de regalo</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
+        </Pressable>
+      ) : null}
+
       <EventForm initial={event} submitLabel="Guardar cambios" onSubmit={handleSubmit} />
     </>
   );

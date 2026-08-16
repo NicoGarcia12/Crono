@@ -17,7 +17,7 @@ describe('initDatabase', () => {
         }
         if (sql.includes('ADD COLUMN contact_id')) columns.add('contact_id');
         if (sql.includes('ADD COLUMN phone')) columns.add('phone');
-        if (sql.includes('PRAGMA user_version = 6')) userVersion = 6;
+        if (sql.includes('PRAGMA user_version = 7')) userVersion = 7;
       }),
     };
     jest
@@ -33,7 +33,7 @@ describe('initDatabase', () => {
 
     expect({ columns: [...columns].sort(), userVersion }).toEqual({
       columns: ['contact_id', 'phone'],
-      userVersion: 6,
+      userVersion: 7,
     });
   });
 });

@@ -91,3 +91,16 @@ export interface Note {
 }
 
 export type NewNote = Pick<Note, 'title' | 'content'>;
+
+/**
+ * Una idea de regalo anotada para la persona de un evento. Lista libre, sin
+ * checklist: cuando se le da el regalo, la idea se saca (no queda historial).
+ */
+export interface GiftIdea {
+  id: number;
+  eventId: number;
+  text: string;
+  createdAt: string;
+}
+
+export type NewGiftIdea = Pick<GiftIdea, 'eventId' | 'text'>;

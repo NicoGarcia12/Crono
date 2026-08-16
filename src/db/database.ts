@@ -15,7 +15,7 @@ import { Platform } from 'react-native';
 let db: SQLite.SQLiteDatabase | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 7;
 
 export async function initDatabase(): Promise<void> {
   if (db) return; // ya inicializada
@@ -187,6 +187,21 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
         ON events(is_mine) WHERE is_mine = 1;
     `);
     currentVersion = 6;
+  }
+
+  if (currentVersion === 6) {
+    // v7: ideas de regalo por persona. Lista libre de texto ligada al evento
+    // que representa a esa persona (cumpleaños, aniversario, etc.); al
+    // regalarse algo la fila se borra, no se archiva.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS gift_ideas (
+        id INTEGER PRIMARY KEY NOT NULL,
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+    currentVersion = 7;
   }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -5,14 +5,8 @@ import { DateField, TimeField } from '@/components/date-time-field';
 import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
 import { TagsField } from '@/components/tags-field';
-import { EVENT_TYPE_META } from '@/constants/event-types';
-import {
-  EVENT_TYPES,
-  type EventItem,
-  type EventType,
-  type NewEvent,
-  type ReminderInput,
-} from '@/types';
+import { useEventTypeMeta, useEventTypesList } from '@/constants/use-event-types';
+import type { EventItem, EventType, NewEvent, ReminderInput } from '@/types';
 import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -37,6 +31,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const eventTypes = useEventTypesList();
+  const defaultTypeMeta = useEventTypeMeta('evento');
+
   const [title, setTitle] = useState(initial?.title ?? '');
   const [type, setType] = useState<EventType>(initial?.type ?? 'evento');
   const [date, setDate] = useState(initial?.date ?? dateToIso(new Date()));
@@ -51,7 +48,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       : [{ amount: 1, unit: 'dias' }],
   );
   const [yearly, setYearly] = useState<boolean>(
-    initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
+    initial ? initial.yearly === 1 : defaultTypeMeta.defaultYearly,
   );
   const [tags, setTags] = useState<string[]>(initial?.tags.map((tag) => tag.name) ?? []);
   const [photoUri, setPhotoUri] = useState<string | null>(initial?.photoUri ?? null);
@@ -68,7 +65,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     if (isMine) return; // La UI no ofrece una acción que viole el invariante.
     setType(t);
     // Cambiar el tipo ajusta el default de repetición anual (editable igual).
-    setYearly(EVENT_TYPE_META[t].defaultYearly);
+    setYearly(eventTypes.find((et) => et.key === t)?.defaultYearly ?? false);
   };
 
   /**
@@ -128,15 +125,14 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
 
       <Text style={styles.label}>Tipo</Text>
       <View style={styles.chipRow}>
-        {EVENT_TYPES.map((t) => {
-          const meta = EVENT_TYPE_META[t];
-          const active = t === type;
+        {eventTypes.map((meta) => {
+          const active = meta.key === type;
           return (
             <Pressable
-              key={t}
+              key={meta.key}
               style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
               disabled={isMine}
-              onPress={() => selectType(t)}
+              onPress={() => selectType(meta.key)}
             >
               <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
             </Pressable>

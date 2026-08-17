@@ -11,10 +11,17 @@ import { Platform } from 'react-native';
  * la base SQLite — y guardar ESA ruta, no la original.
  */
 
-const photosDir = new Directory(Paths.document, 'photos');
-
-function ensurePhotosDir(): void {
-  if (!photosDir.exists) photosDir.create({ intermediates: true });
+/**
+ * `Paths.document` no existe en web (expo-file-system es nativo puro):
+ * evaluarlo con solo IMPORTAR este módulo rompía toda la app en web. Por eso
+ * la carpeta se resuelve recién adentro de cada función, nunca al cargar el
+ * archivo — y ninguna de estas funciones se llama en web (`pickAndSavePhoto`
+ * corta antes; `savePhoto`/`deletePhoto` no tienen sentido sin selector).
+ */
+function getPhotosDir(): Directory {
+  const dir = new Directory(Paths.document, 'photos');
+  if (!dir.exists) dir.create({ intermediates: true });
+  return dir;
 }
 
 /**
@@ -41,10 +48,9 @@ export async function pickAndSavePhoto(prefix: string): Promise<string | null> {
 
 /** Copia una imagen (de donde sea) al sandbox de la app, con nombre único. */
 export function savePhoto(sourceUri: string, prefix: string): string {
-  ensurePhotosDir();
   const source = new File(sourceUri);
   const extension = source.extension || '.jpg';
-  const destination = new File(photosDir, `${prefix}-${Date.now()}${extension}`);
+  const destination = new File(getPhotosDir(), `${prefix}-${Date.now()}${extension}`);
   source.copy(destination);
   return destination.uri;
 }

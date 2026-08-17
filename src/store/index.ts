@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector, type TypedUseSelectorHook } from 'react-redux';
 
+import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
@@ -18,6 +19,7 @@ import settingsReducer from '@/store/settings-slice';
 export const store = configureStore({
   reducer: {
     events: eventsReducer,
+    eventTypes: eventTypesReducer,
     giftIdeas: giftIdeasReducer,
     greetings: greetingsReducer,
     greetingsSent: greetingsSentReducer,

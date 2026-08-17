@@ -111,7 +111,7 @@ describe('parseBackup', () => {
       events: [
         { title: 'Ok', type: 'evento', date: '2026-07-20', yearly: 0, reminders: [] },
         { title: 'Sin fecha', type: 'evento', yearly: 0 },
-        { title: 'Tipo inventado', type: 'fiesta', date: '2026-07-20', yearly: 0 },
+        { title: 'Sin tipo', type: '', date: '2026-07-20', yearly: 0 },
         { title: 'Fecha rara', type: 'evento', date: '20/07/2026', yearly: 0 },
       ],
       notes: [],
@@ -122,6 +122,21 @@ describe('parseBackup', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.backup.events.map((e) => e.title)).toEqual(['Ok']);
+  });
+
+  it('acepta un tipo de evento personalizado (no es un enum cerrado)', () => {
+    const raw = JSON.stringify({
+      app: 'crono',
+      formatVersion: 1,
+      events: [{ title: 'Torneo', type: 'deporte', date: '2026-07-20', yearly: 0 }],
+      notes: [],
+    });
+
+    const result = parseBackup(raw);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.backup.events[0].type).toBe('deporte');
   });
 
   it('completa los campos opcionales que falten', () => {

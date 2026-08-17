@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { useEventTypeMeta } from '@/constants/use-event-types';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 import type { EventItem } from '@/types';
@@ -10,7 +10,8 @@ import { formatRelative, nextOccurrence, yearsSince } from '@/utils/dates';
 
 /**
  * Tarjeta de un evento en la lista de la agenda.
- * Componente "tonto"/presentacional: recibe todo por props, no toca Redux.
+ * Presentacional en cuanto a props (todo lo del evento llega de afuera); solo
+ * lee de Redux los metadatos del TIPO (label/ícono/color), que son globales.
  */
 interface EventCardProps {
   event: EventItem;
@@ -22,7 +23,7 @@ export function EventCard({ event, occurrence }: EventCardProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const meta = EVENT_TYPE_META[event.type];
+  const meta = useEventTypeMeta(event.type);
   const next = occurrence ?? nextOccurrence(event);
   const years = event.yearly ? yearsSince(event.date, next) : 0;
   // El modelo usa 1/0; este texto es una decisión de presentación local a la tarjeta.

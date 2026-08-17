@@ -1,4 +1,3 @@
-import { EVENT_TYPE_META } from '@/constants/event-types';
 import type { EventItem, Note } from '@/types';
 
 /**
@@ -30,17 +29,21 @@ export function matches(query: string, fields: (string | null)[]): boolean {
   return words.every((word) => haystack.includes(word));
 }
 
-/** Busca en título, descripción, el nombre del tipo ('cita médica') y las etiquetas. */
-export function filterEvents(events: EventItem[], query: string): EventItem[] {
+/**
+ * Busca en título, descripción, el nombre del tipo ('cita médica') y las
+ * etiquetas. `typeLabel` resuelve el label de un tipo — los tipos ahora
+ * viven en la BD (ver constants/use-event-types.ts), así que esta función
+ * pura no puede resolverlos por sí sola.
+ */
+export function filterEvents(
+  events: EventItem[],
+  query: string,
+  typeLabel: (type: string) => string,
+): EventItem[] {
   if (normalizeText(query).length === 0) return events;
 
   return events.filter((event) =>
-    matches(query, [
-      event.title,
-      event.description,
-      EVENT_TYPE_META[event.type].label,
-      ...event.tags.map((tag) => tag.name),
-    ]),
+    matches(query, [event.title, event.description, typeLabel(event.type), ...event.tags.map((tag) => tag.name)]),
   );
 }
 

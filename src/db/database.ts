@@ -13,26 +13,37 @@ import { Platform } from 'react-native';
  */
 
 let db: SQLite.SQLiteDatabase | null = null;
+let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 7;
 
-export async function initDatabase(): Promise<void> {
-  if (db) return; // ya inicializada
-  try {
-    const database = await SQLite.openDatabaseAsync('crono.db');
-    // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
-    // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
-    await database.execAsync('PRAGMA foreign_keys = ON');
-    await migrate(database);
-    // El singleton se publica únicamente después de una migración confirmada.
-    db = database;
-  } catch (error) {
-    // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
-    // siguiente initDatabase() retorna temprano en vez de reintentar.
-    db = null;
-    throw error;
+export function initDatabase(): Promise<void> {
+  if (db) return Promise.resolve(); // ya inicializada
+  // React StrictMode (y el doble-mount del root layout en web) puede llamar
+  // initDatabase() dos veces en paralelo; sin esta memoización ambas abren
+  // 'crono.db' a la vez y la segunda falla (OPFS solo permite un writer).
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        const database = await SQLite.openDatabaseAsync('crono.db');
+        // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
+        // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
+        await database.execAsync('PRAGMA foreign_keys = ON');
+        await migrate(database);
+        // El singleton se publica únicamente después de una migración confirmada.
+        db = database;
+      } catch (error) {
+        // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
+        // siguiente initDatabase() retorna temprano en vez de reintentar.
+        db = null;
+        throw error;
+      } finally {
+        initPromise = null;
+      }
+    })();
   }
+  return initPromise;
 }
 
 /** Acceso a la conexión. Falla rápido si alguien la usa antes de initDatabase(). */
@@ -187,6 +198,21 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
         ON events(is_mine) WHERE is_mine = 1;
     `);
     currentVersion = 6;
+  }
+
+  if (currentVersion === 6) {
+    // v7: ideas de regalo por persona. Lista libre de texto ligada al evento
+    // que representa a esa persona (cumpleaños, aniversario, etc.); al
+    // regalarse algo la fila se borra, no se archiva.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS gift_ideas (
+        id INTEGER PRIMARY KEY NOT NULL,
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+    currentVersion = 7;
   }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

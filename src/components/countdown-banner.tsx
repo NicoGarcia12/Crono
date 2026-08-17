@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { useEventTypeMeta } from '@/constants/use-event-types';
 import type { EventItem } from '@/types';
 import { countdownLabel, dateToIso, formatLongDate, nextOccurrence, yearsSince } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
@@ -15,7 +15,7 @@ export function CountdownBanner({ event }: { event: EventItem }) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const meta = EVENT_TYPE_META[event.type];
+  const meta = useEventTypeMeta(event.type);
   const next = nextOccurrence(event);
   const years = event.yearly ? yearsSince(event.date, next) : 0;
 

@@ -1,6 +1,7 @@
 import { type JSX, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { FALLBACK_EVENT_TYPE_META } from '@/constants/event-types';
+import { useEventTypesList } from '@/constants/use-event-types';
 import type { EventItem } from '@/types';
 import { WEEKDAY_INITIALS } from '@/utils/calendar';
 import { dateToIso, todayIso } from '@/utils/dates';
@@ -12,9 +13,14 @@ const MONTHS_ES = [
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
 ] as const;
 
-function dayAccessibilityLabel(day: Date, events: EventItem[], isSelected: boolean): string {
+function dayAccessibilityLabel(
+  day: Date,
+  events: EventItem[],
+  isSelected: boolean,
+  typeLabel: (type: string) => string,
+): string {
   const eventCount = events.length;
-  const eventTypes = [...new Set(events.map((event) => EVENT_TYPE_META[event.type].label))];
+  const eventTypes = [...new Set(events.map((event) => typeLabel(event.type)))];
   const countLabel = `${eventCount} ${eventCount === 1 ? 'evento' : 'eventos'}`;
   const eventsLabel = eventCount === 0 ? 'sin eventos' : `${countLabel}: ${eventTypes.join(' y ')}`;
   const selectionLabel = isSelected ? ', seleccionado' : '';
@@ -46,6 +52,9 @@ export function CalendarGrid({
 }: CalendarGridProps): JSX.Element {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const eventTypes = useEventTypesList();
+  const metaByType = useMemo(() => new Map(eventTypes.map((t) => [t.key, t])), [eventTypes]);
+  const typeLabel = (type: string) => (metaByType.get(type) ?? FALLBACK_EVENT_TYPE_META).label;
 
   const today = todayIso();
 
@@ -77,7 +86,7 @@ export function CalendarGrid({
                 style={styles.day}
                 // El lector recibe la misma información que comunican los puntos de color.
                 accessibilityRole="button"
-                accessibilityLabel={dayAccessibilityLabel(day, dayEvents, isSelected)}
+                accessibilityLabel={dayAccessibilityLabel(day, dayEvents, isSelected, typeLabel)}
                 accessibilityState={{ selected: isSelected }}
                 onPress={() => onSelect(iso)}
               >
@@ -94,7 +103,13 @@ export function CalendarGrid({
                 </View>
                 <View style={styles.dots}>
                   {types.map((type) => (
-                    <View key={type} style={[styles.dot, { backgroundColor: EVENT_TYPE_META[type].color }]} />
+                    <View
+                      key={type}
+                      style={[
+                        styles.dot,
+                        { backgroundColor: (metaByType.get(type) ?? FALLBACK_EVENT_TYPE_META).color },
+                      ]}
+                    />
                   ))}
                 </View>
               </Pressable>

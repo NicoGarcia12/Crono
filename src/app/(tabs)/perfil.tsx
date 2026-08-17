@@ -171,6 +171,14 @@ export default function PerfilScreen() {
       </Pressable>
 
       <ActionCard
+        icon="pricetags"
+        color={colors.primary}
+        title="Tipos de evento"
+        subtitle="Creá tipos propios o editá el nombre, ícono y color de los que ya hay"
+        onPress={() => router.push('/tipos-evento')}
+      />
+
+      <ActionCard
         icon="cloud-upload"
         color={colors.primary}
         title="Exportar copia de seguridad"

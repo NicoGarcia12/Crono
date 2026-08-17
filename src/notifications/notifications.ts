@@ -3,7 +3,7 @@ import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
-import type { EventReminder, EventType, NewEvent, ReminderInput, ReminderUnit } from '@/types';
+import type { EventReminder, NewEvent, ReminderInput, ReminderUnit } from '@/types';
 import { toLocalDate } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
 
@@ -38,14 +38,20 @@ const notificationsUnavailable = isExpoGoAndroid || Platform.OS === 'web';
 /** true si en este entorno se pueden programar recordatorios. */
 export const remindersAvailable = !notificationsUnavailable;
 
-/** Un vistazo con onda al tipo de evento, para el título de la notificación. */
-const EVENT_TYPE_EMOJI: Record<EventType, string> = {
+/**
+ * Un vistazo con onda al tipo de evento, para el título de la notificación.
+ * Solo cubre los 5 de fábrica: los tipos personalizados (no tienen emoji
+ * propio) caen en el genérico — no vale la pena pedirle un emoji al usuario
+ * al crear un tipo nuevo.
+ */
+const EVENT_TYPE_EMOJI: Record<string, string> = {
   evento: '📅',
   cumpleanos: '🎂',
   aniversario: '💞',
   festivo: '🎉',
   cita_medica: '🩺',
 };
+const FALLBACK_EMOJI = '📌';
 
 const REMINDER_UNIT_SINGULAR: Record<ReminderUnit, string> = {
   minutos: 'minuto',
@@ -160,7 +166,7 @@ async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<st
   const reminderAt = reminderDate(occurrence, reminder);
 
   const content: NotificationContentInput = {
-    title: `${EVENT_TYPE_EMOJI[event.type]} ${event.title}`,
+    title: `${EVENT_TYPE_EMOJI[event.type] ?? FALLBACK_EMOJI} ${event.title}`,
     body: event.description
       ? `${friendlyLeadIn(reminder)}. ${event.description}`
       : `${friendlyLeadIn(reminder)}. Tocá para ver el detalle en Crono.`,

@@ -1,5 +1,9 @@
+import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import { filterEvents, filterNotes, matches, normalizeText } from '@/utils/search';
 import type { EventItem, Note } from '@/types';
+
+const typeLabel = (type: string) =>
+  (DEFAULT_EVENT_TYPES as Record<string, { label: string }>)[type]?.label ?? 'Otro';
 
 const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   title: 'Cumple de mamá',
@@ -58,28 +62,28 @@ describe('filterEvents', () => {
   ];
 
   it('busca en el título', () => {
-    expect(filterEvents(events, 'mama').map((e) => e.id)).toEqual([1]);
+    expect(filterEvents(events, 'mama', typeLabel).map((e) => e.id)).toEqual([1]);
   });
 
   it('busca en la descripción', () => {
-    expect(filterEvents(events, 'dentista').map((e) => e.id)).toEqual([2]);
+    expect(filterEvents(events, 'dentista', typeLabel).map((e) => e.id)).toEqual([2]);
   });
 
   it('busca por el nombre del tipo', () => {
-    expect(filterEvents(events, 'cita medica').map((e) => e.id)).toEqual([2]);
+    expect(filterEvents(events, 'cita medica', typeLabel).map((e) => e.id)).toEqual([2]);
   });
 
   it('busca por etiqueta', () => {
     const conEtiqueta = evento({ id: 4, title: 'Asado', tags: [{ id: 1, name: 'trabajo' }] });
-    expect(filterEvents([...events, conEtiqueta], 'trabajo').map((e) => e.id)).toEqual([4]);
+    expect(filterEvents([...events, conEtiqueta], 'trabajo', typeLabel).map((e) => e.id)).toEqual([4]);
   });
 
   it('sin búsqueda devuelve todo', () => {
-    expect(filterEvents(events, '')).toHaveLength(3);
+    expect(filterEvents(events, '', typeLabel)).toHaveLength(3);
   });
 
   it('devuelve vacío cuando no hay coincidencias', () => {
-    expect(filterEvents(events, 'asado')).toEqual([]);
+    expect(filterEvents(events, 'asado', typeLabel)).toEqual([]);
   });
 });
 

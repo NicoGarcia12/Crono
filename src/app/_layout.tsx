@@ -10,6 +10,7 @@ import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { requestNotificationPermission } from '@/notifications/notifications';
 import { store, useAppSelector } from '@/store';
+import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
 import { loadNotes } from '@/store/notes-slice';
 import { loadSettings } from '@/store/settings-slice';
@@ -42,6 +43,7 @@ export default function RootLayout() {
       // Cargar todo lo persistido a Redux antes de renderizar pantallas.
       await Promise.all([
         store.dispatch(loadSettings()),
+        store.dispatch(loadEventTypes()),
         store.dispatch(loadEvents()),
         store.dispatch(loadNotes()),
       ]);
@@ -131,6 +133,7 @@ function Gates() {
         />
         <Stack.Screen name="saludos" options={{ title: '¿Quién me saludó?' }} />
         <Stack.Screen name="regalos/[eventId]" options={{ title: 'Ideas de regalo' }} />
+        <Stack.Screen name="tipos-evento" options={{ title: 'Tipos de evento' }} />
       </Stack>
     </>
   );

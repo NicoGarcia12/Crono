@@ -1,24 +1,31 @@
-import type { EventType, ReminderInput, ReminderUnit } from '@/types';
+import type { BuiltinEventType, EventTypeMeta, ReminderInput, ReminderUnit } from '@/types';
 
 /**
- * Metadatos de presentación por tipo de evento: etiqueta en español,
- * ícono (de Ionicons, que viene incluido con Expo) y color distintivo.
+ * Datos de los 5 tipos "de fábrica": la migración los siembra en la tabla
+ * `event_types` una sola vez. De acá en más la fuente de verdad es la BD
+ * (vía el slice `eventTypes`, ver constants/use-event-types.ts), no esta
+ * constante — así el usuario puede editar label/ícono/color incluso de estos 5.
  */
-interface EventTypeMeta {
-  label: string;
-  /** Nombre de ícono de Ionicons (https://icons.expo.fyi). */
-  icon: string;
-  color: string;
-  /** Si por defecto se repite cada año al crear un evento de este tipo. */
-  defaultYearly: boolean;
-}
-
-export const EVENT_TYPE_META: Record<EventType, EventTypeMeta> = {
+export const DEFAULT_EVENT_TYPES: Record<
+  BuiltinEventType,
+  { label: string; icon: string; color: string; defaultYearly: boolean }
+> = {
   evento: { label: 'Evento', icon: 'calendar', color: '#208AEF', defaultYearly: false },
   cumpleanos: { label: 'Cumpleaños', icon: 'gift', color: '#E91E63', defaultYearly: true },
   aniversario: { label: 'Aniversario', icon: 'heart', color: '#9C27B0', defaultYearly: true },
   festivo: { label: 'Día festivo', icon: 'sunny', color: '#FF9800', defaultYearly: true },
   cita_medica: { label: 'Cita médica', icon: 'medkit', color: '#4CAF50', defaultYearly: false },
+};
+
+/** Se usa si un evento quedó con una clave de tipo que ya no existe (no debería pasar, pero no debe romper la UI). */
+export const FALLBACK_EVENT_TYPE_META: EventTypeMeta = {
+  id: 0,
+  key: '',
+  label: 'Otro',
+  icon: 'ellipse',
+  color: '#999999',
+  defaultYearly: false,
+  isBuiltin: false,
 };
 
 /**

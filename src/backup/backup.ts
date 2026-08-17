@@ -1,4 +1,4 @@
-import { EVENT_TYPES, REMINDER_UNITS } from '@/types';
+import { REMINDER_UNITS } from '@/types';
 import type { EventItem, Greeting, NewEvent, NewNote, Note, ReminderInput } from '@/types';
 
 /**
@@ -154,7 +154,10 @@ function toEvent(value: unknown): NewEvent[] {
   const { title, type, date, yearly } = value;
 
   const titleOk = typeof title === 'string' && title.trim().length > 0;
-  const typeOk = typeof type === 'string' && (EVENT_TYPES as readonly string[]).includes(type);
+  // Los tipos personalizados no son un enum fijo: alcanza con que sea texto no
+  // vacío. Si esa clave ya no existe al restaurar, se ve con el ícono/color
+  // de reserva (FALLBACK_EVENT_TYPE_META) — no rompe la restauración.
+  const typeOk = typeof type === 'string' && type.trim().length > 0;
   const dateOk = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date);
   const yearlyOk = yearly === 0 || yearly === 1;
   if (!titleOk || !typeOk || !dateOk || !yearlyOk) return [];

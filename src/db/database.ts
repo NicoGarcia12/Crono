@@ -1,6 +1,8 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
+import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+
 /**
  * Capa de base de datos local (SQLite).
  *
@@ -16,7 +18,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 10;
+const DATABASE_VERSION = 11;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -259,7 +261,42 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 10;
   }
 
+  if (currentVersion === 10) {
+    // v11: tipos de evento personalizables. Los 5 originales pasan de un enum
+    // fijo a filas sembradas acá (is_builtin = 1): se puede editar su label/
+    // ícono/color desde Perfil, pero no borrarlos ni cambiar su `key`, porque
+    // hay lógica de negocio atada a esas claves literales (cumpleanos propio,
+    // ideas de regalo, etc.). `events.type` sigue siendo TEXT: ahora referencia
+    // `event_types.key` en vez de un valor de un enum cerrado.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS event_types (
+        id INTEGER PRIMARY KEY NOT NULL,
+        key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        color TEXT NOT NULL,
+        default_yearly INTEGER NOT NULL DEFAULT 0,
+        is_builtin INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    for (const [key, meta] of Object.entries(DEFAULT_EVENT_TYPES)) {
+      // Todos los valores son constantes propias (no hay input de usuario acá),
+      // así que van embebidos como el resto de las migraciones de este archivo.
+      await database.execAsync(`
+        INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin)
+        SELECT '${key}', '${sqlEscape(meta.label)}', '${meta.icon}', '${meta.color}', ${meta.defaultYearly ? 1 : 0}, 1
+        WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${key}');
+      `);
+    }
+    currentVersion = 11;
+  }
+
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/** Escapa comillas simples para embeber texto en SQL crudo (sql = ''valor''). */
+function sqlEscape(value: string): string {
+  return value.replace(/'/g, "''");
 }
 
 async function addColumnIfMissing(

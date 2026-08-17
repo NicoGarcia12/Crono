@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { FALLBACK_EVENT_TYPE_META } from '@/constants/event-types';
+import { useEventTypesList } from '@/constants/use-event-types';
 import type { EventItem } from '@/types';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -22,6 +23,8 @@ interface MonthBirthdaysListProps {
 export function MonthBirthdaysList({ people, greetedEventIds, onToggle }: MonthBirthdaysListProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const eventTypes = useEventTypesList();
+  const metaByType = useMemo(() => new Map(eventTypes.map((t) => [t.key, t])), [eventTypes]);
 
   if (people.length === 0) return null;
 
@@ -29,7 +32,7 @@ export function MonthBirthdaysList({ people, greetedEventIds, onToggle }: MonthB
     <View style={styles.container}>
       <Text style={styles.title}>Cumplen este mes</Text>
       {people.map((event) => {
-        const meta = EVENT_TYPE_META[event.type];
+        const meta = metaByType.get(event.type) ?? FALLBACK_EVENT_TYPE_META;
         const greeted = greetedEventIds.has(event.id);
 
         return (

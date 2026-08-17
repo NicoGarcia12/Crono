@@ -7,10 +7,39 @@
  * usa estos tipos.
  */
 
-/** Los tipos de ítem que pediste: eventos, cumpleaños, aniversarios, festivos y citas médicas. */
+/**
+ * Claves de los 5 tipos originales (evento, cumpleaños, aniversario, festivo,
+ * cita médica). Siguen existiendo como tipos "de fábrica" (no se pueden
+ * borrar ni renombrar la clave) porque hay lógica de negocio que depende de
+ * ellas: el cumpleaños propio siempre es 'cumpleanos', las ideas de regalo
+ * no aplican a 'festivo'/'cita_medica', etc.
+ */
 export const EVENT_TYPES = ['evento', 'cumpleanos', 'aniversario', 'festivo', 'cita_medica'] as const;
 
-export type EventType = (typeof EVENT_TYPES)[number];
+export type BuiltinEventType = (typeof EVENT_TYPES)[number];
+
+/** Ya no es un enum cerrado: el usuario puede crear sus propios tipos (ver EventTypeMeta). */
+export type EventType = string;
+
+/**
+ * Metadatos de presentación de un tipo de evento (tabla `event_types`).
+ * Los 5 de fábrica vienen sembrados desde la migración; el resto los crea
+ * el usuario desde Perfil.
+ */
+export interface EventTypeMeta {
+  id: number;
+  key: string;
+  label: string;
+  /** Nombre de ícono de Ionicons (https://icons.expo.fyi). */
+  icon: string;
+  color: string;
+  /** Si por defecto se repite cada año al crear un evento de este tipo. */
+  defaultYearly: boolean;
+  /** true en los 5 tipos originales: se puede editar label/icon/color, no la clave ni borrarlo. */
+  isBuiltin: boolean;
+}
+
+export type NewEventType = Pick<EventTypeMeta, 'label' | 'icon' | 'color' | 'defaultYearly'>;
 
 /** Unidades en las que se puede expresar la anticipación de un aviso. */
 export const REMINDER_UNITS = ['minutos', 'horas', 'dias', 'semanas', 'meses'] as const;

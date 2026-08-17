@@ -1,0 +1,81 @@
+name: Cut Release
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cut-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Compute next version
+        id: version
+        run: |
+          NEXT=$(git cliff --bumped-version)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$NEXT" ] || [ "$NEXT" = "$LAST_TAG" ]; then
+            echo "No hay commits releasables nuevos desde $LAST_TAG, no hace falta cortar un release." >&2
+            exit 1
+          fi
+
+          # Regla del proyecto: la primera release real siempre es 1.0.0, sin importar
+          # qué de vaya a marcar el bump automático. Aplica solo mientras el último tag
+          # siga en 0.x (o no exista ninguno todavía); de ahí en más el cálculo es normal.
+          LAST_MAJOR="${LAST_TAG#v}"
+          LAST_MAJOR="${LAST_MAJOR%%.*}"
+          if [ -z "$LAST_TAG" ] || [ "$LAST_MAJOR" = "0" ]; then
+            NEXT="v1.0.0"
+          fi
+
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          echo "version=${NEXT#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release branch
+        run: git checkout -b release/${{ steps.version.outputs.version }}
+
+      - name: Generate changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            git cliff --tag ${{ steps.version.outputs.next }} --prepend CHANGELOG.md --unreleased
+          else
+            git cliff --tag ${{ steps.version.outputs.next }} --output CHANGELOG.md
+          fi
+
+      - name: Bump package.json version(s)
+        run: |
+          for pkg in package.json; do
+            if [ -f "$pkg" ]; then
+              (cd "$(dirname "$pkg")" && npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version)
+            fi
+          done
+
+      - name: Commit release changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): ${{ steps.version.outputs.next }}"
+          git push origin release/${{ steps.version.outputs.version }}
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create \
+            --base main \
+            --head release/${{ steps.version.outputs.version }} \
+            --title "Release ${{ steps.version.outputs.next }}" \
+            --body "Changelog generado automáticamente con git-cliff. Revisar antes de mergear — al mergear se publica el Release y el tag ${{ steps.version.outputs.next }} solos."

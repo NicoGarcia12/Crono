@@ -1,6 +1,6 @@
 import type { SQLiteDatabase, SQLiteRunResult } from 'expo-sqlite';
 
-import { attachReminders, insertEvent } from '@/db/events-repo';
+import { attachReminders, attachTags, insertEvent } from '@/db/events-repo';
 import { getDb } from '@/db/database';
 import type { NewEvent } from '@/types';
 
@@ -19,6 +19,7 @@ const miCumple: NewEvent = {
   reminders: [],
   yearly: 1,
   isMine: 1,
+  tags: [],
 };
 
 const runResult = (lastInsertRowId = 0): SQLiteRunResult => ({ lastInsertRowId, changes: 1 });
@@ -53,6 +54,23 @@ describe('attachReminders', () => {
   });
 });
 
+describe('attachTags', () => {
+  const events = [{ id: 1 }, { id: 2 }];
+
+  it('agrupa las etiquetas por evento', () => {
+    const result = attachTags(events, [
+      { eventId: 1, id: 10, name: 'familia' },
+      { eventId: 1, id: 11, name: 'cumpleaños' },
+    ]);
+
+    expect(result[0].tags).toEqual([
+      { id: 10, name: 'familia' },
+      { id: 11, name: 'cumpleaños' },
+    ]);
+    expect(result[1].tags).toEqual([]); // sin etiquetas → lista vacía, nunca undefined
+  });
+});
+
 describe('insertEvent', () => {
   it('mantiene un único cumpleaños propio cuando dos escrituras llegan en paralelo', async () => {
     const rows: Array<{ isMine: 0 | 1 }> = [];
@@ -78,6 +96,11 @@ describe('insertEvent', () => {
         if (isMine !== 0 && isMine !== 1) throw new Error('is_mine inválido');
         rows.push({ isMine });
         return runResult(rows.length);
+      }
+
+      // El evento de prueba no trae etiquetas: setEventTags igual limpia la tabla puente.
+      if (query.startsWith('DELETE FROM event_tags')) {
+        return runResult();
       }
 
       throw new Error(`SQL inesperado: ${query}`);

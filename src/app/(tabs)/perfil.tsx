@@ -48,7 +48,13 @@ export default function PerfilScreen() {
       await dispatch(
         editEvent({
           id: myBirthday.id,
-          data: { ...myBirthday, title, date: isoDate, reminders: myBirthday.reminders },
+          data: {
+            ...myBirthday,
+            title,
+            date: isoDate,
+            reminders: myBirthday.reminders,
+            tags: myBirthday.tags.map((tag) => tag.name),
+          },
           previousReminders: myBirthday.reminders,
         }),
       ).unwrap();
@@ -67,6 +73,7 @@ export default function PerfilScreen() {
         reminders: [{ amount: 1, unit: 'dias' }],
         yearly: 1,
         isMine: 1,
+        tags: [],
       }),
     ).unwrap();
   };

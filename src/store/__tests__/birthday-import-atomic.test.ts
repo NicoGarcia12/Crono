@@ -26,6 +26,7 @@ const birthdays: NewEvent[] = [
     reminders: [{ amount: 1, unit: 'dias' }],
     yearly: 1,
     isMine: 0,
+    tags: [],
   },
   {
     title: 'Bruno',
@@ -38,6 +39,7 @@ const birthdays: NewEvent[] = [
     reminders: [{ amount: 1, unit: 'dias' }],
     yearly: 1,
     isMine: 0,
+    tags: [],
   },
 ];
 
@@ -66,7 +68,12 @@ describe('addContactBirthdays', () => {
 
   it('agrega sólo el resultado confirmado de SQLite, que deduplica por contact_id', async () => {
     mockSchedule.mockResolvedValue(anaReminders);
-    const persisted = birthdays.map((birthday, index) => ({ ...birthday, id: index + 1, reminders: anaReminders }));
+    const persisted = birthdays.map((birthday, index) => ({
+      ...birthday,
+      id: index + 1,
+      reminders: anaReminders,
+      tags: [],
+    }));
     mockRepo.insertContactBirthdays.mockResolvedValueOnce(persisted);
     const store = makeStore();
 

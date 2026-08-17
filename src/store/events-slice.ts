@@ -68,10 +68,7 @@ export const editEvent = createAsyncThunk(
 
     try {
       await cancelReminders(payload.previousReminders);
-      const { reminders: _chosen, ...eventData } = normalized;
-      const updated: EventItem = { ...eventData, id: payload.id, reminders };
-      await eventsRepo.updateEvent(updated);
-      return updated;
+      return await eventsRepo.updateEvent(payload.id, normalized, reminders);
     } catch (error) {
       // Si falla un paso posterior, no dejamos reemplazos huérfanos en el SO.
       await Promise.allSettled([cancelReminders(reminders)]);

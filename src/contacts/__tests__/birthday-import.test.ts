@@ -22,6 +22,7 @@ const evento = (over: Partial<EventItem>): EventItem => ({
   reminders: [],
   yearly: 1,
   isMine: 0,
+  tags: [],
   ...over,
 });
 
@@ -136,6 +137,7 @@ describe('candidateToEvent', () => {
       reminders: [{ amount: 1, unit: 'dias' }],
       yearly: 1,
       isMine: 0,
+      tags: [],
     });
   });
 });

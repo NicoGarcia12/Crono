@@ -30,12 +30,17 @@ export function matches(query: string, fields: (string | null)[]): boolean {
   return words.every((word) => haystack.includes(word));
 }
 
-/** Busca en título, descripción y en el nombre del tipo ('cita médica'). */
+/** Busca en título, descripción, el nombre del tipo ('cita médica') y las etiquetas. */
 export function filterEvents(events: EventItem[], query: string): EventItem[] {
   if (normalizeText(query).length === 0) return events;
 
   return events.filter((event) =>
-    matches(query, [event.title, event.description, EVENT_TYPE_META[event.type].label]),
+    matches(query, [
+      event.title,
+      event.description,
+      EVENT_TYPE_META[event.type].label,
+      ...event.tags.map((tag) => tag.name),
+    ]),
   );
 }
 

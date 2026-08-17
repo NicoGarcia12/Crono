@@ -36,6 +36,7 @@ const nuevoEvento: NewEvent = {
   ],
   yearly: 1,
   isMine: 0,
+  tags: [],
 };
 
 const avisosProgramados = [
@@ -55,6 +56,7 @@ const eventoGuardado: EventItem = {
   yearly: 1,
   isMine: 0,
   reminders: avisosProgramados,
+  tags: [],
 };
 
 beforeEach(() => {
@@ -120,13 +122,14 @@ describe('editEvent', () => {
       title: 'Cumple de papá',
       reminders: [{ amount: 0, unit: 'minutos' }],
     };
+    const actualizado: EventItem = { ...eventoGuardado, title: 'Cumple de papá', reminders: nuevosAvisos };
+    mockRepo.updateEvent.mockResolvedValue(actualizado);
+
     await store.dispatch(editEvent({ id: 1, data, previousReminders: eventoGuardado.reminders }));
 
     expect(mockCancel).toHaveBeenCalledWith(avisosProgramados);
     expect(mockSchedule).toHaveBeenCalledWith(data);
-    expect(mockRepo.updateEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1, title: 'Cumple de papá', reminders: nuevosAvisos }),
-    );
+    expect(mockRepo.updateEvent).toHaveBeenCalledWith(1, data, nuevosAvisos);
     expect(store.getState().events.items[0].title).toBe('Cumple de papá');
   });
 

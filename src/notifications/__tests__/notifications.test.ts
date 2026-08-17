@@ -26,6 +26,7 @@ const evento: NewEvent = {
     { amount: 1, unit: 'meses' },
     { amount: 1, unit: 'dias' },
   ],
+  tags: [],
 };
 
 describe('scheduleEventReminders', () => {

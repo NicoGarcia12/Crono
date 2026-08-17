@@ -16,7 +16,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 8;
+const DATABASE_VERSION = 9;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -230,6 +230,25 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       );
     `);
     currentVersion = 8;
+  }
+
+  if (currentVersion === 8) {
+    // v9: etiquetas libres (familia, amigos, trabajo...), muchos a muchos con
+    // eventos. `tags.name` es única para no duplicar "familia"/"Familia" con
+    // mayúsculas distintas por typo; se normaliza antes de insertar.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL UNIQUE
+      );
+
+      CREATE TABLE IF NOT EXISTS event_tags (
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (event_id, tag_id)
+      );
+    `);
+    currentVersion = 9;
   }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

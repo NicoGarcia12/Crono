@@ -14,6 +14,7 @@ const evento = (over: Partial<EventItem> & { id: number; title: string }): Event
   reminders: [],
   yearly: 1,
   isMine: 0,
+  tags: [],
   ...over,
 });
 

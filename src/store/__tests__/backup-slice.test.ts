@@ -40,6 +40,7 @@ const evento: EventItem = {
   reminders: [{ amount: 1, unit: 'dias', notificationId: 'notif-1' }],
   yearly: 1,
   isMine: 0,
+  tags: [],
 };
 
 const nota: Note = {

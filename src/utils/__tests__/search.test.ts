@@ -12,6 +12,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   reminders: [],
   yearly: 1,
   isMine: 0,
+  tags: [],
   ...over,
 });
 
@@ -65,6 +66,11 @@ describe('filterEvents', () => {
 
   it('busca por el nombre del tipo', () => {
     expect(filterEvents(events, 'cita medica').map((e) => e.id)).toEqual([2]);
+  });
+
+  it('busca por etiqueta', () => {
+    const conEtiqueta = evento({ id: 4, title: 'Asado', tags: [{ id: 1, name: 'trabajo' }] });
+    expect(filterEvents([...events, conEtiqueta], 'trabajo').map((e) => e.id)).toEqual([4]);
   });
 
   it('sin búsqueda devuelve todo', () => {

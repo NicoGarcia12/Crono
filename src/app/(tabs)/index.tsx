@@ -25,14 +25,25 @@ export default function AgendaScreen() {
   const router = useRouter();
   const events = useAppSelector((state) => state.events.items);
   const [filter, setFilter] = useState<EventType | 'todos'>('todos');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  // Etiquetas en uso, para ofrecerlas como filtro (no hay una lista aparte: se derivan de los eventos).
+  const availableTags = useMemo(() => {
+    const names = new Set<string>();
+    events.forEach((event) => event.tags.forEach((tag) => names.add(tag.name)));
+    return [...names].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [events]);
 
   // useMemo evita reordenar la lista en cada render — solo cuando cambia algo de esto.
   const sorted = useMemo(() => {
     const byType = filter === 'todos' ? events : events.filter((e) => e.type === filter);
-    const found = filterEvents(byType, query);
+    const byTag = tagFilter
+      ? byType.filter((e) => e.tags.some((tag) => tag.name === tagFilter))
+      : byType;
+    const found = filterEvents(byTag, query);
     return [...found].sort((a, b) => nextOccurrence(a).getTime() - nextOccurrence(b).getTime());
-  }, [events, filter, query]);
+  }, [events, filter, tagFilter, query]);
 
   return (
     <View style={styles.container}>
@@ -56,6 +67,27 @@ export default function AgendaScreen() {
           />
         ))}
       </View>
+
+      {/* Filtro por etiqueta, solo si hay alguna creada. */}
+      {availableTags.length > 0 ? (
+        <View style={styles.filterRow}>
+          <FilterChip
+            label="Todas las etiquetas"
+            active={tagFilter === null}
+            color={colors.contrast}
+            onPress={() => setTagFilter(null)}
+          />
+          {availableTags.map((tag) => (
+            <FilterChip
+              key={tag}
+              label={tag}
+              color={colors.primary}
+              active={tagFilter === tag}
+              onPress={() => setTagFilter(tag === tagFilter ? null : tag)}
+            />
+          ))}
+        </View>
+      ) : null}
 
       {/* FlatList virtualiza: solo renderiza lo visible (nunca ScrollView + map para listas). */}
       <FlatList

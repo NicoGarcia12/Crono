@@ -2,8 +2,8 @@ import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
-import { EVENT_TYPE_META } from '@/constants/event-types';
-import type { EventReminder, NewEvent, ReminderInput } from '@/types';
+import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
+import type { EventReminder, EventType, NewEvent, ReminderInput, ReminderUnit } from '@/types';
 import { toLocalDate } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
 
@@ -37,6 +37,32 @@ const notificationsUnavailable = isExpoGoAndroid || Platform.OS === 'web';
 
 /** true si en este entorno se pueden programar recordatorios. */
 export const remindersAvailable = !notificationsUnavailable;
+
+/** Un vistazo con onda al tipo de evento, para el título de la notificación. */
+const EVENT_TYPE_EMOJI: Record<EventType, string> = {
+  evento: '📅',
+  cumpleanos: '🎂',
+  aniversario: '💞',
+  festivo: '🎉',
+  cita_medica: '🩺',
+};
+
+const REMINDER_UNIT_SINGULAR: Record<ReminderUnit, string> = {
+  minutos: 'minuto',
+  horas: 'hora',
+  dias: 'día',
+  semanas: 'semana',
+  meses: 'mes',
+};
+
+/** Frase humana según la anticipación elegida: "Es mañana", "Es en 3 días"... */
+function friendlyLeadIn(reminder: ReminderInput): string {
+  if (reminder.amount === 0) return 'Es ahora mismo';
+  if (reminder.unit === 'dias' && reminder.amount === 1) return 'Es mañana';
+  const unitLabel =
+    reminder.amount === 1 ? REMINDER_UNIT_SINGULAR[reminder.unit] : REMINDER_UNIT_LABELS[reminder.unit];
+  return `Es en ${reminder.amount} ${unitLabel}`;
+}
 
 // Cache del módulo: undefined = todavía no se intentó cargar; null = no disponible.
 let cachedModule: NotificationsModule | null | undefined;
@@ -134,8 +160,10 @@ async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<st
   const reminderAt = reminderDate(occurrence, reminder);
 
   const content: NotificationContentInput = {
-    title: `${EVENT_TYPE_META[event.type].label}: ${event.title}`,
-    body: event.description ?? 'Tocá para ver el detalle en Crono.',
+    title: `${EVENT_TYPE_EMOJI[event.type]} ${event.title}`,
+    body: event.description
+      ? `${friendlyLeadIn(reminder)}. ${event.description}`
+      : `${friendlyLeadIn(reminder)}. Tocá para ver el detalle en Crono.`,
     sound: 'default',
   };
 

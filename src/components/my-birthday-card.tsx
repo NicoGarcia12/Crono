@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DateField } from '@/components/date-time-field';
 import type { ThemeColors } from '@/theme/theme';
@@ -49,9 +49,13 @@ export function MyBirthdayCard({ event, onSave, onOpenGreetings }: MyBirthdayCar
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <View style={styles.icon}>
-          <Ionicons name="gift" size={20} color={colors.danger} />
-        </View>
+        {event?.photoUri ? (
+          <Image source={{ uri: event.photoUri }} style={styles.icon} />
+        ) : (
+          <View style={styles.icon}>
+            <Ionicons name="gift" size={20} color={colors.danger} />
+          </View>
+        )}
         <View style={styles.headerBody}>
           <Text style={styles.title}>Mi cumpleaños</Text>
           <Text style={styles.subtitle}>

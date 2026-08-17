@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { EVENT_TYPE_META } from '@/constants/event-types';
 import type { ThemeColors } from '@/theme/theme';
@@ -30,10 +30,14 @@ export function EventCard({ event, occurrence }: EventCardProps) {
 
   return (
     <View style={styles.card}>
-      <View style={[styles.iconCircle, { backgroundColor: `${meta.color}22` }]}>
-        {/* Ionicons tipa `name` con una unión enorme de strings; casteamos desde nuestro meta. */}
-        <Ionicons name={meta.icon as keyof typeof Ionicons.glyphMap} size={22} color={meta.color} />
-      </View>
+      {event.photoUri ? (
+        <Image source={{ uri: event.photoUri }} style={styles.iconCircle} />
+      ) : (
+        <View style={[styles.iconCircle, { backgroundColor: `${meta.color}22` }]}>
+          {/* Ionicons tipa `name` con una unión enorme de strings; casteamos desde nuestro meta. */}
+          <Ionicons name={meta.icon as keyof typeof Ionicons.glyphMap} size={22} color={meta.color} />
+        </View>
+      )}
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
           {title}

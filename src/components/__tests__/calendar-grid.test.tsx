@@ -17,6 +17,7 @@ const event = (overrides: Partial<EventItem> & { id: number }): EventItem => ({
   yearly: 0,
   isMine: 0,
   tags: [],
+  photoUri: null,
   ...overrides,
 });
 

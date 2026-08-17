@@ -117,6 +117,7 @@ export function candidateToEvent(candidate: ContactCandidate, date: string): New
     yearly: 1,
     isMine: 0, // el cumpleaños propio se carga aparte desde Perfil
     tags: [],
+    photoUri: null,
   };
 }
 

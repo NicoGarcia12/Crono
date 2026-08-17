@@ -25,6 +25,7 @@ interface EventRow {
   phone: string | null;
   yearly: 0 | 1;
   isMine: 0 | 1;
+  photoUri: string | null;
 }
 
 interface ReminderRow {
@@ -66,7 +67,7 @@ export async function findAllEvents(): Promise<EventItem[]> {
   const db = getDb();
   const events = await db.getAllAsync<EventRow>(
     `SELECT id, title, type, date, time, description, yearly,
-            contact_id AS contactId, phone, is_mine AS isMine
+            contact_id AS contactId, phone, is_mine AS isMine, photo_uri AS photoUri
      FROM events ORDER BY date ASC`,
   );
   const reminders = await db.getAllAsync<ReminderRow>(
@@ -196,10 +197,10 @@ async function writeEvent(
     await db.runAsync(
       `UPDATE events
        SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
-           contact_id = ?, phone = ?, is_mine = ?
+           contact_id = ?, phone = ?, is_mine = ?, photo_uri = ?
        WHERE id = ?`,
       data.title, data.type, data.date, data.time, data.description, data.yearly,
-      data.contactId, data.phone, data.isMine, existingId,
+      data.contactId, data.phone, data.isMine, data.photoUri, existingId,
     );
     await db.runAsync('DELETE FROM reminders WHERE event_id = ?', existingId);
     await insertReminders(db, existingId, reminders);
@@ -208,10 +209,10 @@ async function writeEvent(
   }
 
   const result: SQLite.SQLiteRunResult = await db.runAsync(
-    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine, photo_uri)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     data.title, data.type, data.date, data.time, data.description, data.yearly,
-    data.contactId, data.phone, data.isMine,
+    data.contactId, data.phone, data.isMine, data.photoUri,
   );
   await insertReminders(db, result.lastInsertRowId, reminders);
   const tags = await tagsRepo.setEventTags(db, result.lastInsertRowId, data.tags);

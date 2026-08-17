@@ -27,6 +27,7 @@ const evento: NewEvent = {
     { amount: 1, unit: 'dias' },
   ],
   tags: [],
+  photoUri: null,
 };
 
 describe('scheduleEventReminders', () => {

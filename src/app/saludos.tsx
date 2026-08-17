@@ -83,6 +83,7 @@ export default function SaludosScreen() {
                 yearly: 1,
                 isMine: 0,
                 tags: [],
+                photoUri: null,
               }),
             ).unwrap();
 

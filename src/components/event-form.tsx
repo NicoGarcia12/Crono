@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { DateField, TimeField } from '@/components/date-time-field';
+import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
 import { TagsField } from '@/components/tags-field';
 import { EVENT_TYPE_META } from '@/constants/event-types';
@@ -53,6 +54,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
   );
   const [tags, setTags] = useState<string[]>(initial?.tags.map((tag) => tag.name) ?? []);
+  const [photoUri, setPhotoUri] = useState<string | null>(initial?.photoUri ?? null);
   // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
 
@@ -102,11 +104,19 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
       isMine: initial?.isMine ?? 0,
       tags,
+      photoUri,
     });
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <PhotoPicker
+        uri={photoUri}
+        onChange={setPhotoUri}
+        filePrefix="evento"
+        accessibilityLabel="Elegir foto del evento"
+      />
+
       <Text style={styles.label}>Título</Text>
       <TextInput
         style={styles.input}

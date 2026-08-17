@@ -41,6 +41,7 @@ const evento: EventItem = {
   yearly: 1,
   isMine: 0,
   tags: [],
+  photoUri: null,
 };
 
 const nota: Note = {
@@ -76,7 +77,7 @@ const makeStore = (greetings: Greeting[] = []) =>
       greetings: { year: 2026, items: greetings, status: 'ready' as const },
       greetingsSent: { year: 2026, items: [], status: 'ready' as const },
       notes: { items: [nota], status: 'ready' as const },
-      settings: { displayName: 'Nico', themePreference: 'sistema' as const, loaded: true },
+      settings: { displayName: 'Nico', themePreference: 'sistema' as const, photoUri: null, loaded: true },
     },
   });
 

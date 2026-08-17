@@ -48,3 +48,9 @@ commit_parsers = [
   { message = "^build", skip = true },
   { message = "^style\\(automatic\\)", skip = true },
 ]
+
+[bump]
+# Sin esto, `git cliff --bumped-version` calcula la primera versión sin el
+# prefijo "v" (ej. "0.1.0"), lo que no matchea `tag_pattern` de arriba y
+# hace fallar el workflow Cut Release apenas no hay tags todavía en el repo.
+initial_tag = "v0.1.0"

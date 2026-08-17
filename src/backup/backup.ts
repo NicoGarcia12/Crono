@@ -42,10 +42,14 @@ export function buildBackup(
     displayName,
     // Se guardan sin los ids ni los ids de notificación: son de ESTE celular.
     // Las etiquetas viajan por nombre (se resuelven o crean solas al restaurar).
-    events: events.map(({ id: _id, reminders, tags, ...event }) => ({
+    // La foto NO viaja: es un archivo local (FileSystem.documentDirectory) que
+    // no existe en el celular que restaura — restaurar sin foto es mejor que
+    // guardar una ruta rota.
+    events: events.map(({ id: _id, reminders, tags, photoUri: _photoUri, ...event }) => ({
       ...event,
       reminders: reminders.map(({ amount, unit }) => ({ amount, unit })),
       tags: tags.map((tag) => tag.name),
+      photoUri: null,
     })),
     notes: notes.map(({ title, content }) => ({ title, content })),
   };
@@ -168,6 +172,7 @@ function toEvent(value: unknown): NewEvent[] {
       phone: typeof value.phone === 'string' ? value.phone : null,
       reminders: toReminders(value.reminders),
       tags: toTagNames(value.tags),
+      photoUri: null, // nunca se restaura: ver comentario en buildBackup
     },
   ];
 }

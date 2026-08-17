@@ -54,6 +54,8 @@ export interface EventItem {
   isMine: 0 | 1;
   /** Etiquetas libres (familia, amigos, trabajo...). Un evento puede tener varias. */
   tags: Tag[];
+  /** Ruta a la foto del evento ya copiada al sandbox de la app (ver src/media/photos.ts). */
+  photoUri: string | null;
 }
 
 /** Etiqueta libre, reutilizable entre eventos (relación muchos a muchos). */

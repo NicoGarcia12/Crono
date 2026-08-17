@@ -27,6 +27,7 @@ const birthdays: NewEvent[] = [
     yearly: 1,
     isMine: 0,
     tags: [],
+    photoUri: null,
   },
   {
     title: 'Bruno',
@@ -40,6 +41,7 @@ const birthdays: NewEvent[] = [
     yearly: 1,
     isMine: 0,
     tags: [],
+    photoUri: null,
   },
 ];
 
@@ -73,6 +75,7 @@ describe('addContactBirthdays', () => {
       id: index + 1,
       reminders: anaReminders,
       tags: [],
+      photoUri: null,
     }));
     mockRepo.insertContactBirthdays.mockResolvedValueOnce(persisted);
     const store = makeStore();

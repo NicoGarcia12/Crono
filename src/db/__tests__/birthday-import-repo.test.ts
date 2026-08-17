@@ -27,6 +27,7 @@ const contactBirthday = (contactId: string, title: string): NewEvent => ({
   yearly: 1,
   isMine: 0,
   tags: [],
+  photoUri: null,
 });
 
 /**

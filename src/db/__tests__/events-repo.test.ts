@@ -20,14 +20,15 @@ const miCumple: NewEvent = {
   yearly: 1,
   isMine: 1,
   tags: [],
+  photoUri: null,
 };
 
 const runResult = (lastInsertRowId = 0): SQLiteRunResult => ({ lastInsertRowId, changes: 1 });
 
 describe('attachReminders', () => {
   const events = [
-    { id: 1, title: 'Mamá', type: 'cumpleanos' as const, date: '1960-08-01', time: null, description: null, contactId: 'c1', phone: '+54 11 5555-0001', yearly: 1 as const, isMine: 0 as const },
-    { id: 2, title: 'Turno médico', type: 'cita_medica' as const, date: '2026-09-10', time: '10:30', description: null, contactId: null, phone: null, yearly: 0 as const, isMine: 0 as const },
+    { id: 1, title: 'Mamá', type: 'cumpleanos' as const, date: '1960-08-01', time: null, description: null, contactId: 'c1', phone: '+54 11 5555-0001', yearly: 1 as const, isMine: 0 as const, photoUri: null },
+    { id: 2, title: 'Turno médico', type: 'cita_medica' as const, date: '2026-09-10', time: '10:30', description: null, contactId: null, phone: null, yearly: 0 as const, isMine: 0 as const, photoUri: null },
   ];
 
   it('agrupa los avisos por evento (relación 1→N)', () => {
@@ -92,7 +93,8 @@ describe('insertEvent', () => {
       }
 
       if (query.startsWith('INSERT INTO events')) {
-        const isMine = params.at(-1);
+        // El INSERT termina en (..., is_mine, photo_uri): is_mine es el anteúltimo bind.
+        const isMine = params.at(-2);
         if (isMine !== 0 && isMine !== 1) throw new Error('is_mine inválido');
         rows.push({ isMine });
         return runResult(rows.length);

@@ -20,6 +20,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   yearly: 1,
   isMine: 0,
   tags: [],
+  photoUri: null,
   ...over,
 });
 
@@ -58,6 +59,7 @@ describe('buildBackup', () => {
           yearly: 1,
           isMine: 0,
           tags: ['familia'], // por nombre, sin ids (son de este celular)
+          photoUri: null, // nunca viaja en el backup
         },
       ],
       notes: [{ title: 'Lista del súper', content: 'Pan, leche' }],

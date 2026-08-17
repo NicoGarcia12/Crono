@@ -4,11 +4,12 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { MyBirthdayCard } from '@/components/my-birthday-card';
+import { PhotoPicker } from '@/components/photo-picker';
 import { remindersAvailable } from '@/notifications/notifications';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { addEvent, editEvent } from '@/store/events-slice';
-import { saveDisplayName, saveThemePreference } from '@/store/settings-slice';
+import { saveDisplayName, savePhotoUri, saveThemePreference } from '@/store/settings-slice';
 import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -21,6 +22,7 @@ export default function PerfilScreen() {
   const router = useRouter();
   const displayName = useAppSelector((state) => state.settings.displayName);
   const themePreference = useAppSelector((state) => state.settings.themePreference);
+  const photoUri = useAppSelector((state) => state.settings.photoUri);
   const events = useAppSelector((state) => state.events.items);
   const eventCount = events.length;
   const noteCount = useAppSelector((state) => state.notes.items.length);
@@ -74,6 +76,7 @@ export default function PerfilScreen() {
         yearly: 1,
         isMine: 1,
         tags: [],
+        photoUri: null,
       }),
     ).unwrap();
   };
@@ -104,9 +107,13 @@ export default function PerfilScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.avatar}>
-        <Ionicons name="person" size={44} color={colors.primary} />
-      </View>
+      <PhotoPicker
+        uri={photoUri}
+        onChange={(uri) => void dispatch(savePhotoUri(uri))}
+        filePrefix="perfil"
+        accessibilityLabel="Elegir foto de perfil"
+        size={88}
+      />
 
       {editing ? (
         <View style={styles.editRow}>
@@ -271,14 +278,6 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { alignItems: 'center', padding: 24, gap: 16 },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#208AEF22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { fontSize: 24, fontWeight: '700', color: c.text },
   editRow: { flexDirection: 'row', gap: 8, alignItems: 'center', alignSelf: 'stretch' },

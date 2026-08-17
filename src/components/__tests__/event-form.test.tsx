@@ -30,6 +30,7 @@ describe('<EventForm />', () => {
     yearly: 1,
     isMine: 1,
     tags: [],
+    photoUri: null,
   };
 
   const renderForm = async () => {
@@ -67,6 +68,7 @@ describe('<EventForm />', () => {
       yearly: 0,
       isMine: 0,
       tags: [],
+      photoUri: null,
     });
   });
 

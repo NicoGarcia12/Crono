@@ -13,6 +13,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   yearly: 1,
   isMine: 0,
   tags: [],
+  photoUri: null,
   ...over,
 });
 

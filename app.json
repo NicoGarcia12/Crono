@@ -56,6 +56,13 @@
         {
           "contactsPermission": "Crono accede a tus contactos solo para importar cumpleaños."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Crono accede a tus fotos solo para elegir la que quieras usar.",
+          "cameraPermission": "Crono usa la cámara solo si elegís sacar una foto nueva."
+        }
       ]
     ],
     "experiments": {

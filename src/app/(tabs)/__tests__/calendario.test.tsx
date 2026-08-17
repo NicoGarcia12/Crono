@@ -44,6 +44,7 @@ const event = (id: number): EventItem => ({
   phone: null,
   reminders: [],
   tags: [],
+  photoUri: null,
   yearly: 0,
   isMine: 0,
 });

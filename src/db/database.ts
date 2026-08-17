@@ -16,7 +16,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 9;
+const DATABASE_VERSION = 10;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -251,12 +251,20 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 9;
   }
 
+  if (currentVersion === 9) {
+    // v10: foto opcional por evento (sobre todo cumpleaños/aniversarios). Se
+    // guarda la ruta ya copiada al sandbox de la app (ver src/media/photos.ts),
+    // nunca la URI temporal que devuelve el selector de imágenes.
+    await addColumnIfMissing(database, 'photo_uri', 'TEXT');
+    currentVersion = 10;
+  }
+
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 async function addColumnIfMissing(
   database: SQLite.SQLiteDatabase,
-  columnName: 'contact_id' | 'phone',
+  columnName: 'contact_id' | 'phone' | 'photo_uri',
   definition: 'TEXT',
 ): Promise<void> {
   try {

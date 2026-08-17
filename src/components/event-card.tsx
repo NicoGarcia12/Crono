@@ -43,6 +43,11 @@ export function EventCard({ event, occurrence }: EventCardProps) {
           {event.yearly && years > 0 ? ` · ${years} años` : ''}
           {event.time ? ` · ${event.time} h` : ''}
         </Text>
+        {event.tags.length > 0 ? (
+          <Text style={styles.tags} numberOfLines={1}>
+            {event.tags.map((tag) => tag.name).join(' · ')}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.right}>
         <Text style={[styles.when, { color: meta.color }]}>{formatRelative(next)}</Text>
@@ -82,6 +87,7 @@ const makeStyles = (c: ThemeColors) =>
     body: { flex: 1, gap: 2 },
     title: { fontSize: 16, fontWeight: '600', color: c.text },
     subtitle: { fontSize: 13, color: c.textMuted },
+    tags: { fontSize: 11.5, color: c.primary },
     right: { alignItems: 'flex-end', gap: 4 },
     when: { fontSize: 13, fontWeight: '600' },
   });

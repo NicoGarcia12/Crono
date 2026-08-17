@@ -43,6 +43,7 @@ const event = (id: number): EventItem => ({
   contactId: null,
   phone: null,
   reminders: [],
+  tags: [],
   yearly: 0,
   isMine: 0,
 });

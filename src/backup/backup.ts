@@ -41,9 +41,11 @@ export function buildBackup(
     exportedAt: now.toISOString(),
     displayName,
     // Se guardan sin los ids ni los ids de notificación: son de ESTE celular.
-    events: events.map(({ id: _id, reminders, ...event }) => ({
+    // Las etiquetas viajan por nombre (se resuelven o crean solas al restaurar).
+    events: events.map(({ id: _id, reminders, tags, ...event }) => ({
       ...event,
       reminders: reminders.map(({ amount, unit }) => ({ amount, unit })),
+      tags: tags.map((tag) => tag.name),
     })),
     notes: notes.map(({ title, content }) => ({ title, content })),
   };
@@ -165,8 +167,14 @@ function toEvent(value: unknown): NewEvent[] {
       contactId: typeof value.contactId === 'string' ? value.contactId : null,
       phone: typeof value.phone === 'string' ? value.phone : null,
       reminders: toReminders(value.reminders),
+      tags: toTagNames(value.tags),
     },
   ];
+}
+
+function toTagNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((name): name is string => typeof name === 'string' && name.trim().length > 0);
 }
 
 function toReminders(value: unknown): ReminderInput[] {

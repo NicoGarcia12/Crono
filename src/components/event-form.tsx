@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from
 
 import { DateField, TimeField } from '@/components/date-time-field';
 import { RemindersField } from '@/components/reminders-field';
+import { TagsField } from '@/components/tags-field';
 import { EVENT_TYPE_META } from '@/constants/event-types';
 import {
   EVENT_TYPES,
@@ -51,6 +52,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [yearly, setYearly] = useState<boolean>(
     initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
   );
+  const [tags, setTags] = useState<string[]>(initial?.tags.map((tag) => tag.name) ?? []);
   // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
 
@@ -99,6 +101,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       yearly: isMine ? 1 : yearly ? 1 : 0,
       // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
       isMine: initial?.isMine ?? 0,
+      tags,
     });
   };
 
@@ -195,6 +198,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
 
       <Text style={styles.label}>Recordatorios (podés poner todos los que quieras)</Text>
       <RemindersField value={reminders} onChange={setReminders} />
+
+      <Text style={styles.label}>Etiquetas (opcional)</Text>
+      <TagsField value={tags} onChange={setTags} />
 
       <View style={[styles.row, styles.switchRow]}>
         <Text style={styles.switchLabel}>Se repite todos los años</Text>

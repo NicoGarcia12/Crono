@@ -29,6 +29,7 @@ describe('<EventForm />', () => {
     reminders: [],
     yearly: 1,
     isMine: 1,
+    tags: [],
   };
 
   const renderForm = async () => {
@@ -65,6 +66,7 @@ describe('<EventForm />', () => {
       reminders: [{ amount: 1, unit: 'dias' }],
       yearly: 0,
       isMine: 0,
+      tags: [],
     });
   });
 

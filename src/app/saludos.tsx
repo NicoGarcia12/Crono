@@ -82,6 +82,7 @@ export default function SaludosScreen() {
                 reminders: [{ amount: 1, unit: 'dias' }],
                 yearly: 1,
                 isMine: 0,
+                tags: [],
               }),
             ).unwrap();
 

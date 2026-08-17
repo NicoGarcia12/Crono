@@ -19,6 +19,7 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   reminders: [{ amount: 1, unit: 'dias', notificationId: 'notif-1' }],
   yearly: 1,
   isMine: 0,
+  tags: [],
   ...over,
 });
 
@@ -32,7 +33,12 @@ const nota = (over: Partial<Note> & { id: number }): Note => ({
 
 describe('buildBackup', () => {
   it('guarda eventos y notas sin los ids ni los ids de notificación (son de este celular)', () => {
-    const backup = buildBackup([evento({ id: 1 })], [nota({ id: 9 })], 'Nico', new Date('2026-07-12T12:00:00Z'));
+    const backup = buildBackup(
+      [evento({ id: 1, tags: [{ id: 5, name: 'familia' }] })],
+      [nota({ id: 9 })],
+      'Nico',
+      new Date('2026-07-12T12:00:00Z'),
+    );
 
     expect(backup).toEqual({
       app: 'crono',
@@ -51,6 +57,7 @@ describe('buildBackup', () => {
           reminders: [{ amount: 1, unit: 'dias' }], // sin notificationId
           yearly: 1,
           isMine: 0,
+          tags: ['familia'], // por nombre, sin ids (son de este celular)
         },
       ],
       notes: [{ title: 'Lista del súper', content: 'Pan, leche' }],
@@ -134,6 +141,22 @@ describe('parseBackup', () => {
       phone: null,
       reminders: [], // sin avisos, no rompe
     });
+  });
+
+  it('acepta backups previos que no tenían etiquetas', () => {
+    const raw = JSON.stringify({
+      app: 'crono',
+      formatVersion: 1,
+      events: [{ title: 'Ok', type: 'evento', date: '2026-07-20', yearly: 0, tags: ['familia', 42, ''] }],
+      notes: [],
+    });
+
+    const result = parseBackup(raw);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Solo strings no vacíos: descarta lo que no sea un nombre de etiqueta válido.
+    expect(result.backup.events[0].tags).toEqual(['familia']);
   });
 
   it('acepta backups previos que no tenían saludos', () => {

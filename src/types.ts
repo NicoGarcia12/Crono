@@ -52,6 +52,14 @@ export interface EventItem {
   yearly: 0 | 1;
   /** 1 = este es MI cumpleaños (habilita la lista de quién me saludó). Solo uno puede serlo. */
   isMine: 0 | 1;
+  /** Etiquetas libres (familia, amigos, trabajo...). Un evento puede tener varias. */
+  tags: Tag[];
+}
+
+/** Etiqueta libre, reutilizable entre eventos (relación muchos a muchos). */
+export interface Tag {
+  id: number;
+  name: string;
 }
 
 /**
@@ -70,8 +78,15 @@ export interface Greeting {
   greeted: 0 | 1;
 }
 
-/** Datos que completa el usuario al crear un evento: elige las anticipaciones; los ids de notificación los pone la app. */
-export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminders: ReminderInput[] };
+/**
+ * Datos que completa el usuario al crear un evento: elige las anticipaciones
+ * (los ids de notificación los pone la app) y las etiquetas por nombre (se
+ * resuelven o crean en la base al guardar, no hace falta conocer sus ids).
+ */
+export type NewEvent = Omit<EventItem, 'id' | 'reminders' | 'tags'> & {
+  reminders: ReminderInput[];
+  tags: string[];
+};
 
 /**
  * Regla de dominio: el cumpleaños de la persona dueña de la agenda siempre

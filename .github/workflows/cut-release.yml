@@ -23,6 +23,8 @@ jobs:
 
       - name: Compute next version
         id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NEXT=$(git cliff --bumped-version)
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -47,6 +49,8 @@ jobs:
         run: git checkout -b release/${{ steps.version.outputs.version }}
 
       - name: Generate changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -f CHANGELOG.md ]; then
             git cliff --tag ${{ steps.version.outputs.next }} --prepend CHANGELOG.md --unreleased

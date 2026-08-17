@@ -104,3 +104,15 @@ export interface GiftIdea {
 }
 
 export type NewGiftIdea = Pick<GiftIdea, 'eventId' | 'text'>;
+
+/**
+ * Marca de "ya lo saludé" para un cumpleaños/aniversario ajeno, año por año
+ * (mismo patrón no destructivo que `Greeting`: al pasar de año se crea una
+ * fila nueva, nunca se borran las anteriores).
+ */
+export interface GreetingSent {
+  id: number;
+  year: number;
+  eventId: number;
+  greeted: 0 | 1;
+}

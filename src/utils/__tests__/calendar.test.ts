@@ -1,4 +1,5 @@
 import {
+  birthdaysAndAnniversariesInMonth,
   buildMonthGrid,
   buildWeek,
   eventsByDay,
@@ -138,6 +139,42 @@ describe('eventsByDay', () => {
     const dos = evento({ id: 6, type: 'cita_medica', date: '2026-07-20' });
 
     expect(eventsByDay([uno, dos], days).get('2026-07-20')).toEqual([uno, dos]);
+  });
+});
+
+describe('birthdaysAndAnniversariesInMonth', () => {
+  const julio2026 = new Date(2026, 6, 1);
+
+  it('incluye un cumpleaños anual que cae en el mes, sin importar el año guardado', () => {
+    const mama = evento({ id: 1, type: 'cumpleanos', date: '1965-07-20', yearly: 1 });
+
+    expect(birthdaysAndAnniversariesInMonth([mama], julio2026)).toEqual([mama]);
+  });
+
+  it('excluye mi propio cumpleaños (isMine)', () => {
+    const mio = evento({ id: 2, type: 'cumpleanos', date: '1990-07-05', yearly: 1, isMine: 1 });
+
+    expect(birthdaysAndAnniversariesInMonth([mio], julio2026)).toEqual([]);
+  });
+
+  it('excluye eventos que no son cumpleaños ni aniversario', () => {
+    const cita = evento({ id: 3, type: 'cita_medica', date: '2026-07-10' });
+
+    expect(birthdaysAndAnniversariesInMonth([cita], julio2026)).toEqual([]);
+  });
+
+  it('un aniversario puntual solo aparece en el año exacto', () => {
+    const boda2026 = evento({ id: 4, type: 'aniversario', date: '2026-07-08', yearly: 0 });
+    const boda2025 = evento({ id: 5, type: 'aniversario', date: '2025-07-08', yearly: 0 });
+
+    expect(birthdaysAndAnniversariesInMonth([boda2026, boda2025], julio2026)).toEqual([boda2026]);
+  });
+
+  it('ordena por día del mes', () => {
+    const dia20 = evento({ id: 6, type: 'cumpleanos', date: '1980-07-20', yearly: 1 });
+    const dia5 = evento({ id: 7, type: 'cumpleanos', date: '1980-07-05', yearly: 1 });
+
+    expect(birthdaysAndAnniversariesInMonth([dia20, dia5], julio2026)).toEqual([dia5, dia20]);
   });
 });
 

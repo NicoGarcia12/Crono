@@ -16,7 +16,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 7;
+const DATABASE_VERSION = 8;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -213,6 +213,23 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       );
     `);
     currentVersion = 7;
+  }
+
+  if (currentVersion === 7) {
+    // v8: marca de "ya lo saludé" para cumpleaños/aniversarios ajenos, año
+    // por año — mismo patrón no destructivo que `greetings` (clave año +
+    // evento), pero en tabla propia porque es la dirección opuesta: acá
+    // registro que YO saludé, no que me saludaron a mí.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS greetings_sent (
+        id INTEGER PRIMARY KEY NOT NULL,
+        year INTEGER NOT NULL,
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        greeted INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(year, event_id)
+      );
+    `);
+    currentVersion = 8;
   }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -11,14 +11,22 @@ jest.mock('expo-router', () => ({
 }));
 
 // El store se mockea completo: la pantalla lee los eventos y, vía useTheme, el
-// tema elegido — por eso el estado falso incluye las dos ramas.
+// tema elegido — por eso el estado falso incluye esas ramas (+ greetingsSent,
+// que usa la lista de "cumplen este mes").
 jest.mock('@/store', () => ({
   useAppSelector: <T,>(
     selector: (state: {
       events: { items: EventItem[] };
+      greetingsSent: { year: number; items: never[]; status: 'ready' };
       settings: { themePreference: 'sistema' };
     }) => T,
-  ) => selector({ events: { items: mockEvents }, settings: { themePreference: 'sistema' } }),
+  ) =>
+    selector({
+      events: { items: mockEvents },
+      greetingsSent: { year: new Date().getFullYear(), items: [], status: 'ready' },
+      settings: { themePreference: 'sistema' },
+    }),
+  useAppDispatch: () => jest.fn(),
 }));
 
 jest.mock('@/components/event-card', () => ({

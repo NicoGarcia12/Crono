@@ -9,6 +9,7 @@ import { scheduleEventReminders } from '@/notifications/notifications';
 import eventsReducer from '@/store/events-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
+import greetingsSentReducer from '@/store/greetings-sent-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
@@ -64,6 +65,7 @@ const makeStore = (greetings: Greeting[] = []) =>
       events: eventsReducer,
       giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
+      greetingsSent: greetingsSentReducer,
       notes: notesReducer,
       settings: settingsReducer,
     },
@@ -71,6 +73,7 @@ const makeStore = (greetings: Greeting[] = []) =>
       events: { items: [evento], status: 'ready' as const },
       giftIdeas: { eventId: null, items: [], status: 'ready' as const },
       greetings: { year: 2026, items: greetings, status: 'ready' as const },
+      greetingsSent: { year: 2026, items: [], status: 'ready' as const },
       notes: { items: [nota], status: 'ready' as const },
       settings: { displayName: 'Nico', themePreference: 'sistema' as const, loaded: true },
     },

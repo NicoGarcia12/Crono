@@ -1,12 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { type JSX, useMemo, useState } from 'react';
+import { type JSX, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CalendarGrid } from '@/components/calendar-grid';
 import { EventCard } from '@/components/event-card';
-import { useAppSelector } from '@/store';
+import { MonthBirthdaysList } from '@/components/month-birthdays-list';
+import { useAppDispatch, useAppSelector } from '@/store';
+import { loadGreetingsSent, toggleGreetingSent } from '@/store/greetings-sent-slice';
 import {
+  birthdaysAndAnniversariesInMonth,
   buildMonthGrid,
   buildWeek,
   eventsByDay as groupEventsByDay,
@@ -29,11 +32,41 @@ export default function CalendarioScreen(): JSX.Element {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const events = useAppSelector((state) => state.events.items);
+  const greetingsSent = useAppSelector((state) => state.greetingsSent);
 
   const [mode, setMode] = useState<CalendarMode>('mes');
   const [anchor, setAnchor] = useState(() => new Date());
   const [selectedIso, setSelectedIso] = useState(todayIso());
+
+  const anchorYear = anchor.getFullYear();
+  useEffect(() => {
+    void dispatch(loadGreetingsSent(anchorYear));
+  }, [dispatch, anchorYear]);
+
+  const monthBirthdays = useMemo(
+    () => (mode === 'mes' ? birthdaysAndAnniversariesInMonth(events, anchor) : []),
+    [events, anchor, mode],
+  );
+  const greetedEventIds = useMemo(
+    () =>
+      new Set(
+        greetingsSent.year === anchorYear
+          ? greetingsSent.items.filter((g) => g.greeted === 1).map((g) => g.eventId)
+          : [],
+      ),
+    [greetingsSent, anchorYear],
+  );
+  const handleToggleGreeted = (event: (typeof events)[number]) => {
+    void dispatch(
+      toggleGreetingSent({
+        year: anchorYear,
+        eventId: event.id,
+        greeted: !greetedEventIds.has(event.id),
+      }),
+    );
+  };
 
   // Las semanas visibles y los eventos de cada día se recalculan solo cuando
   // cambia el período, el modo o los eventos.
@@ -104,6 +137,12 @@ export default function CalendarioScreen(): JSX.Element {
         currentMonth={mode === 'mes' ? anchor.getMonth() : null}
         selectedIso={selectedIso}
         onSelect={setSelectedIso}
+      />
+
+      <MonthBirthdaysList
+        people={monthBirthdays}
+        greetedEventIds={greetedEventIds}
+        onToggle={handleToggleGreeted}
       />
 
       {/* Eventos del día elegido */}

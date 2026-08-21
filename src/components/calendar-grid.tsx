@@ -135,7 +135,7 @@ const makeStyles = (c: ThemeColors) =>
     alignItems: 'center',
     justifyContent: 'center',
   },
-  today: { backgroundColor: '#208AEF22' },
+  today: { backgroundColor: '#168BFF22' },
   selected: { backgroundColor: c.primary },
   dayNumber: { fontSize: 14, color: c.text },
   dayNumberHighlighted: { fontWeight: '700' },

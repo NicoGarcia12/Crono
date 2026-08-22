@@ -1,7 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -61,7 +60,16 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
 
   return (
     <View style={styles.container}>
-      <Ionicons name="lock-closed" size={64} color={colors.primary} />
+      {/* Isotipo (la "C" del logo) en vez de un ícono genérico de candado: esta es la
+          primera pantalla que se ve al abrir la app (antes del splash desaparecer),
+          así que conviene reforzar marca acá. El estado "bloqueada" ya lo dice el texto. */}
+      <Image
+        source={require('../../assets/images/branding/crono-isotipo.png')}
+        style={styles.logo}
+        resizeMode="contain"
+        accessibilityRole="image"
+        accessibilityLabel="Crono"
+      />
       <Text style={styles.title}>Crono está bloqueada</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
       <Pressable style={styles.button} onPress={authenticate}>
@@ -81,6 +89,7 @@ const makeStyles = (c: ThemeColors) =>
     padding: 32,
     backgroundColor: c.surface,
   },
+  logo: { width: 72, height: 72 },
   title: { fontSize: 22, fontWeight: '600', color: c.text },
   message: { fontSize: 14, color: c.textMuted, textAlign: 'center' },
   button: {

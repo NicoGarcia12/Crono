@@ -8,7 +8,7 @@
     "scheme": "crono",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/ios-icon.png"
     },
     "android": {
       "package": "com.nicogarcia12.crono",

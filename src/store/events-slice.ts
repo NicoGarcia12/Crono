@@ -28,7 +28,15 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
   const normalized = enforceMineBirthday(data);
   // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
   const reminders = await scheduleEventReminders(normalized);
-  return eventsRepo.insertEvent(normalized, reminders);
+  try {
+    return await eventsRepo.insertEvent(normalized, reminders);
+  } catch (error: unknown) {
+    // Expo programa en el SO fuera de la transacción de SQLite. Si SQLite
+    // rechaza el evento, cancelamos los ids recién creados para no dejarlos
+    // huérfanos. allSettled conserva el error de persistencia original.
+    await Promise.allSettled([cancelReminders(reminders)]);
+    throw error;
+  }
 });
 
 /**

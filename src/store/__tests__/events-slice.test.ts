@@ -87,6 +87,37 @@ describe('loadEvents', () => {
 });
 
 describe('addEvent', () => {
+  it('compensa los avisos programados si falla persistir el evento', async () => {
+    const operations: string[] = [];
+    mockSchedule.mockImplementation(async () => {
+      operations.push('programar');
+      return avisosProgramados;
+    });
+    mockRepo.insertEvent.mockImplementation(async () => {
+      operations.push('persistir');
+      throw new Error('SQLite sin espacio');
+    });
+    mockCancel.mockImplementation(async () => {
+      operations.push('cancelar');
+    });
+    const store = makeStore();
+
+    await store.dispatch(addEvent(nuevoEvento));
+
+    expect(operations).toEqual(['programar', 'persistir', 'cancelar']);
+  });
+
+  it('conserva el error de persistencia si falla la compensación', async () => {
+    mockSchedule.mockResolvedValue(avisosProgramados);
+    mockRepo.insertEvent.mockRejectedValue(new Error('SQLite sin espacio'));
+    mockCancel.mockRejectedValueOnce(new Error('El sistema de avisos no responde'));
+    const store = makeStore();
+
+    const result = await store.dispatch(addEvent(nuevoEvento));
+
+    expect(result).toMatchObject({ error: { message: 'SQLite sin espacio' } });
+  });
+
   it('programa TODOS los avisos, persiste con sus ids y agrega al estado', async () => {
     mockSchedule.mockResolvedValue(avisosProgramados);
     mockRepo.insertEvent.mockResolvedValue(eventoGuardado);

@@ -10,7 +10,7 @@ export const DEFAULT_EVENT_TYPES: Record<
   BuiltinEventType,
   { label: string; icon: string; color: string; defaultYearly: boolean }
 > = {
-  evento: { label: 'Evento', icon: 'calendar', color: '#208AEF', defaultYearly: false },
+  evento: { label: 'Evento', icon: 'calendar', color: '#168BFF', defaultYearly: false },
   cumpleanos: { label: 'Cumpleaños', icon: 'gift', color: '#E91E63', defaultYearly: true },
   aniversario: { label: 'Aniversario', icon: 'heart', color: '#9C27B0', defaultYearly: true },
   festivo: { label: 'Día festivo', icon: 'sunny', color: '#FF9800', defaultYearly: true },

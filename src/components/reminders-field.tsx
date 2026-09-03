@@ -170,7 +170,7 @@ const makeStyles = (c: ThemeColors) =>
     alignItems: 'center',
     gap: 3,
     borderWidth: 1,
-    borderColor: '#208AEF66',
+    borderColor: '#168BFF66',
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 6,

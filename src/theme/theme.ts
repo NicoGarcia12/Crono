@@ -39,38 +39,37 @@ export interface ThemeColors {
 }
 
 const light: ThemeColors = {
-  background: '#f5f6fa',
-  surface: '#ffffff',
-  surfaceAlt: '#ffffff',
-  border: '#e2e2e2',
-  text: '#1a1a2e',
-  textMuted: '#777777',
-  textSubtle: '#999999',
-  primary: '#208AEF',
+  background: '#F7FAFE',
+  surface: '#FFFFFF',
+  surfaceAlt: '#EDF4FC',
+  border: '#D3E0EF',
+  text: '#101828',
+  textMuted: '#52647A',
+  textSubtle: '#8A99B3',
+  primary: '#168BFF',
   danger: '#E91E63',
   success: '#4CAF50',
   whatsapp: '#25D366',
-  contrast: '#1a1a2e',
+  contrast: '#101828',
   contrastText: '#ffffff',
   shadow: '#000000',
 };
 
 const dark: ThemeColors = {
-  background: '#111218',
-  surface: '#1c1e27',
-  surfaceAlt: '#262a36',
-  border: '#333747',
-  text: '#f1f2f6',
-  textMuted: '#a3a7b3',
-  textSubtle: '#7d8290',
-  // Un azul apenas más claro: sobre fondo oscuro el original queda oscuro/apagado.
-  primary: '#4AA3F5',
+  background: '#050816',
+  surface: '#0C1428',
+  surfaceAlt: '#121E38',
+  border: '#243656',
+  text: '#F5F9FF',
+  textMuted: '#A9B8D0',
+  textSubtle: '#6E85A8',
+  primary: '#168BFF',
   danger: '#F0568B',
   success: '#5DC264',
   whatsapp: '#25D366',
   // En oscuro el "chip activo" no puede ser casi negro (se perdería contra el
-  // fondo): se usa un gris elevado, que igual lleva texto blanco encima.
-  contrast: '#3d4356',
+  // fondo): se usa un azul elevado, que igual lleva texto blanco encima.
+  contrast: '#2C4066',
   contrastText: '#ffffff',
   shadow: '#000000',
 };

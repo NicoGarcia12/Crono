@@ -35,8 +35,8 @@ Los commits deben seguir [Conventional Commits](https://www.conventionalcommits.
 
 - `feat: ...` → sección **Added**
 - `fix: ...` → sección **Fixed**
-- `refactor:` / `perf:` / `style:` → sección **Changed**
-- `docs:` / `chore:` / `test:` / `ci:` / `build:` → no aparecen en el changelog (ruido interno)
+- `refactor:` / `perf:` / `style:` / `content:` / `design:` → sección **Changed**
+- `docs:` / `chore:` / `test:` / `ci:` / `build:` / `merge:` → no aparecen en el changelog (ruido interno)
 
 ## Abrir un Pull Request
 

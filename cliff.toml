@@ -35,8 +35,11 @@ commit_parsers = [
   { message = "^fix", group = "Fixed" },
   { message = "^perf", group = "Changed" },
   { message = "^refactor", group = "Changed" },
+  { message = "^style\\(automatic\\)", skip = true },
   { message = "^style", group = "Changed" },
   { message = "^revert", group = "Changed" },
+  { message = "^content", group = "Changed" },
+  { message = "^design", group = "Changed" },
   { message = "^remove", group = "Removed" },
   { message = "^security", group = "Security" },
   { message = "^deprecate", group = "Deprecated" },
@@ -46,7 +49,7 @@ commit_parsers = [
   { message = "^test", skip = true },
   { message = "^ci", skip = true },
   { message = "^build", skip = true },
-  { message = "^style\\(automatic\\)", skip = true },
+  { message = "^merge", skip = true },
 ]
 
 [bump]

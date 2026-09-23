@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
@@ -32,6 +32,22 @@ import { useTheme } from '@/theme/use-theme';
 
 // Mantener el splash nativo visible hasta que la BD esté lista.
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Período de gracia antes de re-pedir desbloqueo al volver a la app.
+ *
+ * 💡 Gotcha: en Android, tanto el diálogo nativo de permisos (por ejemplo el
+ * de contactos) como el propio prompt de biometría hacen que la Activity
+ * pierda foco un instante, y eso dispara `AppState` → 'background'. Sin este
+ * margen, cualquiera de esos diálogos volvía a bloquear la app en medio de un
+ * flujo (ej. importar cumpleaños) y la dejaba sin poder avanzar ni volver.
+ */
+const LOCK_GRACE_MS = 5000;
+
+/** Puro para poder testear la decisión sin simular AppState real. */
+export function shouldRelock(backgroundedAt: number | null, now: number): boolean {
+  return backgroundedAt !== null && now - backgroundedAt > LOCK_GRACE_MS;
+}
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -83,10 +99,21 @@ function Gates() {
   const displayName = useAppSelector((state) => state.settings.displayName);
   const { name: themeName, colors } = useTheme();
 
-  // Si la app pasa a segundo plano, se vuelve a bloquear (como una app de banco).
+  // Si la app pasa a segundo plano por más del período de gracia, se vuelve a
+  // bloquear (como una app de banco). Ausencias breves —incluidos los diálogos
+  // nativos que cuentan como "background" un instante— no piden desbloqueo de nuevo.
+  const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background') setUnlocked(false);
+      if (state === 'background') {
+        backgroundedAtRef.current = Date.now();
+        return;
+      }
+      if (state === 'active') {
+        const backgroundedAt = backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (shouldRelock(backgroundedAt, Date.now())) setUnlocked(false);
+      }
     });
     return () => subscription.remove(); // cleanup obligatorio de listeners nativos
   }, []);

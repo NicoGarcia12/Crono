@@ -41,8 +41,9 @@ SplashScreen.preventAutoHideAsync();
  * pierda foco un instante, y eso dispara `AppState` → 'background'. Sin este
  * margen, cualquiera de esos diálogos volvía a bloquear la app en medio de un
  * flujo (ej. importar cumpleaños) y la dejaba sin poder avanzar ni volver.
+ * También cubre salidas breves a otras apps (ej. responder un WhatsApp).
  */
-const LOCK_GRACE_MS = 5000;
+const LOCK_GRACE_MS = 2 * 60 * 1000;
 
 /** Puro para poder testear la decisión sin simular AppState real. */
 export function shouldRelock(backgroundedAt: number | null, now: number): boolean {

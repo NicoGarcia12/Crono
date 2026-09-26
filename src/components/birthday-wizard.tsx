@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DateField } from '@/components/date-time-field';
@@ -22,20 +22,10 @@ interface BirthdayWizardProps {
 }
 
 export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardProps) {
-  const colors = useThemeColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-
   const [index, setIndex] = useState(0);
   const [entries, setEntries] = useState<{ candidate: ContactCandidate; date: string }[]>([]);
 
   const current = candidates[index];
-  const [date, setDate] = useState(current?.suggestedDate ?? todayIso());
-
-  // Al pasar al siguiente contacto, precargamos su fecha (o la de hoy).
-  useEffect(() => {
-    if (current) setDate(current.suggestedDate ?? todayIso());
-  }, [current]);
-
   if (!current) return null;
 
   const advance = (nextEntries: typeof entries) => {
@@ -47,27 +37,52 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
     }
   };
 
-  const isLast = index + 1 === candidates.length;
+  return (
+    // `key` fuerza a que ContactStep se reinicie (y precargue su propia fecha)
+    // al pasar de un contacto a otro, sin necesitar un efecto para eso.
+    <ContactStep
+      key={current.key}
+      candidate={current}
+      progress={`Contacto ${index + 1} de ${candidates.length}`}
+      saving={saving}
+      isLast={index + 1 === candidates.length}
+      onSkip={() => advance(entries)}
+      onSave={(date) => advance([...entries, { candidate: current, date }])}
+    />
+  );
+}
+
+interface ContactStepProps {
+  candidate: ContactCandidate;
+  progress: string;
+  saving?: boolean;
+  isLast: boolean;
+  onSkip: () => void;
+  onSave: (date: string) => void;
+}
+
+function ContactStep({ candidate, progress, saving, isLast, onSkip, onSave }: ContactStepProps) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [date, setDate] = useState(candidate.suggestedDate ?? todayIso());
 
   return (
     <View style={styles.container}>
-      <Text style={styles.progress}>
-        Contacto {index + 1} de {candidates.length}
-      </Text>
+      <Text style={styles.progress}>{progress}</Text>
 
       <View style={styles.card}>
         <View style={styles.avatar}>
           <Ionicons name="person" size={28} color={colors.danger} />
         </View>
-        <Text style={styles.name}>{current.name}</Text>
-        {current.phone ? <Text style={styles.phone}>{current.phone}</Text> : null}
+        <Text style={styles.name}>{candidate.name}</Text>
+        {candidate.phone ? <Text style={styles.phone}>{candidate.phone}</Text> : null}
       </View>
 
       <Text style={styles.label}>¿Cuándo cumple años?</Text>
       <DateField value={date} onChange={setDate} />
-      {current.suggestedDate ? (
+      {candidate.suggestedDate ? (
         <Text style={styles.hint}>
-          {current.suggestedHasYear
+          {candidate.suggestedHasYear
             ? 'Fecha tomada de tus contactos.'
             : 'Tus contactos no guardan el año: revisá la fecha si querés que muestre la edad.'}
         </Text>
@@ -80,14 +95,14 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
           style={styles.skipButton}
           disabled={saving}
           accessibilityLabel="Saltear contacto"
-          onPress={() => advance(entries)}
+          onPress={onSkip}
         >
           <Text style={styles.skipText}>Saltear</Text>
         </Pressable>
         <Pressable
           style={[styles.saveButton, saving && styles.saveDisabled]}
           disabled={saving}
-          onPress={() => advance([...entries, { candidate: current, date }])}
+          onPress={() => onSave(date)}
         >
           <Text style={styles.saveText}>
             {saving ? 'Guardando…' : isLast ? 'Guardar y terminar' : 'Guardar y siguiente'}

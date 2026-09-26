@@ -7,6 +7,8 @@
  * pasan de ser una constante suelta a una función `makeStyles(colors)`).
  */
 
+import type { ColorSchemeName } from 'react-native';
+
 export const THEME_PREFERENCES = ['sistema', 'claro', 'oscuro'] as const;
 
 export type ThemePreference = (typeof THEME_PREFERENCES)[number];
@@ -79,7 +81,7 @@ export const THEMES: Record<ThemeName, ThemeColors> = { claro: light, oscuro: da
 /** Qué tema aplicar según la preferencia elegida y el tema del sistema. */
 export function resolveTheme(
   preference: ThemePreference,
-  systemScheme: 'light' | 'dark' | null | undefined,
+  systemScheme: ColorSchemeName | null | undefined,
 ): ThemeName {
   if (preference === 'claro') return 'claro';
   if (preference === 'oscuro') return 'oscuro';

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { DateField } from '@/components/date-time-field';
 import type { ContactCandidate } from '@/contacts/birthday-import';
@@ -14,11 +14,18 @@ import { useThemeColors } from '@/theme/use-theme';
  * precargada y alcanza con confirmar.
  */
 
+export interface BirthdayWizardEntry {
+  candidate: ContactCandidate;
+  date: string;
+  /** Nombre con el que se guarda el evento; por defecto el del contacto, pero es editable. */
+  name: string;
+}
+
 interface BirthdayWizardProps {
   candidates: ContactCandidate[];
   saving?: boolean;
-  /** Se llama al terminar, con la fecha elegida para cada contacto (los salteados no vienen). */
-  onFinish: (entries: { candidate: ContactCandidate; date: string }[]) => void;
+  /** Se llama al terminar, con la fecha y el nombre elegidos para cada contacto (los salteados no vienen). */
+  onFinish: (entries: BirthdayWizardEntry[]) => void;
 }
 
 export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardProps) {
@@ -26,17 +33,23 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [index, setIndex] = useState(0);
-  const [entries, setEntries] = useState<{ candidate: ContactCandidate; date: string }[]>([]);
+  const [entries, setEntries] = useState<BirthdayWizardEntry[]>([]);
 
   const current = candidates[index];
   const [date, setDate] = useState(current?.suggestedDate ?? todayIso());
+  const [name, setName] = useState(current?.name ?? '');
 
-  // Al pasar al siguiente contacto, precargamos su fecha (o la de hoy).
+  // Al pasar al siguiente contacto, precargamos su fecha (o la de hoy) y su nombre.
   useEffect(() => {
-    if (current) setDate(current.suggestedDate ?? todayIso());
+    if (current) {
+      setDate(current.suggestedDate ?? todayIso());
+      setName(current.name);
+    }
   }, [current]);
 
   if (!current) return null;
+
+  const canSave = name.trim().length > 0;
 
   const advance = (nextEntries: typeof entries) => {
     if (index + 1 < candidates.length) {
@@ -59,7 +72,14 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
         <View style={styles.avatar}>
           <Ionicons name="person" size={28} color={colors.danger} />
         </View>
-        <Text style={styles.name}>{current.name}</Text>
+        <TextInput
+          style={styles.nameInput}
+          value={name}
+          onChangeText={setName}
+          placeholder="Nombre"
+          placeholderTextColor={colors.textSubtle}
+          accessibilityLabel="Nombre con el que se guarda el cumpleaños"
+        />
         {current.phone ? <Text style={styles.phone}>{current.phone}</Text> : null}
       </View>
 
@@ -85,9 +105,9 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
           <Text style={styles.skipText}>Saltear</Text>
         </Pressable>
         <Pressable
-          style={[styles.saveButton, saving && styles.saveDisabled]}
-          disabled={saving}
-          onPress={() => advance([...entries, { candidate: current, date }])}
+          style={[styles.saveButton, (saving || !canSave) && styles.saveDisabled]}
+          disabled={saving || !canSave}
+          onPress={() => advance([...entries, { candidate: current, date, name: name.trim() }])}
         >
           <Text style={styles.saveText}>
             {saving ? 'Guardando…' : isLast ? 'Guardar y terminar' : 'Guardar y siguiente'}
@@ -118,7 +138,16 @@ const makeStyles = (c: ThemeColors) =>
     alignItems: 'center',
     justifyContent: 'center',
   },
-  name: { fontSize: 20, fontWeight: '700', color: c.text },
+  nameInput: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: c.text,
+    textAlign: 'center',
+    minWidth: 160,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+    paddingVertical: 2,
+  },
   phone: { fontSize: 13, color: c.textMuted },
   label: { fontSize: 13, fontWeight: '600', color: c.textMuted },
   hint: { fontSize: 12, color: c.textSubtle, lineHeight: 17 },

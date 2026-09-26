@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 
-import { BirthdayWizard } from '@/components/birthday-wizard';
+import { BirthdayWizard, type BirthdayWizardEntry } from '@/components/birthday-wizard';
 import { ContactPickList } from '@/components/contact-pick-list';
 import { candidateToEvent, fetchContacts, type ContactCandidate } from '@/contacts/birthday-import';
 import { store, useAppDispatch } from '@/store';
@@ -64,13 +64,15 @@ export default function CargarCumpleanosScreen() {
     ]);
   };
 
-  const handleSave = async (entries: { candidate: ContactCandidate; date: string }[]) => {
+  const handleSave = async (entries: BirthdayWizardEntry[]) => {
     setSaving(true);
     try {
       // Un solo thunk mantiene juntos eventos, recordatorios y rollback de
       // avisos nativos; Redux se actualiza recién si SQLite hizo commit.
       await dispatch(
-        addContactBirthdays(entries.map(({ candidate, date }) => candidateToEvent(candidate, date))),
+        addContactBirthdays(
+          entries.map(({ candidate, date, name }) => candidateToEvent(candidate, date, name)),
+        ),
       ).unwrap();
       router.back();
     } finally {

@@ -43,6 +43,9 @@ export default function CargarCumpleanosScreen() {
   }, []);
 
   useEffect(() => {
+    // Carga inicial de contactos (sistema externo): el setState llega en el
+    // resultado async de `load`, no de forma sincrónica en este cuerpo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load().catch(() => setState({ status: 'unavailable' }));
   }, [load]);
 

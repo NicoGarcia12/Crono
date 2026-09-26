@@ -1,32 +1,42 @@
 ---
-description: Genera un APK con EAS (perfil preview) y arma el checklist de prueba manual en dispositivo real para la rama/PR actual
+description: Levanta el server de Expo local y da el QR para abrir la rama actual en la app Expo Go del celular
 ---
 
 # Probar en dispositivo
 
 Uso: `/probar-en-dispositivo [numero-de-PR]`
 
-Este comando se usa para probar en un celular real (vía APK) el fix o feature de la rama en la que se está parado, antes de mergear el PR.
+Este comando se usa para probar en un celular real el fix o feature de la rama en la que se está parado, antes de mergear el PR. Usa **Expo Go** (local, sin subir nada a ningún servidor de build) en vez de generar un APK: Crono no tiene código nativo custom (todos los paquetes son del SDK de Expo — `expo-contacts`, `expo-local-authentication`, `expo-sqlite`, `expo-notifications`, `react-native-reanimated`, etc.), así que corre sin problema dentro de Expo Go.
+
+> Si en algún momento se agrega un módulo nativo que Expo Go no trae de fábrica, este flujo deja de servir y hay que pasar a un build con `expo-dev-client` (`eas build --profile development`).
 
 ## Pasos a seguir
 
-1. **Identificar el PR relevante.**
-   - Si se pasó un número como argumento, usá `gh pr view <numero> --json title,body,baseRefName`.
-   - Si no, buscá el PR de la rama actual con `gh pr view --json title,body,baseRefName` (o `gh pr list --head <rama-actual>` si no hay uno vinculado).
-   - Si no existe ningún PR abierto para esta rama, avisá y preguntá si continuar solo con el build.
+1. **Armar el checklist de prueba.**
+   - Si se pasó un número de PR como argumento, usá `gh pr view <numero> --json title,body`. Si no, `gh pr view --json title,body` sobre la rama actual (o `gh pr list --head <rama-actual>` si no hay uno vinculado).
+   - Si no hay PR abierto, avisá y seguí igual solo con el server local.
+   - Con la sección "Test plan" / "Resumen" del body, armá un checklist concreto y accionable: qué pantalla abrir, qué acción disparar, qué se espera ver.
 
-2. **Armar el checklist de prueba manual** a partir de la sección "Test plan" / "Resumen" / "Cambios" del body del PR. Traducilo a pasos concretos y accionables: qué pantalla abrir, qué acción disparar, qué comportamiento se espera antes del fix vs. después. Si el PR ya trae ítems de test plan sin marcar, usalos como base.
-
-3. **Confirmar antes de lanzar el build** — `eas build` consume minutos de build de EAS (tiene cuota/costo), así que preguntá explícitamente: "¿Corro `eas build --platform android --profile preview`?" antes de ejecutarlo. No lo dispares sin confirmación.
-
-4. Si confirma, ejecutá parado en la rama actual:
+2. **Levantar el servidor de Expo en background** (es un proceso que queda corriendo, no se puede esperar a que termine):
    ```bash
-   eas build --platform android --profile preview
+   npx expo start
    ```
-   (usa el perfil `preview` de `eas.json`: APK standalone de distribución interna, sin necesidad de `expo-dev-client`).
+   Ejecutalo con salida a un log file para poder leerlo después, por ejemplo:
+   ```bash
+   npx expo start > /tmp/expo-start.log 2>&1 &
+   ```
+   Esperá unos segundos y leé el log para sacar:
+   - La URL `exp://IP:PUERTO` (sirve como fallback si el QR no se puede escanear desde la terminal).
+   - El QR en ASCII que imprime Metro — mostraselo al usuario tal cual salió en la terminal.
 
-5. Cuando termine el build, compartí el link/QR de descarga que da EAS.
+3. **Decirle al usuario:**
+   - Si no tiene la app **Expo Go** instalada, que la baje (Play Store / App Store).
+   - Que escanee el QR con la cámara del celular (iOS) o desde adentro de Expo Go → "Scan QR code" (Android).
+   - Si el celular no está en la misma red Wi-Fi que la PC, relanzar con `npx expo start --tunnel` (más lento para arrancar, pero funciona por internet).
+   - Como alternativa al QR, puede tocar "Enter URL manually" en Expo Go y pegar la URL `exp://...` del paso 2.
 
-6. Mostrá el checklist armado en el paso 2 como lista numerada, en español, listo para ir tildando durante la prueba en el celular.
+4. Mostrá el checklist armado en el paso 1, en español, como lista numerada, para ir tildando durante la prueba.
 
-7. Al final, recordá marcar el checkbox correspondiente del test plan en la descripción del PR una vez confirmado que todo funciona.
+5. Al terminar la prueba, recordá:
+   - Matar el proceso de `expo start` que quedó en background.
+   - Marcar el checkbox correspondiente del test plan en la descripción del PR si todo funcionó bien.

@@ -104,9 +104,13 @@ export function buildCandidates(
 }
 
 /** Convierte un contacto + la fecha elegida en el evento que se guarda en la agenda. */
-export function candidateToEvent(candidate: ContactCandidate, date: string): NewEvent {
+export function candidateToEvent(
+  candidate: ContactCandidate,
+  date: string,
+  name: string = candidate.name,
+): NewEvent {
   return {
-    title: candidate.name,
+    title: name,
     type: 'cumpleanos',
     date,
     time: null,

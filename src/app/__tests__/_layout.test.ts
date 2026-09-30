@@ -7,11 +7,11 @@ describe('shouldRelock', () => {
 
   it('no re-bloquea si volvió dentro del período de gracia', () => {
     const backgroundedAt = 1_000;
-    expect(shouldRelock(backgroundedAt, backgroundedAt + 4_000)).toBe(false);
+    expect(shouldRelock(backgroundedAt, backgroundedAt + 119_000)).toBe(false);
   });
 
   it('re-bloquea si volvió después de superar el período de gracia', () => {
     const backgroundedAt = 1_000;
-    expect(shouldRelock(backgroundedAt, backgroundedAt + 5_001)).toBe(true);
+    expect(shouldRelock(backgroundedAt, backgroundedAt + 120_001)).toBe(true);
   });
 });

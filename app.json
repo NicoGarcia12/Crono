@@ -28,7 +28,7 @@
       ]
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -67,7 +67,10 @@
           "photosPermission": "Crono accede a tus fotos solo para elegir la que quieras usar.",
           "cameraPermission": "Crono usa la cámara solo si elegís sacar una foto nueva."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

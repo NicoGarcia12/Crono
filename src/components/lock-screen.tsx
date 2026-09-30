@@ -53,8 +53,11 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
     }
   }, [onUnlock]);
 
-  // Pedimos el desbloqueo apenas aparece la pantalla.
+  // Pedimos el desbloqueo apenas aparece la pantalla: `authenticate`
+  // sincroniza con el sistema de biometría nativo (uso legítimo de un
+  // efecto); el setState llega en la respuesta async, no en este cuerpo.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void authenticate();
   }, [authenticate]);
 

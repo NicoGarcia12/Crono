@@ -37,7 +37,7 @@ export interface ContactCandidate {
   loaded: LoadedBirthday | null;
 }
 
-/** Lo mínimo que necesitamos de un contacto (shape de expo-contacts). */
+/** Lo mínimo que necesitamos de un contacto. */
 export interface ContactLike {
   id?: string;
   name?: string;
@@ -45,17 +45,35 @@ export interface ContactLike {
   birthday?: { day?: number; month?: number; year?: number };
 }
 
+/** Lo que devuelve `Contact.getAllDetails` (API nueva de expo-contacts) para los campos que pedimos. */
+export interface ContactDetailsLike {
+  id: string;
+  fullName?: string | null;
+  phones?: { number?: string }[] | null;
+  birthday?: { day?: number; month?: number; year?: number } | null;
+}
+
+/** Adapta un contacto de la API nueva de expo-contacts a la forma que usa esta pantalla. */
+export function toContactLike(details: ContactDetailsLike): ContactLike {
+  return {
+    id: details.id,
+    name: details.fullName ?? undefined,
+    phoneNumbers: details.phones ?? undefined,
+    birthday: details.birthday ?? undefined,
+  };
+}
+
 /**
  * Convierte el cumpleaños de expo-contacts a 'YYYY-MM-DD'.
- * ⚠️ Gotcha: expo-contacts devuelve el mes 0-indexado (estilo `Date` de JS):
- * enero = 0. En nuestro formato ISO enero = 01.
+ * ⚠️ Gotcha: la API nueva de expo-contacts usa el mes 1-12 (enero = 1), a
+ * diferencia de la API vieja (`getContactsAsync`), que lo devolvía 0-indexado.
  */
 export function birthdayToIso(
   birthday: { day: number; month: number; year?: number },
   fallbackYear: number,
 ): { date: string; hasYear: boolean } {
   const year = birthday.year ?? fallbackYear;
-  const mm = String(birthday.month + 1).padStart(2, '0');
+  const mm = String(birthday.month).padStart(2, '0');
   const dd = String(birthday.day).padStart(2, '0');
   return { date: `${year}-${mm}-${dd}`, hasYear: birthday.year !== undefined };
 }
@@ -136,8 +154,13 @@ export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchC
   const { status } = await Contacts.requestPermissionsAsync();
   if (status !== 'granted') return { status: 'denied' };
 
-  const { data } = await Contacts.getContactsAsync({
-    fields: [Contacts.Fields.Birthday, Contacts.Fields.PhoneNumbers],
-  });
-  return { status: 'ok', candidates: buildCandidates(data, existingEvents) };
+  const details = await Contacts.Contact.getAllDetails([
+    Contacts.ContactField.FULL_NAME,
+    Contacts.ContactField.BIRTHDAY,
+    Contacts.ContactField.PHONES,
+  ]);
+  return {
+    status: 'ok',
+    candidates: buildCandidates(details.map(toContactLike), existingEvents),
+  };
 }

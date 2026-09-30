@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { DateField } from '@/components/date-time-field';
 import type { ContactCandidate } from '@/contacts/birthday-import';
@@ -14,16 +14,23 @@ import { useThemeColors } from '@/theme/use-theme';
  * precargada y alcanza con confirmar.
  */
 
+export interface BirthdayWizardEntry {
+  candidate: ContactCandidate;
+  date: string;
+  /** Nombre con el que se guarda el evento; por defecto el del contacto, pero es editable. */
+  name: string;
+}
+
 interface BirthdayWizardProps {
   candidates: ContactCandidate[];
   saving?: boolean;
-  /** Se llama al terminar, con la fecha elegida para cada contacto (los salteados no vienen). */
-  onFinish: (entries: { candidate: ContactCandidate; date: string }[]) => void;
+  /** Se llama al terminar, con la fecha y el nombre elegidos para cada contacto (los salteados no vienen). */
+  onFinish: (entries: BirthdayWizardEntry[]) => void;
 }
 
 export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardProps) {
   const [index, setIndex] = useState(0);
-  const [entries, setEntries] = useState<{ candidate: ContactCandidate; date: string }[]>([]);
+  const [entries, setEntries] = useState<BirthdayWizardEntry[]>([]);
 
   const current = candidates[index];
   if (!current) return null;
@@ -38,8 +45,8 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
   };
 
   return (
-    // `key` fuerza a que ContactStep se reinicie (y precargue su propia fecha)
-    // al pasar de un contacto a otro, sin necesitar un efecto para eso.
+    // `key` fuerza a que ContactStep se reinicie (y precargue su propia fecha y
+    // nombre) al pasar de un contacto a otro, sin necesitar un efecto para eso.
     <ContactStep
       key={current.key}
       candidate={current}
@@ -47,7 +54,7 @@ export function BirthdayWizard({ candidates, saving, onFinish }: BirthdayWizardP
       saving={saving}
       isLast={index + 1 === candidates.length}
       onSkip={() => advance(entries)}
-      onSave={(date) => advance([...entries, { candidate: current, date }])}
+      onSave={(date, name) => advance([...entries, { candidate: current, date, name }])}
     />
   );
 }
@@ -58,13 +65,15 @@ interface ContactStepProps {
   saving?: boolean;
   isLast: boolean;
   onSkip: () => void;
-  onSave: (date: string) => void;
+  onSave: (date: string, name: string) => void;
 }
 
 function ContactStep({ candidate, progress, saving, isLast, onSkip, onSave }: ContactStepProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [date, setDate] = useState(candidate.suggestedDate ?? todayIso());
+  const [name, setName] = useState(candidate.name);
+  const canSave = name.trim().length > 0;
 
   return (
     <View style={styles.container}>
@@ -74,7 +83,14 @@ function ContactStep({ candidate, progress, saving, isLast, onSkip, onSave }: Co
         <View style={styles.avatar}>
           <Ionicons name="person" size={28} color={colors.danger} />
         </View>
-        <Text style={styles.name}>{candidate.name}</Text>
+        <TextInput
+          style={styles.nameInput}
+          value={name}
+          onChangeText={setName}
+          placeholder="Nombre"
+          placeholderTextColor={colors.textSubtle}
+          accessibilityLabel="Nombre con el que se guarda el cumpleaños"
+        />
         {candidate.phone ? <Text style={styles.phone}>{candidate.phone}</Text> : null}
       </View>
 
@@ -100,9 +116,9 @@ function ContactStep({ candidate, progress, saving, isLast, onSkip, onSave }: Co
           <Text style={styles.skipText}>Saltear</Text>
         </Pressable>
         <Pressable
-          style={[styles.saveButton, saving && styles.saveDisabled]}
-          disabled={saving}
-          onPress={() => onSave(date)}
+          style={[styles.saveButton, (saving || !canSave) && styles.saveDisabled]}
+          disabled={saving || !canSave}
+          onPress={() => onSave(date, name.trim())}
         >
           <Text style={styles.saveText}>
             {saving ? 'Guardando…' : isLast ? 'Guardar y terminar' : 'Guardar y siguiente'}
@@ -133,7 +149,16 @@ const makeStyles = (c: ThemeColors) =>
     alignItems: 'center',
     justifyContent: 'center',
   },
-  name: { fontSize: 20, fontWeight: '700', color: c.text },
+  nameInput: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: c.text,
+    textAlign: 'center',
+    minWidth: 160,
+    borderBottomWidth: 1,
+    borderBottomColor: c.border,
+    paddingVertical: 2,
+  },
   phone: { fontSize: 13, color: c.textMuted },
   label: { fontSize: 13, fontWeight: '600', color: c.textMuted },
   hint: { fontSize: 12, color: c.textSubtle, lineHeight: 17 },

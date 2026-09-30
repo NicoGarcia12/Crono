@@ -32,12 +32,12 @@ describe('<BirthdayWizard />', () => {
     await renderWithStore(<BirthdayWizard candidates={[ana, bruno]} onFinish={jest.fn()} />);
 
     expect(screen.getByText('Contacto 1 de 2')).toBeTruthy();
-    expect(screen.getByText('Ana')).toBeTruthy();
+    expect(screen.getByDisplayValue('Ana')).toBeTruthy();
 
     await fireEvent.press(screen.getByText('Guardar y siguiente'));
 
     expect(screen.getByText('Contacto 2 de 2')).toBeTruthy();
-    expect(screen.getByText('Bruno')).toBeTruthy();
+    expect(screen.getByDisplayValue('Bruno')).toBeTruthy();
     // En el último cambia el texto del botón.
     expect(screen.getByText('Guardar y terminar')).toBeTruthy();
   });
@@ -50,8 +50,8 @@ describe('<BirthdayWizard />', () => {
     await fireEvent.press(screen.getByText('Guardar y terminar'));
 
     expect(onFinish).toHaveBeenCalledWith([
-      { candidate: ana, date: '1995-12-20' }, // precargada de la agenda del celular
-      { candidate: bruno, date: todayIso() }, // sin fecha previa: arranca en hoy
+      { candidate: ana, date: '1995-12-20', name: 'Ana' }, // precargada de la agenda del celular
+      { candidate: bruno, date: todayIso(), name: 'Bruno' }, // sin fecha previa: arranca en hoy
     ]);
   });
 
@@ -62,12 +62,34 @@ describe('<BirthdayWizard />', () => {
     await fireEvent.press(screen.getByLabelText('Saltear contacto'));
     await fireEvent.press(screen.getByText('Guardar y terminar'));
 
-    expect(onFinish).toHaveBeenCalledWith([{ candidate: bruno, date: todayIso() }]);
+    expect(onFinish).toHaveBeenCalledWith([{ candidate: bruno, date: todayIso(), name: 'Bruno' }]);
   });
 
   it('avisa cuando el contacto no tiene cumpleaños guardado en el celular', async () => {
     await renderWithStore(<BirthdayWizard candidates={[bruno]} onFinish={jest.fn()} />);
 
     expect(screen.getByText('Este contacto no tiene cumpleaños guardado en el celular.')).toBeTruthy();
+  });
+
+  it('permite editar el nombre con el que se guarda el cumpleaños', async () => {
+    const onFinish = jest.fn();
+    await renderWithStore(<BirthdayWizard candidates={[ana]} onFinish={onFinish} />);
+
+    await fireEvent.changeText(screen.getByDisplayValue('Ana'), 'Ana García');
+    await fireEvent.press(screen.getByText('Guardar y terminar'));
+
+    expect(onFinish).toHaveBeenCalledWith([
+      { candidate: ana, date: '1995-12-20', name: 'Ana García' },
+    ]);
+  });
+
+  it('no deja guardar con el nombre vacío', async () => {
+    const onFinish = jest.fn();
+    await renderWithStore(<BirthdayWizard candidates={[ana]} onFinish={onFinish} />);
+
+    await fireEvent.changeText(screen.getByDisplayValue('Ana'), '   ');
+    await fireEvent.press(screen.getByText('Guardar y terminar'));
+
+    expect(onFinish).not.toHaveBeenCalled();
   });
 });

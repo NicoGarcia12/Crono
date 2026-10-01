@@ -21,6 +21,7 @@ type ScreenState =
   | { status: 'loading' }
   | { status: 'denied' }
   | { status: 'unavailable' }
+  | { status: 'error'; message: string }
   | { status: 'empty' }
   | { status: 'list'; candidates: ContactCandidate[] }
   | { status: 'wizard'; candidates: ContactCandidate[]; selected: ContactCandidate[] };
@@ -46,7 +47,13 @@ export default function CargarCumpleanosScreen() {
     // Carga inicial de contactos (sistema externo): el setState llega en el
     // resultado async de `load`, no de forma sincrónica en este cuerpo.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    load().catch(() => setState({ status: 'unavailable' }));
+    load().catch((error: unknown) => {
+      console.error('No se pudieron leer los contactos', error);
+      setState({
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
   }, [load]);
 
   const handleDelete = (candidate: ContactCandidate) => {
@@ -109,6 +116,13 @@ export default function CargarCumpleanosScreen() {
             La agenda de contactos no existe en el navegador. Abrí Crono en tu teléfono para usar
             esta función.
           </Text>
+        </Centered>
+      );
+    case 'error':
+      return (
+        <Centered icon="warning">
+          <Text style={styles.title}>No se pudieron leer los contactos</Text>
+          <Text style={styles.message}>{state.message}</Text>
         </Centered>
       );
     case 'empty':

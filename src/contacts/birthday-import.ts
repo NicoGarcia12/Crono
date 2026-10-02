@@ -3,6 +3,8 @@ import { Platform } from 'react-native';
 
 import type { EventItem, NewEvent } from '@/types';
 
+import { fetchAllowedContactIds } from './account-filter';
+
 /**
  * Cargar cumpleaños desde la agenda de contactos del celular.
  *
@@ -157,7 +159,8 @@ export type FetchContactsResult =
 
 /**
  * Pide el permiso de contactos (recién acá, no al abrir la app) y devuelve
- * la lista completa. En web no existe la agenda de contactos.
+ * los contactos de las cuentas propias (ver `account-filter`). En web no existe
+ * la agenda de contactos.
  */
 export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchContactsResult> {
   if (Platform.OS === 'web') return { status: 'unavailable' };
@@ -173,8 +176,10 @@ export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchC
     birthdayField,
     Contacts.ContactField.PHONES,
   ]);
+  const allowedIds = await fetchAllowedContactIds();
+  const fromAllowedAccounts = allowedIds ? details.filter((d) => allowedIds.has(d.id)) : details;
   return {
     status: 'ok',
-    candidates: buildCandidates(details.map(toContactLike), existingEvents),
+    candidates: buildCandidates(fromAllowedAccounts.map(toContactLike), existingEvents),
   };
 }

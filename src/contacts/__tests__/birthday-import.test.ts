@@ -9,7 +9,10 @@ import {
   toContactLike,
   type ContactCandidate,
 } from '@/contacts/birthday-import';
+import { fetchAllowedContactIds } from '@/contacts/account-filter';
 import type { EventItem } from '@/types';
+
+jest.mock('@/contacts/account-filter', () => ({ fetchAllowedContactIds: jest.fn() }));
 
 // expo-contacts es nativo: lo reemplazamos por la forma de su API nueva
 // (Contact.getAllDetails + ContactField), que es la que usa fetchContacts.
@@ -90,6 +93,11 @@ describe('toContactLike', () => {
 });
 
 describe('fetchContacts', () => {
+  beforeEach(() => {
+    // Por defecto no hay filtro por cuenta (null = se muestran todos).
+    (fetchAllowedContactIds as jest.Mock).mockResolvedValue(null);
+  });
+
   const mocked = Contacts as unknown as {
     requestPermissionsAsync: jest.Mock;
     Contact: { getAllDetails: jest.Mock };
@@ -130,6 +138,19 @@ describe('fetchContacts', () => {
         },
       ],
     });
+  });
+
+  it('deja afuera los contactos que no son de las cuentas permitidas', async () => {
+    (fetchAllowedContactIds as jest.Mock).mockResolvedValue(new Set(['g1']));
+    mocked.requestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    mocked.Contact.getAllDetails.mockResolvedValue([
+      { id: 'g1', fullName: 'Ana (Google)' },
+      { id: 't1', fullName: 'Borrado (teléfono)' },
+    ]);
+
+    const result = await fetchContacts([]);
+
+    expect(result).toMatchObject({ status: 'ok', candidates: [{ key: 'g1' }] });
   });
 
   it('en Android pide dates (no birthday) y precarga el cumpleaños desde ahí', async () => {

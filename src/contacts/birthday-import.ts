@@ -51,15 +51,22 @@ export interface ContactDetailsLike {
   fullName?: string | null;
   phones?: { number?: string }[] | null;
   birthday?: { day?: number; month?: number; year?: number } | null;
+  /** Android no tiene `birthday`: el cumpleaños viene acá con label 'birthday'. */
+  dates?: { label?: string; date?: { day?: number; month?: number; year?: number } }[] | null;
 }
 
-/** Adapta un contacto de la API nueva de expo-contacts a la forma que usa esta pantalla. */
+/**
+ * Adapta un contacto de la API nueva de expo-contacts a la forma que usa esta pantalla.
+ * ⚠️ Gotcha: el campo `birthday` es solo de iOS. En Android el cumpleaños es una
+ * fecha dentro de `dates` con label 'birthday'.
+ */
 export function toContactLike(details: ContactDetailsLike): ContactLike {
+  const androidBirthday = details.dates?.find((d) => d.label?.toLowerCase() === 'birthday')?.date;
   return {
     id: details.id,
     name: details.fullName ?? undefined,
     phoneNumbers: details.phones ?? undefined,
-    birthday: details.birthday ?? undefined,
+    birthday: details.birthday ?? androidBirthday ?? undefined,
   };
 }
 
@@ -158,9 +165,12 @@ export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchC
   const { status } = await Contacts.requestPermissionsAsync();
   if (status !== 'granted') return { status: 'denied' };
 
+  // Pedir `birthday` en Android rompe el módulo nativo (el enum no lo tiene).
+  const birthdayField =
+    Platform.OS === 'ios' ? Contacts.ContactField.BIRTHDAY : Contacts.ContactField.DATES;
   const details = await Contacts.Contact.getAllDetails([
     Contacts.ContactField.FULL_NAME,
-    Contacts.ContactField.BIRTHDAY,
+    birthdayField,
     Contacts.ContactField.PHONES,
   ]);
   return {

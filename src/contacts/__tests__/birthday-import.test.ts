@@ -1,4 +1,5 @@
 import * as Contacts from 'expo-contacts';
+import { Platform } from 'react-native';
 
 import {
   birthdayToIso,
@@ -14,7 +15,7 @@ import type { EventItem } from '@/types';
 // (Contact.getAllDetails + ContactField), que es la que usa fetchContacts.
 jest.mock('expo-contacts', () => ({
   requestPermissionsAsync: jest.fn(),
-  ContactField: { FULL_NAME: 'fullName', BIRTHDAY: 'birthday', PHONES: 'phones' },
+  ContactField: { FULL_NAME: 'fullName', BIRTHDAY: 'birthday', DATES: 'dates', PHONES: 'phones' },
   Contact: { getAllDetails: jest.fn() },
 }));
 
@@ -73,6 +74,19 @@ describe('toContactLike', () => {
 
     expect(contact.birthday).toBeUndefined();
   });
+
+  it('en Android toma el cumpleaños de dates (label birthday) e ignora otras fechas', () => {
+    const contact = toContactLike({
+      id: 'c3',
+      fullName: 'Bruno',
+      dates: [
+        { label: 'anniversary', date: { day: 1, month: 6, year: 2010 } },
+        { label: 'birthday', date: { day: 5, month: 3 } },
+      ],
+    });
+
+    expect(contact.birthday).toEqual({ day: 5, month: 3 });
+  });
 });
 
 describe('fetchContacts', () => {
@@ -116,6 +130,27 @@ describe('fetchContacts', () => {
         },
       ],
     });
+  });
+
+  it('en Android pide dates (no birthday) y precarga el cumpleaños desde ahí', async () => {
+    const original = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      mocked.requestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+      mocked.Contact.getAllDetails.mockResolvedValue([
+        { id: 'c5', fullName: 'Eva', dates: [{ label: 'birthday', date: { day: 9, month: 11 } }] },
+      ]);
+
+      const result = await fetchContacts([]);
+
+      expect(mocked.Contact.getAllDetails).toHaveBeenCalledWith(['fullName', 'dates', 'phones']);
+      expect(result).toMatchObject({
+        status: 'ok',
+        candidates: [{ key: 'c5', suggestedDate: `${new Date().getFullYear()}-11-09` }],
+      });
+    } finally {
+      Platform.OS = original;
+    }
   });
 });
 

@@ -1,4 +1,5 @@
 import * as Contacts from 'expo-contacts';
+import { Platform } from 'react-native';
 
 import {
   birthdayToIso,
@@ -8,13 +9,16 @@ import {
   toContactLike,
   type ContactCandidate,
 } from '@/contacts/birthday-import';
+import { fetchAllowedContactIds } from '@/contacts/account-filter';
 import type { EventItem } from '@/types';
+
+jest.mock('@/contacts/account-filter', () => ({ fetchAllowedContactIds: jest.fn() }));
 
 // expo-contacts es nativo: lo reemplazamos por la forma de su API nueva
 // (Contact.getAllDetails + ContactField), que es la que usa fetchContacts.
 jest.mock('expo-contacts', () => ({
   requestPermissionsAsync: jest.fn(),
-  ContactField: { FULL_NAME: 'fullName', BIRTHDAY: 'birthday', PHONES: 'phones' },
+  ContactField: { FULL_NAME: 'fullName', BIRTHDAY: 'birthday', DATES: 'dates', PHONES: 'phones' },
   Contact: { getAllDetails: jest.fn() },
 }));
 
@@ -73,9 +77,27 @@ describe('toContactLike', () => {
 
     expect(contact.birthday).toBeUndefined();
   });
+
+  it('en Android toma el cumpleaños de dates (label birthday) e ignora otras fechas', () => {
+    const contact = toContactLike({
+      id: 'c3',
+      fullName: 'Bruno',
+      dates: [
+        { label: 'anniversary', date: { day: 1, month: 6, year: 2010 } },
+        { label: 'birthday', date: { day: 5, month: 3 } },
+      ],
+    });
+
+    expect(contact.birthday).toEqual({ day: 5, month: 3 });
+  });
 });
 
 describe('fetchContacts', () => {
+  beforeEach(() => {
+    // Por defecto no hay filtro por cuenta (null = se muestran todos).
+    (fetchAllowedContactIds as jest.Mock).mockResolvedValue(null);
+  });
+
   const mocked = Contacts as unknown as {
     requestPermissionsAsync: jest.Mock;
     Contact: { getAllDetails: jest.Mock };
@@ -117,21 +139,70 @@ describe('fetchContacts', () => {
       ],
     });
   });
+
+  it('deja afuera los contactos que no son de las cuentas permitidas', async () => {
+    (fetchAllowedContactIds as jest.Mock).mockResolvedValue(new Set(['g1']));
+    mocked.requestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    mocked.Contact.getAllDetails.mockResolvedValue([
+      { id: 'g1', fullName: 'Ana (Google)', phones: [{ number: '+54 9 11 5555-0000' }] },
+      { id: 't1', fullName: 'Borrado (teléfono)', phones: [{ number: '+54 9 11 5555-0000' }] },
+    ]);
+
+    const result = await fetchContacts([]);
+
+    expect(result).toMatchObject({ status: 'ok', candidates: [{ key: 'g1' }] });
+  });
+
+  it('en Android pide dates (no birthday) y precarga el cumpleaños desde ahí', async () => {
+    const original = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      mocked.requestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+      mocked.Contact.getAllDetails.mockResolvedValue([
+        { id: 'c5', fullName: 'Eva', phones: [{ number: '+54 9 11 5555-0000' }], dates: [{ label: 'birthday', date: { day: 9, month: 11 } }] },
+      ]);
+
+      const result = await fetchContacts([]);
+
+      expect(mocked.Contact.getAllDetails).toHaveBeenCalledWith(['fullName', 'dates', 'phones']);
+      expect(result).toMatchObject({
+        status: 'ok',
+        candidates: [{ key: 'c5', suggestedDate: `${new Date().getFullYear()}-11-09` }],
+      });
+    } finally {
+      Platform.OS = original;
+    }
+  });
 });
 
 describe('buildCandidates', () => {
   const contacts = [
     { id: 'c1', name: 'Zoe', phoneNumbers: [{ number: '+54 9 11 5555-0001' }] },
-    { id: 'c2', name: 'Ana', birthday: { day: 20, month: 12, year: 1995 } },
-    { id: 'c3', name: 'Bruno', birthday: { day: 5, month: 3 } }, // sin año
+    { id: 'c2', name: 'Ana', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 20, month: 12, year: 1995 } },
+    { id: 'c3', name: 'Bruno', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 5, month: 3 } }, // sin año
     { id: 'c4', name: '   ' }, // sin nombre útil
   ];
 
-  it('lista TODOS los contactos con nombre, ordenados alfabéticamente', () => {
+  it('lista todos los contactos con nombre y teléfono, ordenados alfabéticamente', () => {
     const candidates = buildCandidates(contacts, [], 2026);
 
     // Zoe entra aunque no tenga cumpleaños en la agenda del celular.
     expect(candidates.map((c) => c.name)).toEqual(['Ana', 'Bruno', 'Zoe']);
+  });
+
+  it('deja afuera los contactos sin número de teléfono', () => {
+    const candidates = buildCandidates(
+      [
+        { id: 'a', name: 'Con número', phoneNumbers: [{ number: '+54 9 11 5555-0001' }] },
+        { id: 'b', name: 'Sin lista' },
+        { id: 'c', name: 'Lista vacía', phoneNumbers: [] },
+        { id: 'd', name: 'Número en blanco', phoneNumbers: [{ number: '  ' }] },
+      ],
+      [],
+      2026,
+    );
+
+    expect(candidates.map((c) => c.key)).toEqual(['a']);
   });
 
   it('precarga la fecha y el teléfono que trae el contacto', () => {
@@ -179,8 +250,8 @@ describe('buildCandidates', () => {
   it('conserva contactos distintos aunque compartan nombre y cumpleaños', () => {
     const candidates = buildCandidates(
       [
-        { id: 'c1', name: '  Ana  ', birthday: { day: 20, month: 12, year: 1995 } },
-        { id: 'c2', name: 'ana', birthday: { day: 20, month: 12 } },
+        { id: 'c1', name: '  Ana  ', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 20, month: 12, year: 1995 } },
+        { id: 'c2', name: 'ana', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 20, month: 12 } },
       ],
       [],
       2026,

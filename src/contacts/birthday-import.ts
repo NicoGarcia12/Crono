@@ -3,6 +3,8 @@ import { Platform } from 'react-native';
 
 import type { EventItem, NewEvent } from '@/types';
 
+import { fetchAllowedContactIds } from './account-filter';
+
 /**
  * Cargar cumpleaños desde la agenda de contactos del celular.
  *
@@ -51,15 +53,22 @@ export interface ContactDetailsLike {
   fullName?: string | null;
   phones?: { number?: string }[] | null;
   birthday?: { day?: number; month?: number; year?: number } | null;
+  /** Android no tiene `birthday`: el cumpleaños viene acá con label 'birthday'. */
+  dates?: { label?: string; date?: { day?: number; month?: number; year?: number } }[] | null;
 }
 
-/** Adapta un contacto de la API nueva de expo-contacts a la forma que usa esta pantalla. */
+/**
+ * Adapta un contacto de la API nueva de expo-contacts a la forma que usa esta pantalla.
+ * ⚠️ Gotcha: el campo `birthday` es solo de iOS. En Android el cumpleaños es una
+ * fecha dentro de `dates` con label 'birthday'.
+ */
 export function toContactLike(details: ContactDetailsLike): ContactLike {
+  const androidBirthday = details.dates?.find((d) => d.label?.toLowerCase() === 'birthday')?.date;
   return {
     id: details.id,
     name: details.fullName ?? undefined,
     phoneNumbers: details.phones ?? undefined,
-    birthday: details.birthday ?? undefined,
+    birthday: details.birthday ?? androidBirthday ?? undefined,
   };
 }
 
@@ -98,6 +107,8 @@ export function buildCandidates(
 
   return contacts
     .filter((c): c is ContactLike & { name: string } => (c.name ?? '').trim().length > 0)
+    // Solo contactos con teléfono: los que no tienen número suelen ser basura (apps, cuentas, etc.).
+    .filter((c) => (c.phoneNumbers ?? []).some((p) => (p.number ?? '').trim().length > 0))
     .map((contact) => {
       const key = contact.id ?? contact.name;
       const birthday = contact.birthday;
@@ -150,7 +161,8 @@ export type FetchContactsResult =
 
 /**
  * Pide el permiso de contactos (recién acá, no al abrir la app) y devuelve
- * la lista completa. En web no existe la agenda de contactos.
+ * los contactos de las cuentas propias (ver `account-filter`). En web no existe
+ * la agenda de contactos.
  */
 export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchContactsResult> {
   if (Platform.OS === 'web') return { status: 'unavailable' };
@@ -158,13 +170,18 @@ export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchC
   const { status } = await Contacts.requestPermissionsAsync();
   if (status !== 'granted') return { status: 'denied' };
 
+  // Pedir `birthday` en Android rompe el módulo nativo (el enum no lo tiene).
+  const birthdayField =
+    Platform.OS === 'ios' ? Contacts.ContactField.BIRTHDAY : Contacts.ContactField.DATES;
   const details = await Contacts.Contact.getAllDetails([
     Contacts.ContactField.FULL_NAME,
-    Contacts.ContactField.BIRTHDAY,
+    birthdayField,
     Contacts.ContactField.PHONES,
   ]);
+  const allowedIds = await fetchAllowedContactIds();
+  const fromAllowedAccounts = allowedIds ? details.filter((d) => allowedIds.has(d.id)) : details;
   return {
     status: 'ok',
-    candidates: buildCandidates(details.map(toContactLike), existingEvents),
+    candidates: buildCandidates(fromAllowedAccounts.map(toContactLike), existingEvents),
   };
 }

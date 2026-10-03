@@ -48,7 +48,10 @@ export function nextOccurrence(event: Pick<EventItem, 'date' | 'time' | 'yearly'
   if (!event.yearly) return base;
 
   const candidate = new Date(from.getFullYear(), base.getMonth(), base.getDate(), base.getHours(), base.getMinutes());
-  if (candidate.getTime() < from.getTime()) {
+  // Sin hora es de día completo: el día de hoy sigue vigente hasta medianoche
+  // (si no, un cumpleaños de hoy figuraba recién para el año que viene).
+  const limit = event.time ? from : new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  if (candidate.getTime() < limit.getTime()) {
     candidate.setFullYear(candidate.getFullYear() + 1);
   }
   return candidate;

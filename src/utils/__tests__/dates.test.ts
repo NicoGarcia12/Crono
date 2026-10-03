@@ -72,6 +72,19 @@ describe('nextOccurrence', () => {
     const next = nextOccurrence({ date: '1990-07-11', time: '20:00', yearly: 1 }, from);
     expect(dateToIso(next)).toBe('2026-07-11');
   });
+
+  it('evento anual de HOY sin hora: cae hoy todo el día, no el año que viene', () => {
+    const next = nextOccurrence({ date: '1990-07-11', time: null, yearly: 1 }, from);
+    expect(dateToIso(next)).toBe('2026-07-11');
+    // Hasta el último minuto del día.
+    const late = nextOccurrence({ date: '1990-07-11', time: null, yearly: 1 }, new Date(2026, 6, 11, 23, 59));
+    expect(dateToIso(late)).toBe('2026-07-11');
+  });
+
+  it('evento anual de HOY con hora que ya pasó: rota al año siguiente', () => {
+    const next = nextOccurrence({ date: '1990-07-11', time: '09:00', yearly: 1 }, from);
+    expect(dateToIso(next)).toBe('2027-07-11');
+  });
 });
 
 describe('formatLongDate', () => {

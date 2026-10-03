@@ -44,6 +44,7 @@ const evento: EventItem = {
   isMine: 0,
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
 };
 
 const nota: Note = {

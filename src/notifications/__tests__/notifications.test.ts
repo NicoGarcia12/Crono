@@ -28,6 +28,7 @@ const evento: NewEvent = {
   ],
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
 };
 
 describe('scheduleEventReminders', () => {

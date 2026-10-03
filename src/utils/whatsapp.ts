@@ -1,4 +1,4 @@
-import type { EventItem } from '@/types';
+import type { Capability, EventItem } from '@/types';
 
 /**
  * Saludo por WhatsApp.
@@ -42,25 +42,29 @@ export function normalizePhone(raw: string | null, countryCode = DEFAULT_COUNTRY
   return `${countryCode}${digits}`;
 }
 
-/** Mensaje sugerido según el tipo de evento (el usuario lo puede editar en WhatsApp antes de enviarlo). */
-export function greetingMessage(event: Pick<EventItem, 'title' | 'type'>): string {
+/**
+ * Mensaje sugerido (el usuario lo puede editar en WhatsApp antes de enviarlo).
+ * Si el tipo tiene edad es un cumpleaños: se le desea feliz cumple.
+ */
+export function greetingMessage(event: Pick<EventItem, 'title'>, capabilities: readonly Capability[]): string {
   const nombre = event.title.split(' ')[0]; // solo el nombre de pila
 
-  if (event.type === 'cumpleanos') return `¡Feliz cumple, ${nombre}! 🎉`;
-  if (event.type === 'aniversario') return `¡Feliz aniversario! 🎊`;
+  if (capabilities.includes('edad')) return `¡Feliz cumple, ${nombre}! 🎉`;
   return `¡Hola, ${nombre}!`;
 }
 
 /** Link universal de WhatsApp con el saludo ya escrito. Null si el evento no tiene teléfono. */
-export function whatsappUrl(event: Pick<EventItem, 'title' | 'type' | 'phone'>): string | null {
+export function whatsappUrl(
+  event: Pick<EventItem, 'title' | 'phone'>,
+  capabilities: readonly Capability[],
+): string | null {
   const phone = normalizePhone(event.phone);
   if (!phone) return null;
 
-  return `https://wa.me/${phone}?text=${encodeURIComponent(greetingMessage(event))}`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(greetingMessage(event, capabilities))}`;
 }
 
-/** Tipos de evento donde tiene sentido saludar. */
-export function canGreet(event: Pick<EventItem, 'type' | 'phone'>): boolean {
-  const saludable = event.type === 'cumpleanos' || event.type === 'aniversario';
-  return saludable && normalizePhone(event.phone) !== null;
+/** El botón aparece solo si el tipo tiene saludo por WhatsApp y el evento tiene número. */
+export function canGreet(event: Pick<EventItem, 'phone'>, capabilities: readonly Capability[]): boolean {
+  return capabilities.includes('whatsapp') && normalizePhone(event.phone) !== null;
 }

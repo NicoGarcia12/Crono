@@ -28,6 +28,7 @@ jest.mock('@/store', () => ({
   useAppSelector: <T,>(
     selector: (state: {
       events: { items: EventItem[] };
+      eventBases: { bases: never[] };
       eventTypes: { items: EventTypeMeta[] };
       greetingsSent: { year: number; items: never[]; status: 'ready' };
       settings: { themePreference: 'sistema' };
@@ -35,6 +36,7 @@ jest.mock('@/store', () => ({
   ) =>
     selector({
       events: { items: mockEvents },
+      eventBases: { bases: [] },
       eventTypes: { items: mockEventTypes },
       greetingsSent: { year: new Date().getFullYear(), items: [], status: 'ready' },
       settings: { themePreference: 'sistema' },
@@ -58,6 +60,7 @@ const event = (id: number): EventItem => ({
   reminders: [],
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
   yearly: 0,
   isMine: 0,
 });

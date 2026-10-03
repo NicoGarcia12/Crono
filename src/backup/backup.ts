@@ -176,6 +176,8 @@ function toEvent(value: unknown): NewEvent[] {
       reminders: toReminders(value.reminders),
       tags: toTagNames(value.tags),
       photoUri: null, // nunca se restaura: ver comentario en buildBackup
+      // Las copias anteriores a "año desconocido" no traen el campo: se asume conocido.
+      yearUnknown: value.yearUnknown === 1 ? 1 : 0,
     },
   ];
 }

@@ -36,6 +36,7 @@ const evento = (over: Partial<EventItem>): EventItem => ({
   isMine: 0,
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
   ...over,
 });
 
@@ -287,6 +288,22 @@ describe('candidateToEvent', () => {
       isMine: 0,
       tags: [],
       photoUri: null,
+      yearUnknown: 0,
     });
+  });
+
+  it('si el contacto no traía año y se usa la fecha sugerida, queda con año desconocido', () => {
+    const candidate: ContactCandidate = {
+      key: 'c3',
+      name: 'Bruno',
+      phone: '+54 9 11 5555-0003',
+      suggestedDate: '2026-03-02',
+      suggestedHasYear: false,
+      loaded: null,
+    };
+
+    expect(candidateToEvent(candidate, '2026-03-02').yearUnknown).toBe(1);
+    // Si el usuario eligió otra fecha (con año), ya se sabe el año.
+    expect(candidateToEvent(candidate, '1990-03-02').yearUnknown).toBe(0);
   });
 });

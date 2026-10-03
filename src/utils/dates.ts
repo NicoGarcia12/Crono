@@ -1,4 +1,4 @@
-import type { EventItem } from '@/types';
+import type { Capability, EventItem } from '@/types';
 
 /**
  * Utilidades de fechas.
@@ -119,6 +119,23 @@ export function capitalize(text: string): string {
 export function yearsSince(originalIso: string, occurrence: Date): number {
   const original = toLocalDate(originalIso);
   return occurrence.getFullYear() - original.getFullYear();
+}
+
+/**
+ * Años a mostrar en la ocurrencia, según las capacidades del tipo: edad
+ * (cumpleaños) o años transcurridos (aniversario). Null si el tipo no muestra
+ * años, si no se sabe el año o si todavía no se cumplió ninguno.
+ */
+export function yearsToShow(
+  event: Pick<EventItem, 'date' | 'yearUnknown'>,
+  capabilities: readonly Capability[],
+  occurrence: Date,
+): { years: number; kind: 'edad' | 'anios' } | null {
+  if (event.yearUnknown === 1) return null;
+  const kind = capabilities.includes('edad') ? 'edad' : capabilities.includes('anios') ? 'anios' : null;
+  if (!kind) return null;
+  const years = yearsSince(event.date, occurrence);
+  return years > 0 ? { years, kind } : null;
 }
 
 /**

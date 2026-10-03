@@ -70,6 +70,7 @@ describe('<CargarCumpleanosScreen />', () => {
           isMine: 0,
           tags: [],
           photoUri: null,
+          yearUnknown: 0,
         },
       ]),
     );

@@ -3,7 +3,9 @@ import { render } from '@testing-library/react-native';
 import type { ReactElement, ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
+import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
@@ -18,6 +20,16 @@ const defaultEventTypes = Object.entries(DEFAULT_EVENT_TYPES).map(([key, meta], 
   key,
   ...meta,
   isBuiltin: true,
+  baseKey: key,
+  extraCapabilities: [],
+}));
+
+/** Mismas 5 bases que siembra la migración v12. */
+const defaultEventBases = Object.entries(DEFAULT_EVENT_BASES).map(([key, base], index) => ({
+  id: index + 1,
+  key,
+  ...base,
+  isBuiltin: true,
 }));
 
 /**
@@ -31,6 +43,7 @@ export function renderWithStore(ui: ReactElement) {
   const store = configureStore({
     reducer: {
       events: eventsReducer,
+      eventBases: eventBasesReducer,
       eventTypes: eventTypesReducer,
       giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
@@ -39,6 +52,7 @@ export function renderWithStore(ui: ReactElement) {
       settings: settingsReducer,
     },
     preloadedState: {
+      eventBases: { bases: defaultEventBases, fields: [], status: 'ready' as const },
       eventTypes: { items: defaultEventTypes, status: 'ready' as const },
     },
   });

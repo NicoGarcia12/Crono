@@ -26,6 +26,8 @@ export const FALLBACK_EVENT_TYPE_META: EventTypeMeta = {
   color: '#999999',
   defaultYearly: false,
   isBuiltin: false,
+  baseKey: 'evento',
+  extraCapabilities: [],
 };
 
 /**

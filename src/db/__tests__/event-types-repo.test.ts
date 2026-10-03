@@ -44,6 +44,17 @@ describe('createEventType', () => {
     expect(result.isBuiltin).toBe(false);
   });
 
+  it('sale de la base Evento o Festivo según la repetición, y conserva las ideas de regalo', async () => {
+    const db = fakeDb();
+    jest.mocked(getDb).mockReturnValue(db as never);
+
+    const puntual = await createEventType({ label: 'Torneo', icon: 'star', color: '#000', defaultYearly: false });
+    const anual = await createEventType({ label: 'Día del Padre', icon: 'heart', color: '#000', defaultYearly: true });
+
+    expect(puntual).toMatchObject({ baseKey: 'evento', extraCapabilities: ['regalos'] });
+    expect(anual).toMatchObject({ baseKey: 'festivo', extraCapabilities: ['regalos'] });
+  });
+
   it('si la clave ya existe, agrega un sufijo numérico', async () => {
     const db = fakeDb();
     db.rows.push({ id: 5, key: 'torneo' });

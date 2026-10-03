@@ -44,7 +44,10 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
   const [destination, setDestination] = useState<string | null>(candidates[0]?.key ?? null);
   const [busy, setBusy] = useState(false);
 
-  const count = `${events.length} ${events.length === 1 ? 'evento' : 'eventos'}`;
+  const one = events.length === 1;
+  const count = `${events.length} ${one ? 'evento' : 'eventos'}`;
+  /** "el evento" / "los 3 eventos", para que las frases concuerden en número. */
+  const theEvents = one ? 'el evento' : `los ${count}`;
 
   /** Lo que el tipo destino no admite: capacidades que no tiene y los campos extra del tipo que se borra. */
   const planFor = (destinationType: Pick<EventTypeMeta, 'baseKey' | 'extraCapabilities'>): RemovalPlan => {
@@ -62,7 +65,7 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
     const detail = impact.items.length > 0 ? `\n\n${impactMessage(impact)}` : '';
     return confirmDestructive(
       'Mover y borrar el tipo',
-      `Los ${count} de "${type.label}" pasan a "${destinationLabel}" y el tipo se borra.${detail}`,
+      `${one ? 'El evento' : `Los ${count}`} de "${type.label}" ${one ? 'pasa' : 'pasan'} a "${destinationLabel}" y el tipo se borra.${detail}`,
       'Mover y borrar',
     );
   };
@@ -95,7 +98,7 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
   const handleDeleteEvents = async () => {
     const ok = await confirmDestructive(
       'Borrar tipo y eventos',
-      `Se borran los ${count} de "${type.label}" con sus recordatorios, ideas de regalo y demás datos. No se puede deshacer.`,
+      `Se ${one ? 'borra' : 'borran'} ${theEvents} de "${type.label}" con sus recordatorios, ideas de regalo y demás datos. No se puede deshacer.`,
       'Borrar todo',
     );
     if (!ok) return;
@@ -111,7 +114,7 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
   if (mode === 'crear') {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Nuevo tipo para los {count}</Text>
+        <Text style={styles.title}>Nuevo tipo para {theEvents}</Text>
         <EventTypeForm
           lockedBaseKey={type.baseKey}
           onSubmit={(data) => void handleCreateAndMove(data)}
@@ -124,15 +127,15 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Borrar "{type.label}"</Text>
-      <Text style={styles.text}>Tiene {count}. ¿Querés moverlos a otro tipo?</Text>
+      <Text style={styles.text}>Tiene {count}. ¿Querés {one ? 'moverlo' : 'moverlos'} a otro tipo?</Text>
 
       {mode === 'preguntar' ? (
         <View style={styles.actions}>
           <Pressable style={styles.secondary} onPress={() => setMode('mover')}>
-            <Text style={styles.secondaryText}>Sí, moverlos</Text>
+            <Text style={styles.secondaryText}>{one ? 'Sí, moverlo' : 'Sí, moverlos'}</Text>
           </Pressable>
           <Pressable style={styles.danger} disabled={busy} onPress={() => void handleDeleteEvents()}>
-            <Text style={styles.dangerText}>No, borrarlos</Text>
+            <Text style={styles.dangerText}>{one ? 'No, borrarlo' : 'No, borrarlos'}</Text>
           </Pressable>
         </View>
       ) : candidates.length > 0 ? (
@@ -162,7 +165,7 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
         <>
           <Text style={styles.text}>No hay otro tipo con la base {baseLabel}.</Text>
           <Pressable style={styles.secondary} onPress={() => setMode('crear')}>
-            <Text style={styles.secondaryText}>Crear nuevo tipo y moverlos</Text>
+            <Text style={styles.secondaryText}>{one ? 'Crear nuevo tipo y moverlo' : 'Crear nuevo tipo y moverlos'}</Text>
           </Pressable>
         </>
       )}

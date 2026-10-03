@@ -107,6 +107,8 @@ export function buildCandidates(
 
   return contacts
     .filter((c): c is ContactLike & { name: string } => (c.name ?? '').trim().length > 0)
+    // Solo contactos con teléfono: los que no tienen número suelen ser basura (apps, cuentas, etc.).
+    .filter((c) => (c.phoneNumbers ?? []).some((p) => (p.number ?? '').trim().length > 0))
     .map((contact) => {
       const key = contact.id ?? contact.name;
       const birthday = contact.birthday;

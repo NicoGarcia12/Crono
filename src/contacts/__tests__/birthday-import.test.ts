@@ -144,8 +144,8 @@ describe('fetchContacts', () => {
     (fetchAllowedContactIds as jest.Mock).mockResolvedValue(new Set(['g1']));
     mocked.requestPermissionsAsync.mockResolvedValue({ status: 'granted' });
     mocked.Contact.getAllDetails.mockResolvedValue([
-      { id: 'g1', fullName: 'Ana (Google)' },
-      { id: 't1', fullName: 'Borrado (teléfono)' },
+      { id: 'g1', fullName: 'Ana (Google)', phones: [{ number: '+54 9 11 5555-0000' }] },
+      { id: 't1', fullName: 'Borrado (teléfono)', phones: [{ number: '+54 9 11 5555-0000' }] },
     ]);
 
     const result = await fetchContacts([]);
@@ -159,7 +159,7 @@ describe('fetchContacts', () => {
     try {
       mocked.requestPermissionsAsync.mockResolvedValue({ status: 'granted' });
       mocked.Contact.getAllDetails.mockResolvedValue([
-        { id: 'c5', fullName: 'Eva', dates: [{ label: 'birthday', date: { day: 9, month: 11 } }] },
+        { id: 'c5', fullName: 'Eva', phones: [{ number: '+54 9 11 5555-0000' }], dates: [{ label: 'birthday', date: { day: 9, month: 11 } }] },
       ]);
 
       const result = await fetchContacts([]);
@@ -178,16 +178,31 @@ describe('fetchContacts', () => {
 describe('buildCandidates', () => {
   const contacts = [
     { id: 'c1', name: 'Zoe', phoneNumbers: [{ number: '+54 9 11 5555-0001' }] },
-    { id: 'c2', name: 'Ana', birthday: { day: 20, month: 12, year: 1995 } },
-    { id: 'c3', name: 'Bruno', birthday: { day: 5, month: 3 } }, // sin año
+    { id: 'c2', name: 'Ana', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 20, month: 12, year: 1995 } },
+    { id: 'c3', name: 'Bruno', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 5, month: 3 } }, // sin año
     { id: 'c4', name: '   ' }, // sin nombre útil
   ];
 
-  it('lista TODOS los contactos con nombre, ordenados alfabéticamente', () => {
+  it('lista todos los contactos con nombre y teléfono, ordenados alfabéticamente', () => {
     const candidates = buildCandidates(contacts, [], 2026);
 
     // Zoe entra aunque no tenga cumpleaños en la agenda del celular.
     expect(candidates.map((c) => c.name)).toEqual(['Ana', 'Bruno', 'Zoe']);
+  });
+
+  it('deja afuera los contactos sin número de teléfono', () => {
+    const candidates = buildCandidates(
+      [
+        { id: 'a', name: 'Con número', phoneNumbers: [{ number: '+54 9 11 5555-0001' }] },
+        { id: 'b', name: 'Sin lista' },
+        { id: 'c', name: 'Lista vacía', phoneNumbers: [] },
+        { id: 'd', name: 'Número en blanco', phoneNumbers: [{ number: '  ' }] },
+      ],
+      [],
+      2026,
+    );
+
+    expect(candidates.map((c) => c.key)).toEqual(['a']);
   });
 
   it('precarga la fecha y el teléfono que trae el contacto', () => {
@@ -235,8 +250,8 @@ describe('buildCandidates', () => {
   it('conserva contactos distintos aunque compartan nombre y cumpleaños', () => {
     const candidates = buildCandidates(
       [
-        { id: 'c1', name: '  Ana  ', birthday: { day: 20, month: 12, year: 1995 } },
-        { id: 'c2', name: 'ana', birthday: { day: 20, month: 12 } },
+        { id: 'c1', name: '  Ana  ', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 20, month: 12, year: 1995 } },
+        { id: 'c2', name: 'ana', phoneNumbers: [{ number: '+54 9 11 5555-0000' }], birthday: { day: 20, month: 12 } },
       ],
       [],
       2026,

@@ -6,8 +6,11 @@ import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
 import { TagsField } from '@/components/tags-field';
 import { DEFAULT_TYPE_KEY } from '@/constants/event-bases';
-import { useEventBase, useEventTypesList, useTypeCapabilities } from '@/constants/use-event-types';
-import type { EventItem, EventType, NewEvent, ReminderInput } from '@/types';
+import { confirmDestructive } from '@/components/confirm';
+import { CustomFieldsSection, fieldValuesProblem } from '@/components/custom-fields-section';
+import { useEventBase, useEventFieldSpecs, useEventTypesList, useTypeCapabilities } from '@/constants/use-event-types';
+import { useAppSelector } from '@/store';
+import type { EventItem, EventType, FieldValues, NewEvent, ReminderInput } from '@/types';
 import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -25,7 +28,8 @@ interface EventFormProps {
   /** Evento existente al editar; undefined al crear. */
   initial?: EventItem;
   submitLabel: string;
-  onSubmit: (data: NewEvent) => void;
+  // Recibe el evento y los valores de sus campos personalizados (solo los del tipo elegido).
+  onSubmit: (data: NewEvent, fieldValues: FieldValues) => void;
 }
 
 export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
@@ -55,6 +59,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
   const [yearUnknown, setYearUnknown] = useState(initial?.yearUnknown === 1);
+  const savedValues = useAppSelector((state) => (initial ? state.fieldValues.byEvent[initial.id] : undefined));
+  const [fieldValues, setFieldValues] = useState<FieldValues>(() => savedValues ?? {});
+  const fieldSpecs = useEventFieldSpecs(type);
 
   const isMine = initial?.isMine === 1;
   const hasAge = capabilities.includes('edad');
@@ -69,7 +76,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const keepsOwnRepetition = initial !== undefined && type === initial.type;
   const yearly = isMine || (keepsOwnRepetition ? initial.yearly === 1 : (base?.yearly ?? false));
 
-  const canSave = title.trim().length > 0 && (!requiresTime || time !== null);
+  const fieldsProblem = fieldValuesProblem(fieldSpecs, fieldValues);
+  const canSave = title.trim().length > 0 && (!requiresTime || time !== null) && fieldsProblem === null;
 
   const selectType = (t: EventType) => {
     if (isMine) return; // La UI no ofrece una acción que viole el invariante.
@@ -94,7 +102,24 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     setAgeText(String(ageThisYear(isoDate)));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    // Solo viajan los valores de los campos del tipo elegido.
+    const ids = new Set(fieldSpecs.map((s) => s.id));
+    const values: FieldValues = Object.fromEntries(
+      Object.entries(fieldValues).filter(([id]) => ids.has(Number(id))),
+    );
+
+    // Si al cambiar de tipo quedan valores cargados sin lugar, se avisa antes de perderlos.
+    const dropped = Object.keys(savedValues ?? {}).filter((id) => !ids.has(Number(id))).length;
+    if (dropped > 0) {
+      const ok = await confirmDestructive(
+        'Se van a borrar datos',
+        `El tipo nuevo no tiene ${dropped} ${dropped === 1 ? 'campo cargado' : 'campos cargados'} de este evento. No se puede deshacer.`,
+        'Cambiar de tipo',
+      );
+      if (!ok) return;
+    }
+
     onSubmit({
       title: title.trim(),
       type: isMine ? 'cumpleanos' : type,
@@ -112,7 +137,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       tags,
       photoUri,
       yearUnknown: hasAge && yearUnknown ? 1 : 0,
-    });
+    }, values);
   };
 
   return (
@@ -213,6 +238,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         </>
       ) : null}
 
+      {/* Campos propios del tipo: los de la base primero (obligatorios), después los extras. */}
+      <CustomFieldsSection specs={fieldSpecs} values={fieldValues} onChange={setFieldValues} />
+
       <Text style={styles.label}>Descripción (opcional)</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
@@ -233,6 +261,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       <Text style={styles.repeatHint}>
         {yearly ? 'Se repite todos los años' : 'Es por única vez'}
       </Text>
+
+      {fieldsProblem ? <Text style={styles.problem}>{fieldsProblem}</Text> : null}
 
       <Pressable
         style={[styles.submit, !canSave && styles.submitDisabled]}
@@ -283,6 +313,7 @@ const makeStyles = (c: ThemeColors) =>
   switchRow: { justifyContent: 'space-between', marginTop: 12 },
   switchLabel: { fontSize: 15, color: c.text },
   repeatHint: { fontSize: 13, color: c.textSubtle, marginTop: 12 },
+  problem: { fontSize: 13, color: c.danger, marginTop: 12 },
   submit: {
     backgroundColor: c.primary,
     borderRadius: 24,

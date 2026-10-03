@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 /**
- * Mi cumpleaños se carga en el Perfil. Desde ahí (o entrando al evento en la
- * agenda) se llega a la lista de quién me saludó ese año.
+ * Mi cumpleaños se carga en el Perfil, y solo desde ahí se llega a la lista
+ * de quién me saludó ese año (es algo mío, no del evento).
  */
 test('carga mi cumpleaños desde el perfil y registra quién me saludó', async ({ page }) => {
   await page.goto('/');
@@ -36,9 +36,8 @@ test('carga mi cumpleaños desde el perfil y registra quién me saludó', async 
   await page.getByRole('tab', { name: /Agenda/ }).click();
   await expect(page.getByText('Mi cumpleaños').first()).toBeVisible();
 
-  // Entrando al evento se llega a la lista.
-  await page.getByText('Mi cumpleaños').first().click();
-  await expect(page.getByText('Guardar cambios')).toBeVisible();
+  // La lista se abre desde el Perfil.
+  await page.getByRole('tab', { name: /Perfil/ }).click();
   await page.getByLabel('Ver quién me saludó').last().click();
 
   await expect(page.getByText(/¿Quién me saludó en \d{4}\?/)).toBeVisible();

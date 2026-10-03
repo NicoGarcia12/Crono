@@ -7,7 +7,8 @@ import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
 import { loadFieldValues } from '@/store/field-values-slice';
-import type { NewEventBase, NewEventType, RemovalPlan } from '@/types';
+import { cancelReminders } from '@/notifications/notifications';
+import type { EventItem, NewEventBase, NewEventType, RemovalPlan } from '@/types';
 
 /**
  * Guardar un tipo o una base puede cambiar varias cosas a la vez (campos,
@@ -62,6 +63,41 @@ export const saveBaseConfig = createAsyncThunk(
     await reloadAll(dispatch);
   },
 );
+
+/** Borra un tipo sin eventos. */
+export const deleteTypeConfig = createAsyncThunk('typeConfig/deleteType', async (id: number, { dispatch }) => {
+  await eventTypesRepo.deleteEventType(id);
+  await reloadAll(dispatch);
+});
+
+/** Borra un tipo pasando sus eventos a otro de la misma base (con el plan ya confirmado). */
+export const deleteTypeMovingEvents = createAsyncThunk(
+  'typeConfig/deleteTypeMoving',
+  async (payload: { id: number; sourceKey: string; destinationKey: string; plan: RemovalPlan }, { dispatch }) => {
+    await eventTypesRepo.deleteEventTypeMovingEvents(payload.id, payload.sourceKey, payload.destinationKey, payload.plan);
+    await reloadAll(dispatch);
+  },
+);
+
+/**
+ * Borra un tipo con todos sus eventos. Los avisos del sistema se cancelan
+ * primero: a diferencia de SQLite, no tienen rollback, y un aviso huérfano de
+ * un evento borrado sería peor que un evento con avisos cancelados.
+ */
+export const deleteTypeWithEvents = createAsyncThunk(
+  'typeConfig/deleteTypeWithEvents',
+  async (payload: { id: number; key: string; events: readonly EventItem[] }, { dispatch }) => {
+    await Promise.allSettled(payload.events.map((event) => cancelReminders(event.reminders)));
+    await eventTypesRepo.deleteEventTypeWithEvents(payload.id, payload.key);
+    await reloadAll(dispatch);
+  },
+);
+
+/** Borra una base propia que ningún tipo usa. */
+export const deleteBaseConfig = createAsyncThunk('typeConfig/deleteBase', async (id: number, { dispatch }) => {
+  await eventBasesRepo.deleteEventBase(id);
+  await reloadAll(dispatch);
+});
 
 /** Conteo para el aviso previo: no modifica nada. */
 export const countRemovals = (

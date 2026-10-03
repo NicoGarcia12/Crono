@@ -41,7 +41,15 @@ export interface EventTypeMeta {
   baseKey: string;
   /** Capacidades que el tipo suma a las de su base (siempre vacío en los de fábrica). */
   extraCapabilities: Capability[];
+  /** Tipo interno que no se ofrece para elegir ni se edita (ej. "Mi cumpleaños"). */
+  hidden: boolean;
 }
+
+/**
+ * Mi cumpleaños no es del tipo "Cumpleaños": tiene cosas que los demás no
+ * (¿Quién me saludó?), así que vive en un tipo propio, oculto y fijo.
+ */
+export const MY_BIRTHDAY_TYPE_KEY = 'mi_cumpleanos';
 
 /**
  * Lo que se completa en el editor de tipos. En los de fábrica solo se usan
@@ -218,10 +226,10 @@ export type NewEvent = Omit<EventItem, 'id' | 'reminders' | 'tags'> & {
 
 /**
  * Regla de dominio: el cumpleaños de la persona dueña de la agenda siempre
- * es de tipo cumpleaños y se repite anualmente, incluso fuera del formulario.
+ * es del tipo "Mi cumpleaños" y se repite anualmente, incluso fuera del formulario.
  */
 export function enforceMineBirthday(event: NewEvent): NewEvent {
-  return event.isMine === 1 ? { ...event, type: 'cumpleanos', yearly: 1 } : event;
+  return event.isMine === 1 ? { ...event, type: MY_BIRTHDAY_TYPE_KEY, yearly: 1 } : event;
 }
 
 export interface Note {

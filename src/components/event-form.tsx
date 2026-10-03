@@ -10,7 +10,7 @@ import { confirmDestructive } from '@/components/confirm';
 import { CustomFieldsSection, fieldValuesProblem } from '@/components/custom-fields-section';
 import { useEventBase, useEventFieldSpecs, useEventTypesList, useTypeCapabilities } from '@/constants/use-event-types';
 import { useAppSelector } from '@/store';
-import type { EventItem, EventType, FieldValues, NewEvent, ReminderInput } from '@/types';
+import { MY_BIRTHDAY_TYPE_KEY, type EventItem, type EventType, type FieldValues, type NewEvent, type ReminderInput } from '@/types';
 import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -122,7 +122,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
 
     onSubmit({
       title: title.trim(),
-      type: isMine ? 'cumpleanos' : type,
+      type: isMine ? MY_BIRTHDAY_TYPE_KEY : type,
       date,
       time,
       description: description.trim() || null,

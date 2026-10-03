@@ -18,6 +18,28 @@ export function confirmDestructive(title: string, message: string, confirmLabel:
   });
 }
 
+/** Pregunta sí/no que no borra nada (ej. "¿querés cargar el dato nuevo?"). */
+export function confirmAction(title: string, message: string, confirmLabel: string, cancelLabel = 'Ahora no'): Promise<boolean> {
+  if (Platform.OS === 'web') {
+    return Promise.resolve(globalThis.confirm?.(`${title}\n\n${message}`) ?? false);
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, message, [
+      { text: cancelLabel, style: 'cancel', onPress: () => resolve(false) },
+      { text: confirmLabel, onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
+
+/** Aviso informativo (sin opciones), también en web. */
+export function notify(title: string, message: string): void {
+  if (Platform.OS === 'web') {
+    globalThis.alert?.(`${title}\n\n${message}`);
+    return;
+  }
+  Alert.alert(title, message);
+}
+
 /** "Afecta a 3 eventos: 3 ideas de regalo y 2 valores de «Obra social»." */
 export function impactMessage(impact: { events: number; items: { label: string; count: number }[] }): string {
   const parts = impact.items.map((item) => `${item.count} ${item.label}`);

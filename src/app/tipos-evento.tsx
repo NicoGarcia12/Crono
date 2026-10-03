@@ -1,17 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useStore } from 'react-redux';
 
-import { confirmDestructive, impactMessage } from '@/components/confirm';
+import { confirmAction, confirmDestructive, impactMessage, notify } from '@/components/confirm';
+import { DeleteTypePanel } from '@/components/delete-type-panel';
 import { EventBaseForm } from '@/components/event-base-form';
+import { FillFieldsPanel } from '@/components/fill-fields-panel';
 import { EventTypeForm } from '@/components/event-type-form';
-import { isEmptyPlan, planRemovals } from '@/constants/event-bases';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { removeEventType } from '@/store/event-types-slice';
+import { DEFAULT_TYPE_KEY, isEmptyPlan, planRemovals } from '@/constants/event-bases';
+import { useAppDispatch, useAppSelector, type RootState } from '@/store';
 import {
   countRemovals,
   createBaseConfig,
   createTypeConfig,
+  deleteBaseConfig,
+  deleteTypeConfig,
   saveBaseConfig,
   saveTypeConfig,
 } from '@/store/type-config-thunks';
@@ -29,12 +33,34 @@ export default function TiposEventoScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const dispatch = useAppDispatch();
-  const types = useAppSelector((state) => state.eventTypes.items);
+  const allTypes = useAppSelector((state) => state.eventTypes.items);
+  // Los ocultos (ej. "Mi cumpleaños") no se editan ni se borran desde acá.
+  const types = useMemo(() => allTypes.filter((t) => !t.hidden), [allTypes]);
   const bases = useAppSelector((state) => state.eventBases.bases);
   const fields = useAppSelector((state) => state.eventBases.fields);
   const events = useAppSelector((state) => state.events.items);
 
-  const [editing, setEditing] = useState<{ kind: 'type' | 'base'; id: number | 'nuevo' } | null>(null);
+  const [editing, setEditing] = useState<{ kind: 'type' | 'base' | 'delete'; id: number | 'nuevo' } | null>(null);
+  const [filling, setFilling] = useState<{ eventIds: number[]; fieldIds: number[] } | null>(null);
+  const store = useStore<RootState>();
+
+  /**
+   * Si al guardar se agregaron datos nuevos y hay eventos de esos tipos,
+   * pregunta si se quieren cargar ahora, de a uno.
+   */
+  const offerToFill = async (owner: 'type' | 'base', ownerId: number, typeKeys: string[], previousFieldIds: Set<number>) => {
+    const state = store.getState();
+    const added = state.eventBases.fields.filter((f) => f.owner === owner && f.ownerId === ownerId && !previousFieldIds.has(f.id));
+    const eventIds = state.events.items.filter((e) => typeKeys.includes(e.type)).map((e) => e.id);
+    if (added.length === 0 || eventIds.length === 0) return;
+    const names = added.map((f) => `«${f.label}»`).join(', ');
+    const ok = await confirmAction(
+      'Dato nuevo',
+      `Agregaste ${names}. Hay ${eventIds.length} ${eventIds.length === 1 ? 'evento' : 'eventos'} que todavía no lo tienen. ¿Querés cargarlo ahora, uno por uno?`,
+      'Cargar',
+    );
+    if (ok) setFilling({ eventIds, fieldIds: added.map((f) => f.id) });
+  };
 
   const usageCount = (key: string) => events.filter((event) => event.type === key).length;
   const fieldLabels = useMemo(() => Object.fromEntries(fields.map((f) => [f.id, f.label])), [fields]);
@@ -60,8 +86,10 @@ export default function TiposEventoScreen() {
           { capabilities: data.extraCapabilities, fields: data.fields },
         );
     if (!(await confirmPlan([type.key], plan))) return;
+    const previous = new Set(fields.filter((f) => f.owner === 'type' && f.ownerId === type.id).map((f) => f.id));
     await dispatch(saveTypeConfig({ id: type.id, data, plan })).unwrap();
     setEditing(null);
+    await offerToFill('type', type.id, [type.key], previous);
   };
 
   const handleSaveBase = async (base: EventBase | null, data: NewEventBase) => {
@@ -76,32 +104,51 @@ export default function TiposEventoScreen() {
     );
     const typeKeys = types.filter((t) => t.baseKey === base.key).map((t) => t.key);
     if (!(await confirmPlan(typeKeys, plan))) return;
+    const previous = new Set(fields.filter((f) => f.owner === 'base' && f.ownerId === base.id).map((f) => f.id));
     await dispatch(saveBaseConfig({ id: base.id, data, plan })).unwrap();
     setEditing(null);
+    await offerToFill('base', base.id, typeKeys, previous);
   };
 
-  const handleDelete = (type: EventTypeMeta) => {
-    const count = usageCount(type.key);
-    if (count > 0) {
-      Alert.alert(
+  /** Sin eventos se borra con una confirmación simple; con eventos se abre el panel que pregunta si moverlos. */
+  const handleDelete = async (type: EventTypeMeta) => {
+    if (usageCount(type.key) > 0) {
+      setEditing({ kind: 'delete', id: type.id });
+      return;
+    }
+    if (await confirmDestructive('Borrar tipo', `¿Borrar "${type.label}"? No se puede deshacer.`, 'Borrar')) {
+      await dispatch(deleteTypeConfig(type.id)).unwrap();
+    }
+  };
+
+  const handleDeleteBase = async (base: EventBase) => {
+    const used = types.filter((t) => t.baseKey === base.key).length;
+    if (used > 0) {
+      notify(
         'No se puede borrar',
-        `Hay ${count} ${count === 1 ? 'evento' : 'eventos'} usando "${type.label}". Cambiales el tipo antes de borrarlo.`,
+        `Hay ${used} ${used === 1 ? 'tipo' : 'tipos'} con la base "${base.label}". Borralos (o mové sus eventos) primero.`,
       );
       return;
     }
-    Alert.alert('Borrar tipo', `¿Borrar "${type.label}"? No se puede deshacer.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Borrar', style: 'destructive', onPress: () => void dispatch(removeEventType(type.id)) },
-    ]);
+    if (await confirmDestructive('Borrar base', `¿Borrar la base "${base.label}"? No se puede deshacer.`, 'Borrar')) {
+      await dispatch(deleteBaseConfig(base.id)).unwrap();
+    }
   };
 
-  const isEditing = (kind: 'type' | 'base', id: number | 'nuevo') => editing?.kind === kind && editing.id === id;
+  const isEditing = (kind: 'type' | 'base' | 'delete', id: number | 'nuevo') =>
+    editing?.kind === kind && editing.id === id;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {filling ? (
+        <FillFieldsPanel eventIds={filling.eventIds} fieldIds={filling.fieldIds} onDone={() => setFilling(null)} />
+      ) : null}
+
       <Text style={styles.section}>Tipos</Text>
       {types.map((type) =>
-        isEditing('type', type.id) ? (
+        isEditing('delete', type.id) ? (
+          <DeleteTypePanel key={type.id} type={type} onDone={() => setEditing(null)} onCancel={() => setEditing(null)} />
+        ) : isEditing('type', type.id) ? (
           <EventTypeForm
             key={type.id}
             initial={type}
@@ -126,8 +173,9 @@ export default function TiposEventoScreen() {
             >
               <Ionicons name="pencil" size={18} color={colors.textSubtle} />
             </Pressable>
-            {!type.isBuiltin ? (
-              <Pressable accessibilityLabel={`Borrar tipo ${type.label}`} hitSlop={8} onPress={() => handleDelete(type)}>
+            {/* "Evento" es el tipo por defecto al crear: no se puede borrar. */}
+            {type.key !== DEFAULT_TYPE_KEY ? (
+              <Pressable accessibilityLabel={`Borrar tipo ${type.label}`} hitSlop={8} onPress={() => void handleDelete(type)}>
                 <Ionicons name="trash" size={18} color={colors.danger} />
               </Pressable>
             ) : null}
@@ -169,13 +217,18 @@ export default function TiposEventoScreen() {
               </Text>
             </View>
             {!base.isBuiltin ? (
-              <Pressable
-                accessibilityLabel={`Editar base ${base.label}`}
-                hitSlop={8}
-                onPress={() => setEditing({ kind: 'base', id: base.id })}
-              >
-                <Ionicons name="pencil" size={18} color={colors.textSubtle} />
-              </Pressable>
+              <>
+                <Pressable
+                  accessibilityLabel={`Editar base ${base.label}`}
+                  hitSlop={8}
+                  onPress={() => setEditing({ kind: 'base', id: base.id })}
+                >
+                  <Ionicons name="pencil" size={18} color={colors.textSubtle} />
+                </Pressable>
+                <Pressable accessibilityLabel={`Borrar base ${base.label}`} hitSlop={8} onPress={() => void handleDeleteBase(base)}>
+                  <Ionicons name="trash" size={18} color={colors.danger} />
+                </Pressable>
+              </>
             ) : (
               <Ionicons name="lock-closed" size={16} color={colors.textSubtle} />
             )}

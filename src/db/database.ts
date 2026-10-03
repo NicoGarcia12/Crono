@@ -2,8 +2,8 @@ import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
 import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
-import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
-import type { Capability } from '@/types';
+import { DEFAULT_EVENT_TYPES, MY_BIRTHDAY_TYPE } from '@/constants/event-types';
+import { MY_BIRTHDAY_TYPE_KEY, type Capability } from '@/types';
 
 /**
  * Capa de base de datos local (SQLite).
@@ -20,7 +20,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 13;
+const DATABASE_VERSION = 14;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -377,6 +377,25 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 13;
   }
 
+  if (currentVersion === 13) {
+    // v14: mi cumpleaños sale del tipo "Cumpleaños" a un tipo propio, oculto
+    // y fijo (tiene cosas que los demás no, como "¿Quién me saludó?"). Así
+    // "Cumpleaños" se puede borrar sin arrastrar mi cumpleaños.
+    await database.withTransactionAsync(async () => {
+      await addTypeColumnIfMissing(database, 'hidden', 'INTEGER NOT NULL DEFAULT 0');
+      await database.execAsync(`
+        INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities, hidden)
+        SELECT '${MY_BIRTHDAY_TYPE_KEY}', '${sqlEscape(MY_BIRTHDAY_TYPE.label)}', '${MY_BIRTHDAY_TYPE.icon}',
+               '${MY_BIRTHDAY_TYPE.color}', 1, 1, 'cumpleanos', '[]', 1
+        WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${MY_BIRTHDAY_TYPE_KEY}');
+
+        UPDATE events SET type = '${MY_BIRTHDAY_TYPE_KEY}' WHERE is_mine = 1;
+      `);
+      await database.execAsync('PRAGMA user_version = 14');
+    });
+    currentVersion = 14;
+  }
+
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
@@ -393,6 +412,20 @@ function eventsWithoutCapability(capability: Capability): string {
     JOIN event_bases b ON b.key = t.base_key
     WHERE instr(b.capabilities, ${needle}) = 0 AND instr(t.extra_capabilities, ${needle}) = 0
   `;
+}
+
+/** Igual que addColumnIfMissing, para `event_types` (reanudable si se cortó a mitad). */
+async function addTypeColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  columnName: 'hidden',
+  definition: 'INTEGER NOT NULL DEFAULT 0',
+): Promise<void> {
+  try {
+    await database.execAsync(`ALTER TABLE event_types ADD COLUMN ${columnName} ${definition}`);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) return;
+    throw error;
+  }
 }
 
 /** Escapa comillas simples para embeber texto en SQL crudo (sql = ''valor''). */

@@ -69,6 +69,76 @@ describe('buildBackup', () => {
   });
 });
 
+describe('backup de tipos propios y campos', () => {
+  const config = {
+    bases: [
+      { id: 1, key: 'cumpleanos', label: 'Cumpleaños', yearly: true, requiresTime: false, capabilities: ['edad' as const], isBuiltin: true },
+      { id: 6, key: 'base_mascota', label: 'Mascota', yearly: true, requiresTime: false, capabilities: ['edad' as const], isBuiltin: false },
+    ],
+    types: [
+      {
+        id: 20, key: 'firulais', label: 'Mascota', icon: 'paw', color: '#795548', defaultYearly: true,
+        isBuiltin: false, baseKey: 'base_mascota', extraCapabilities: ['regalos' as const], hidden: false,
+      },
+    ],
+    fields: [
+      { id: 3, owner: 'base' as const, ownerId: 6, label: 'Especie', kind: 'select' as const, options: ['Perro', 'Gato'], position: 0 },
+      { id: 4, owner: 'type' as const, ownerId: 20, label: 'Juguetes', kind: 'multi' as const, options: ['Pelota', 'Hueso'], position: 0 },
+    ],
+    values: { 7: { 3: 'Perro', 4: '["Pelota"]' } },
+  };
+  const firulais = evento({ id: 7, title: 'Firulais', type: 'firulais' });
+
+  it('exporta solo las bases y tipos propios, y los valores por nombre de campo', () => {
+    const backup = buildBackup([firulais], [], 'Nico', new Date(2026, 6, 12), undefined, config);
+
+    expect(backup.typeConfig).toEqual({
+      bases: [{
+        key: 'base_mascota', label: 'Mascota', yearly: true, requiresTime: false, capabilities: ['edad'],
+        fields: [{ label: 'Especie', kind: 'select', options: ['Perro', 'Gato'] }],
+      }],
+      types: [{
+        key: 'firulais', label: 'Mascota', icon: 'paw', color: '#795548', baseKey: 'base_mascota',
+        extraCapabilities: ['regalos'], fields: [{ label: 'Juguetes', kind: 'multi', options: ['Pelota', 'Hueso'] }],
+      }],
+    });
+    expect(backup.events[0].fieldValues).toEqual({ 'base:Especie': 'Perro', 'type:Juguetes': '["Pelota"]' });
+  });
+
+  it('ida y vuelta: el archivo exportado se vuelve a leer igual', () => {
+    const backup = buildBackup([firulais], [], 'Nico', new Date(2026, 6, 12), undefined, config);
+    const parsed = parseBackup(serializeBackup(backup));
+
+    expect(parsed.ok && parsed.backup.typeConfig).toEqual(backup.typeConfig);
+    expect(parsed.ok && parsed.backup.events[0].fieldValues).toEqual(backup.events[0].fieldValues);
+  });
+
+  it('un backup viejo, sin configuración de tipos, se sigue leyendo', () => {
+    const viejo = buildBackup([evento({ id: 1 })], [], 'Nico', new Date(2026, 6, 12));
+    const parsed = parseBackup(serializeBackup(viejo));
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok && parsed.backup.typeConfig).toBeUndefined();
+  });
+
+  it('descarta campos y capacidades inválidos del archivo', () => {
+    const raw = JSON.stringify({
+      app: 'crono', formatVersion: 1, displayName: null, notes: [],
+      events: [{ title: 'X', type: 'evento', date: '2026-01-01', yearly: 0 }],
+      typeConfig: {
+        bases: [{ key: 'base_x', label: 'X', capabilities: ['edad', 'volar'], fields: [{ label: 'A', kind: 'fecha' }] }],
+        types: [{ key: 'sin_base', label: 'Y' }],
+      },
+    });
+    const parsed = parseBackup(raw);
+
+    expect(parsed.ok && parsed.backup.typeConfig).toEqual({
+      bases: [{ key: 'base_x', label: 'X', yearly: false, requiresTime: false, capabilities: ['edad'], fields: [] }],
+      types: [],
+    });
+  });
+});
+
 describe('backupFileName', () => {
   it('nombra el archivo con la fecha', () => {
     expect(backupFileName(new Date('2026-07-12T12:00:00Z'))).toBe('crono-backup-2026-07-12.json');

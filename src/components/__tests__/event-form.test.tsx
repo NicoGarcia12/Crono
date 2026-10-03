@@ -126,14 +126,14 @@ describe('<EventForm />', () => {
     expect(screen.queryByLabelText('Este es mi cumpleaños')).toBeNull();
   });
 
-  it('conserva el tipo cumpleaños al editar mi cumpleaños', async () => {
+  it('mi cumpleaños conserva su propio tipo aunque se toque otro', async () => {
     const onSubmit = jest.fn();
     await renderWithStore(<EventForm initial={miCumple} submitLabel="Guardar" onSubmit={onSubmit} />);
 
     await fireEvent.press(screen.getByText('Evento'));
     await fireEvent.press(screen.getByText('Guardar'));
 
-    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'cumpleanos' }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'mi_cumpleanos' }));
   });
 
   it('conserva la repetición anual al editar mi cumpleaños', async () => {
@@ -210,7 +210,7 @@ describe('<EventForm />', () => {
     // Base 5 = Cita médica (orden de DEFAULT_EVENT_BASES). Tipo propio 20 = "Torneo".
     const torneo: EventTypeMeta = {
       id: 20, key: 'torneo', label: 'Torneo', icon: 'star', color: '#000',
-      defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [],
+      defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [], hidden: false,
     };
     const fields: CustomField[] = [
       { id: 1, owner: 'type', ownerId: 20, label: 'Qué llevar', kind: 'multi', options: ['Pelota', 'Agua'], position: 0 },

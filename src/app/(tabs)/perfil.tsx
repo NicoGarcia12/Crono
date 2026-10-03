@@ -11,6 +11,7 @@ import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { addEvent, editEvent } from '@/store/events-slice';
 import { saveDisplayName, savePhotoUri, saveThemePreference } from '@/store/settings-slice';
 import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
+import { MY_BIRTHDAY_TYPE_KEY } from '@/types';
 import { useThemeColors } from '@/theme/use-theme';
 
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
@@ -66,7 +67,7 @@ export default function PerfilScreen() {
     await dispatch(
       addEvent({
         title,
-        type: 'cumpleanos',
+        type: MY_BIRTHDAY_TYPE_KEY,
         date: isoDate,
         time: null,
         description: null,

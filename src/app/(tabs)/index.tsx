@@ -9,7 +9,7 @@ import { FALLBACK_EVENT_TYPE_META } from '@/constants/event-types';
 import { useEventTypesList } from '@/constants/use-event-types';
 import { useAppSelector } from '@/store';
 import type { EventType } from '@/types';
-import { nextOccurrence } from '@/utils/dates';
+import { isUpcoming, nextOccurrence } from '@/utils/dates';
 import { filterEvents } from '@/utils/search';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -44,7 +44,10 @@ export default function AgendaScreen() {
 
   // useMemo evita reordenar la lista en cada render — solo cuando cambia algo de esto.
   const sorted = useMemo(() => {
-    const byType = filter === 'todos' ? events : events.filter((e) => e.type === filter);
+    const now = new Date();
+    // El calendario conserva el historial; la agenda solo muestra lo vigente.
+    const upcoming = events.filter((e) => isUpcoming(e, now));
+    const byType = filter === 'todos' ? upcoming : upcoming.filter((e) => e.type === filter);
     const byTag = tagFilter
       ? byType.filter((e) => e.tags.some((tag) => tag.name === tagFilter))
       : byType;

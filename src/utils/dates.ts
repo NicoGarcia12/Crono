@@ -54,6 +54,18 @@ export function nextOccurrence(event: Pick<EventItem, 'date' | 'time' | 'yearly'
   return candidate;
 }
 
+/**
+ * ¿El evento sigue vigente para la Agenda?
+ * - Anual: siempre (rota a su próxima ocurrencia).
+ * - Puntual con hora: hasta que pasa esa hora.
+ * - Puntual sin hora: durante todo el día de la fecha.
+ */
+export function isUpcoming(event: Pick<EventItem, 'date' | 'time' | 'yearly'>, from: Date = new Date()): boolean {
+  if (event.yearly) return true;
+  if (!event.time) return event.date >= dateToIso(from);
+  return toLocalDate(event.date, event.time).getTime() >= from.getTime();
+}
+
 /** Formatea 'YYYY-MM-DD' como 'martes 14 de julio de 2026'. */
 export function formatLongDate(isoDate: string): string {
   const d = toLocalDate(isoDate);

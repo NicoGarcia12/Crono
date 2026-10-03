@@ -8,6 +8,7 @@ import {
   daysUntil,
   formatLongDate,
   formatRelative,
+  isUpcoming,
   nextOccurrence,
   toLocalDate,
   yearsSince,
@@ -143,6 +144,35 @@ describe('capitalize', () => {
     // El textTransform: 'capitalize' de CSS haría 'Domingo 20 De Diciembre De 2026'.
     expect(capitalize('domingo 20 de diciembre de 2026')).toBe('Domingo 20 de diciembre de 2026');
     expect(capitalize('julio 2026')).toBe('Julio 2026');
+  });
+});
+
+describe('isUpcoming', () => {
+  const from = new Date(2026, 6, 14, 15, 0); // 14 jul 2026 15:00
+
+  it('oculta un evento puntual de un día anterior', () => {
+    expect(isUpcoming({ date: '2026-07-13', time: null, yearly: 0 }, from)).toBe(false);
+  });
+
+  it('conserva un evento puntual sin hora del mismo día, todo el día', () => {
+    expect(isUpcoming({ date: '2026-07-14', time: null, yearly: 0 }, from)).toBe(true);
+  });
+
+  it('oculta un evento puntual de hoy cuya hora ya pasó', () => {
+    expect(isUpcoming({ date: '2026-07-14', time: '14:59', yearly: 0 }, from)).toBe(false);
+  });
+
+  it('conserva un evento puntual de hoy a la hora exacta o más tarde', () => {
+    expect(isUpcoming({ date: '2026-07-14', time: '15:00', yearly: 0 }, from)).toBe(true);
+    expect(isUpcoming({ date: '2026-07-14', time: '18:30', yearly: 0 }, from)).toBe(true);
+  });
+
+  it('conserva eventos puntuales futuros', () => {
+    expect(isUpcoming({ date: '2026-07-15', time: null, yearly: 0 }, from)).toBe(true);
+  });
+
+  it('conserva siempre los eventos anuales, aunque su fecha original sea pasada', () => {
+    expect(isUpcoming({ date: '1996-03-02', time: null, yearly: 1 }, from)).toBe(true);
   });
 });
 

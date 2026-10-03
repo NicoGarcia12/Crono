@@ -10,6 +10,7 @@ import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { requestNotificationPermission } from '@/notifications/notifications';
 import { store, useAppSelector } from '@/store';
+import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
 import { loadNotes } from '@/store/notes-slice';
@@ -60,6 +61,7 @@ export default function RootLayout() {
       // Cargar todo lo persistido a Redux antes de renderizar pantallas.
       await Promise.all([
         store.dispatch(loadSettings()),
+        store.dispatch(loadEventBases()),
         store.dispatch(loadEventTypes()),
         store.dispatch(loadEvents()),
         store.dispatch(loadNotes()),

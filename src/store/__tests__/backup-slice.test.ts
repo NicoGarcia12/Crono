@@ -6,6 +6,7 @@ import * as eventsRepo from '@/db/events-repo';
 import * as greetingsRepo from '@/db/greetings-repo';
 import * as notesRepo from '@/db/notes-repo';
 import { scheduleEventReminders } from '@/notifications/notifications';
+import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
@@ -66,6 +67,7 @@ const makeStore = (greetings: Greeting[] = []) =>
   configureStore({
     reducer: {
       events: eventsReducer,
+      eventBases: eventBasesReducer,
       eventTypes: eventTypesReducer,
       giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
@@ -75,6 +77,7 @@ const makeStore = (greetings: Greeting[] = []) =>
     },
     preloadedState: {
       events: { items: [evento], status: 'ready' as const },
+      eventBases: { bases: [], fields: [], status: 'ready' as const },
       eventTypes: { items: [], status: 'ready' as const },
       giftIdeas: { eventId: null, items: [], status: 'ready' as const },
       greetings: { year: 2026, items: greetings, status: 'ready' as const },

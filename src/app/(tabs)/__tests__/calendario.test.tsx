@@ -13,6 +13,8 @@ const mockEventTypes: EventTypeMeta[] = Object.entries(DEFAULT_EVENT_TYPES).map(
   key,
   ...meta,
   isBuiltin: true,
+  baseKey: key,
+  extraCapabilities: [],
 }));
 
 jest.mock('expo-router', () => ({

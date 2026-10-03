@@ -45,6 +45,8 @@ describe('<EventTypeForm />', () => {
       color: '#E91E63',
       defaultYearly: true,
       isBuiltin: true,
+      baseKey: 'cumpleanos',
+      extraCapabilities: [],
     };
     await renderWithStore(<EventTypeForm {...props} initial={initial} />);
 

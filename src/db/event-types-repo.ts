@@ -1,5 +1,6 @@
 import { getDb } from '@/db/database';
-import type { EventTypeMeta, NewEventType } from '@/types';
+import { parseCapabilities } from '@/db/json-columns';
+import type { Capability, EventTypeMeta, NewEventType } from '@/types';
 
 /**
  * Tipos de evento: los 5 de fábrica (sembrados por la migración v11) más los
@@ -15,13 +16,21 @@ interface EventTypeRow {
   color: string;
   defaultYearly: 0 | 1;
   isBuiltin: 0 | 1;
+  baseKey: string;
+  extraCapabilities: string;
 }
 
 const SELECT_FIELDS =
-  'id, key, label, icon, color, default_yearly AS defaultYearly, is_builtin AS isBuiltin';
+  'id, key, label, icon, color, default_yearly AS defaultYearly, is_builtin AS isBuiltin, ' +
+  'base_key AS baseKey, extra_capabilities AS extraCapabilities';
 
 function toMeta(row: EventTypeRow): EventTypeMeta {
-  return { ...row, defaultYearly: row.defaultYearly === 1, isBuiltin: row.isBuiltin === 1 };
+  return {
+    ...row,
+    defaultYearly: row.defaultYearly === 1,
+    isBuiltin: row.isBuiltin === 1,
+    extraCapabilities: parseCapabilities(row.extraCapabilities),
+  };
 }
 
 export async function findAllEventTypes(): Promise<EventTypeMeta[]> {
@@ -57,10 +66,16 @@ async function uniqueKey(label: string): Promise<string> {
 
 export async function createEventType(data: NewEventType): Promise<EventTypeMeta> {
   const key = await uniqueKey(data.label);
+  // Hasta que el editor permita elegir la base, se repite el criterio de la
+  // migración v12: la repetición decide la base y suma ideas de regalo.
+  const baseKey = data.defaultYearly ? 'festivo' : 'evento';
+  const extraCapabilities: Capability[] = ['regalos'];
   const db = getDb();
   const result = await db.runAsync(
-    'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin) VALUES (?, ?, ?, ?, ?, 0)',
+    'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities) ' +
+      'VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
     key, data.label.trim(), data.icon, data.color, data.defaultYearly ? 1 : 0,
+    baseKey, JSON.stringify(extraCapabilities),
   );
   return {
     id: result.lastInsertRowId,
@@ -70,6 +85,8 @@ export async function createEventType(data: NewEventType): Promise<EventTypeMeta
     color: data.color,
     defaultYearly: data.defaultYearly,
     isBuiltin: false,
+    baseKey,
+    extraCapabilities,
   };
 }
 

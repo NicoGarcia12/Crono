@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
+import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 
 /**
@@ -18,7 +19,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 11;
+const DATABASE_VERSION = 12;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -289,6 +290,73 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       `);
     }
     currentVersion = 11;
+  }
+
+  if (currentVersion === 11) {
+    // v12: tipos componibles. Cada tipo pasa a salir de una BASE (repetición,
+    // capacidades y campos obligatorios, bloqueados) y puede sumar extras
+    // opcionales. Los 5 tipos de fábrica apuntan a la base de su misma clave.
+    // Es una sola transacción: si algo falla, el próximo arranque reintenta
+    // desde v11 sin un esquema a medio crear.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS event_bases (
+          id INTEGER PRIMARY KEY NOT NULL,
+          key TEXT NOT NULL UNIQUE,
+          label TEXT NOT NULL,
+          yearly INTEGER NOT NULL DEFAULT 0,
+          requires_time INTEGER NOT NULL DEFAULT 0,
+          -- Lista JSON de capacidades (ver CAPABILITIES en src/types.ts).
+          capabilities TEXT NOT NULL DEFAULT '[]',
+          is_builtin INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+      for (const [key, base] of Object.entries(DEFAULT_EVENT_BASES)) {
+        await database.execAsync(`
+          INSERT INTO event_bases (key, label, yearly, requires_time, capabilities, is_builtin)
+          SELECT '${key}', '${sqlEscape(base.label)}', ${base.yearly ? 1 : 0}, ${base.requiresTime ? 1 : 0},
+                 '${JSON.stringify(base.capabilities)}', 1
+          WHERE NOT EXISTS (SELECT 1 FROM event_bases WHERE key = '${key}');
+        `);
+      }
+      await database.execAsync(`
+        ALTER TABLE event_types ADD COLUMN base_key TEXT NOT NULL DEFAULT 'evento';
+        ALTER TABLE event_types ADD COLUMN extra_capabilities TEXT NOT NULL DEFAULT '[]';
+
+        -- Los de fábrica salen de la base homónima.
+        UPDATE event_types SET base_key = key WHERE is_builtin = 1;
+
+        -- Los tipos que el usuario ya había creado conservan lo que hacían:
+        -- repetición según su default y las ideas de regalo, que antes tenían todos.
+        UPDATE event_types
+        SET base_key = CASE WHEN default_yearly = 1 THEN 'festivo' ELSE 'evento' END,
+            extra_capabilities = '["regalos"]'
+        WHERE is_builtin = 0;
+
+        -- Un campo es de una base (obligatorio) o de un tipo (extra opcional), nunca de los dos.
+        CREATE TABLE IF NOT EXISTS custom_fields (
+          id INTEGER PRIMARY KEY NOT NULL,
+          base_id INTEGER REFERENCES event_bases(id) ON DELETE CASCADE,
+          type_id INTEGER REFERENCES event_types(id) ON DELETE CASCADE,
+          label TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          -- Lista JSON de opciones para 'select' y 'multi'.
+          options TEXT NOT NULL DEFAULT '[]',
+          position INTEGER NOT NULL DEFAULT 0,
+          CHECK ((base_id IS NULL) <> (type_id IS NULL))
+        );
+
+        -- Valor de cada campo en cada evento ('multi' guarda una lista JSON).
+        CREATE TABLE IF NOT EXISTS event_field_values (
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          field_id INTEGER NOT NULL REFERENCES custom_fields(id) ON DELETE CASCADE,
+          value TEXT NOT NULL,
+          PRIMARY KEY (event_id, field_id)
+        );
+      `);
+      await database.execAsync('PRAGMA user_version = 12');
+    });
+    currentVersion = 12;
   }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

@@ -37,9 +37,60 @@ export interface EventTypeMeta {
   defaultYearly: boolean;
   /** true en los 5 tipos originales: se puede editar label/icon/color, no la clave ni borrarlo. */
   isBuiltin: boolean;
+  /** Base de la que sale el tipo (tabla `event_bases`): define repetición, capacidades y campos obligatorios. */
+  baseKey: string;
+  /** Capacidades que el tipo suma a las de su base (siempre vacío en los de fábrica). */
+  extraCapabilities: Capability[];
 }
 
 export type NewEventType = Pick<EventTypeMeta, 'label' | 'icon' | 'color' | 'defaultYearly'>;
+
+/**
+ * Comportamientos que un tipo puede tener. El catálogo es cerrado: son
+ * exactamente los que ya existían atados a tipos de fábrica (ver
+ * constants/event-bases.ts para sus reglas de compatibilidad).
+ */
+export const CAPABILITIES = ['edad', 'anios', 'saludado', 'whatsapp', 'regalos'] as const;
+
+export type Capability = (typeof CAPABILITIES)[number];
+
+/**
+ * Base de un tipo de evento: lo que viene bloqueado. Un tipo hereda todo lo
+ * de su base y solo puede sumarle extras opcionales.
+ */
+export interface EventBase {
+  id: number;
+  key: string;
+  label: string;
+  /** Si los eventos de esta base se repiten todos los años. */
+  yearly: boolean;
+  /** Si la hora es obligatoria (ej. una cita médica). */
+  requiresTime: boolean;
+  capabilities: Capability[];
+  /** true en las 5 bases de fábrica: no se editan ni se borran. */
+  isBuiltin: boolean;
+}
+
+/** Clases de campo personalizado. `multi` = varias opciones tildables. */
+export const FIELD_KINDS = ['texto', 'numero', 'select', 'multi'] as const;
+
+export type FieldKind = (typeof FIELD_KINDS)[number];
+
+/**
+ * Campo personalizado. Si pertenece a una base es obligatorio y bloqueado;
+ * si pertenece a un tipo es un extra y siempre opcional.
+ */
+export interface CustomField {
+  id: number;
+  owner: 'base' | 'type';
+  /** Id de la base o del tipo dueño, según `owner`. */
+  ownerId: number;
+  label: string;
+  kind: FieldKind;
+  /** Opciones de `select`/`multi`; vacío en los demás. */
+  options: string[];
+  position: number;
+}
 
 /** Unidades en las que se puede expresar la anticipación de un aviso. */
 export const REMINDER_UNITS = ['minutos', 'horas', 'dias', 'semanas', 'meses'] as const;

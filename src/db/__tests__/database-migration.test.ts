@@ -35,7 +35,8 @@ describe('migración de recordatorios v1 a v2', () => {
     const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
     await initDatabase();
 
-    expect(database.withTransactionAsync).toHaveBeenCalledTimes(1);
+    // v1→v2 y v11→v12 son las migraciones transaccionales.
+    expect(database.withTransactionAsync).toHaveBeenCalledTimes(2);
     expect(database.execAsync).toHaveBeenCalledWith('PRAGMA user_version = 2');
   });
 
@@ -71,7 +72,81 @@ describe('migración de recordatorios v1 a v2', () => {
 
     await initDatabase();
 
-    expect(database.withTransactionAsync).toHaveBeenCalledTimes(2);
+    // 1 intento fallido de v2 + reintento de v2 + v12.
+    expect(database.withTransactionAsync).toHaveBeenCalledTimes(3);
     expect(appliedMigrationStatements).toContain('PRAGMA user_version = 2');
+  });
+});
+
+describe('migración de tipos componibles v11 a v12', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
+
+  function v11Database() {
+    let applied: string[] = [];
+    const database: MigrationDatabaseDouble & { applied: () => string[] } = {
+      applied: () => applied,
+      getFirstAsync: jest.fn().mockResolvedValue({ user_version: 11 }),
+      execAsync: jest.fn(async (sql) => {
+        applied.push(sql);
+      }),
+      withTransactionAsync: jest.fn(async (task) => {
+        const snapshot = [...applied];
+        try {
+          await task();
+        } catch (error) {
+          applied = snapshot;
+          throw error;
+        }
+      }),
+    };
+    mockOpenDatabaseAsync.mockResolvedValue(database as unknown as SQLiteDatabase);
+    return database;
+  }
+
+  it('siembra las 5 bases y conecta cada tipo de fábrica con la base de su misma clave', async () => {
+    const database = v11Database();
+    const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
+    await initDatabase();
+
+    const sql = database.applied().join('\n');
+    for (const key of ['evento', 'cumpleanos', 'aniversario', 'festivo', 'cita_medica']) {
+      expect(sql).toContain(`SELECT '${key}'`);
+    }
+    expect(sql).toContain('UPDATE event_types SET base_key = key WHERE is_builtin = 1');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS custom_fields');
+    expect(sql).toContain('CREATE TABLE IF NOT EXISTS event_field_values');
+    expect(database.applied()).toContain('PRAGMA user_version = 12');
+  });
+
+  it('los tipos que ya había creado el usuario conservan las ideas de regalo', async () => {
+    const database = v11Database();
+    const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
+    await initDatabase();
+
+    expect(database.applied().join('\n')).toMatch(/extra_capabilities = '\["regalos"\]'\s+WHERE is_builtin = 0/);
+  });
+
+  it('si falla a mitad de camino no deja nada aplicado y se puede reintentar', async () => {
+    const database = v11Database();
+    let failOnce = true;
+    const original = database.execAsync.getMockImplementation() as (sql: string) => Promise<void>;
+    database.execAsync.mockImplementation(async (sql) => {
+      if (sql.includes('CREATE TABLE IF NOT EXISTS custom_fields') && failOnce) {
+        failOnce = false;
+        throw new Error('Disco lleno');
+      }
+      await original(sql);
+    });
+
+    const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
+    await expect(initDatabase()).rejects.toThrow('Disco lleno');
+    // Solo queda el PRAGMA de conexión (fuera de la transacción); nada de v12.
+    expect(database.applied()).toEqual(['PRAGMA foreign_keys = ON']);
+
+    await initDatabase();
+    expect(database.applied()).toContain('PRAGMA user_version = 12');
   });
 });

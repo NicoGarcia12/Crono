@@ -43,7 +43,51 @@ export interface EventTypeMeta {
   extraCapabilities: Capability[];
 }
 
-export type NewEventType = Pick<EventTypeMeta, 'label' | 'icon' | 'color' | 'defaultYearly'>;
+/**
+ * Lo que se completa en el editor de tipos. En los de fábrica solo se usan
+ * label/ícono/color: su base, extras y campos no se tocan.
+ */
+export interface NewEventType {
+  label: string;
+  icon: string;
+  color: string;
+  baseKey: string;
+  extraCapabilities: Capability[];
+  /** Campos extra (siempre opcionales). Los que traen `id` ya existían. */
+  fields: FieldDraft[];
+}
+
+/** Lo que se completa al crear o editar una base propia. */
+export interface NewEventBase {
+  label: string;
+  yearly: boolean;
+  requiresTime: boolean;
+  capabilities: Capability[];
+  /** Campos obligatorios de la base. */
+  fields: FieldDraft[];
+}
+
+/** Un campo en edición: sin `id` si es nuevo. La clase no cambia una vez creado. */
+export interface FieldDraft {
+  id?: number;
+  label: string;
+  kind: FieldKind;
+  options: string[];
+}
+
+/**
+ * Qué se saca al guardar un tipo o una base, para avisar cuántos datos se
+ * pierden antes de confirmar.
+ */
+export interface RemovalPlan {
+  capabilities: Capability[];
+  fieldIds: number[];
+  /** Opciones quitadas de un select/multi que sigue existiendo. */
+  options: { fieldId: number; removed: string[] }[];
+}
+
+/** Valores de campos personalizados de un evento: id de campo → valor ('multi' guarda una lista JSON). */
+export type FieldValues = Record<number, string>;
 
 /**
  * Comportamientos que un tipo puede tener. El catálogo es cerrado: son

@@ -1,78 +1,112 @@
 import { getDb } from '@/db/database';
 import { createEventType, updateEventType } from '@/db/event-types-repo';
+import type { NewEventType, RemovalPlan } from '@/types';
 
 jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
 
-/** Fake mínimo de SQLite: una tabla `event_types` en memoria. */
+/** Fake mínimo de SQLite: registra cada sentencia y responde lo que el repo consulta. */
 function fakeDb() {
-  const rows: { id: number; key: string }[] = [{ id: 1, key: 'cumpleanos' }];
-  let nextId = 2;
-  const updates: unknown[][] = [];
+  const keys = new Set(['cumpleanos']);
+  const types: Record<number, { key: string; isBuiltin: 0 | 1 }> = {
+    1: { key: 'cumpleanos', isBuiltin: 1 },
+    7: { key: 'torneo', isBuiltin: 0 },
+  };
+  const statements: { sql: string; params: unknown[] }[] = [];
+  let nextId = 10;
 
   return {
-    rows,
-    updates,
-    async getFirstAsync(sql: string, key: string) {
-      if (sql.startsWith('SELECT 1 FROM event_types WHERE key')) {
-        return rows.some((r) => r.key === key) ? { 1: 1 } : null;
-      }
+    statements,
+    keys,
+    async withTransactionAsync(task: () => Promise<void>) {
+      await task();
+    },
+    async getFirstAsync(sql: string, param: string | number) {
+      if (sql.startsWith('SELECT 1 FROM event_types WHERE key')) return keys.has(param as string) ? { 1: 1 } : null;
+      if (sql.startsWith('SELECT yearly FROM event_bases')) return { yearly: param === 'festivo' ? 1 : 0 };
+      if (sql.startsWith('SELECT key, is_builtin')) return types[param as number] ?? null;
       throw new Error(`SQL inesperado: ${sql}`);
     },
+    async getAllAsync() {
+      return [];
+    },
     async runAsync(sql: string, ...params: unknown[]) {
-      if (sql.startsWith('INSERT INTO event_types')) {
-        const id = nextId++;
-        rows.push({ id, key: params[0] as string });
-        return { lastInsertRowId: id, changes: 1 };
-      }
-      if (sql.startsWith('UPDATE event_types')) {
-        updates.push(params);
-        return { lastInsertRowId: 0, changes: 1 };
-      }
-      throw new Error(`SQL inesperado: ${sql}`);
+      statements.push({ sql, params });
+      return { lastInsertRowId: sql.startsWith('INSERT INTO event_types') ? nextId++ : 0, changes: 1 };
     },
   };
 }
 
+const data = (over: Partial<NewEventType> = {}): NewEventType => ({
+  label: 'Torneo',
+  icon: 'star',
+  color: '#000',
+  baseKey: 'evento',
+  extraCapabilities: [],
+  fields: [],
+  ...over,
+});
+
+const emptyPlan: RemovalPlan = { capabilities: [], fieldIds: [], options: [] };
+
 describe('createEventType', () => {
   it('arma la clave a partir del label: minúsculas, sin tildes, espacios a "_"', async () => {
-    const db = fakeDb();
-    jest.mocked(getDb).mockReturnValue(db as never);
+    jest.mocked(getDb).mockReturnValue(fakeDb() as never);
 
-    const result = await createEventType({ label: 'Día de Campo', icon: 'sunny', color: '#000', defaultYearly: false });
+    const result = await createEventType(data({ label: 'Día de Campo' }));
 
     expect(result.key).toBe('dia_de_campo');
     expect(result.isBuiltin).toBe(false);
   });
 
-  it('sale de la base Evento o Festivo según la repetición, y conserva las ideas de regalo', async () => {
-    const db = fakeDb();
-    jest.mocked(getDb).mockReturnValue(db as never);
-
-    const puntual = await createEventType({ label: 'Torneo', icon: 'star', color: '#000', defaultYearly: false });
-    const anual = await createEventType({ label: 'Día del Padre', icon: 'heart', color: '#000', defaultYearly: true });
-
-    expect(puntual).toMatchObject({ baseKey: 'evento', extraCapabilities: ['regalos'] });
-    expect(anual).toMatchObject({ baseKey: 'festivo', extraCapabilities: ['regalos'] });
-  });
-
   it('si la clave ya existe, agrega un sufijo numérico', async () => {
     const db = fakeDb();
-    db.rows.push({ id: 5, key: 'torneo' });
+    db.keys.add('torneo');
     jest.mocked(getDb).mockReturnValue(db as never);
 
-    const result = await createEventType({ label: 'Torneo', icon: 'star', color: '#000', defaultYearly: false });
+    expect((await createEventType(data())).key).toBe('torneo_2');
+  });
 
-    expect(result.key).toBe('torneo_2');
+  it('guarda la base, los extras y los campos, y copia la repetición de la base', async () => {
+    const db = fakeDb();
+    jest.mocked(getDb).mockReturnValue(db as never);
+
+    const result = await createEventType(
+      data({
+        label: 'Día del Padre',
+        baseKey: 'festivo',
+        extraCapabilities: ['regalos'],
+        fields: [{ label: 'Qué llevar', kind: 'multi', options: ['Asado', 'Vino'] }],
+      }),
+    );
+
+    expect(result).toMatchObject({ baseKey: 'festivo', extraCapabilities: ['regalos'], defaultYearly: true });
+    const field = db.statements.find((s) => s.sql.startsWith('INSERT INTO custom_fields (type_id'));
+    expect(field?.params).toEqual([10, 'Qué llevar', 'multi', '["Asado","Vino"]', 0]);
   });
 });
 
 describe('updateEventType', () => {
-  it('solo actualiza label/ícono/color/repetición — nunca la clave', async () => {
+  it('en un tipo de fábrica solo cambia label/ícono/color: nunca extras ni campos', async () => {
     const db = fakeDb();
     jest.mocked(getDb).mockReturnValue(db as never);
 
-    await updateEventType(1, { label: 'Cumpleaños', icon: 'gift', color: '#E91E63', defaultYearly: true });
+    await updateEventType(1, data({ label: 'Cumple', extraCapabilities: ['regalos'], fields: [{ label: 'X', kind: 'texto', options: [] }] }), emptyPlan);
 
-    expect(db.updates).toEqual([['Cumpleaños', 'gift', '#E91E63', 1, 1]]);
+    expect(db.statements).toHaveLength(1);
+    expect(db.statements[0].sql).toMatch(/^UPDATE event_types SET label = \?, icon = \?, color = \? WHERE id = \?$/);
+  });
+
+  it('en un tipo propio borra los datos del plan y guarda los campos, todo en la transacción', async () => {
+    const db = fakeDb();
+    jest.mocked(getDb).mockReturnValue(db as never);
+
+    await updateEventType(7, data({ extraCapabilities: [] }), { capabilities: ['regalos'], fieldIds: [3], options: [] });
+
+    const sqls = db.statements.map((s) => s.sql);
+    expect(sqls[0]).toMatch(/^UPDATE event_types SET label = \?, icon = \?, color = \?, extra_capabilities/);
+    expect(sqls).toContainEqual(expect.stringMatching(/^DELETE FROM gift_ideas WHERE event_id IN/));
+    expect(sqls).toContainEqual('DELETE FROM custom_fields WHERE id IN (?)');
+    const giftDelete = db.statements.find((s) => s.sql.startsWith('DELETE FROM gift_ideas'));
+    expect(giftDelete?.params).toEqual(['torneo']);
   });
 });

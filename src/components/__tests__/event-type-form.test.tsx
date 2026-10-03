@@ -11,6 +11,18 @@ const props = {
 
 beforeEach(() => jest.clearAllMocks());
 
+const cumpleanos: EventTypeMeta = {
+  id: 2,
+  key: 'cumpleanos',
+  label: 'Cumpleaños',
+  icon: 'gift',
+  color: '#E91E63',
+  defaultYearly: true,
+  isBuiltin: true,
+  baseKey: 'cumpleanos',
+  extraCapabilities: [],
+};
+
 describe('<EventTypeForm />', () => {
   it('no permite guardar sin nombre', async () => {
     await renderWithStore(<EventTypeForm {...props} />);
@@ -18,48 +30,77 @@ describe('<EventTypeForm />', () => {
     await fireEvent.press(screen.getByText('Guardar'));
 
     expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Ponele un nombre al tipo.')).toBeTruthy();
   });
 
-  it('crea un tipo nuevo con el nombre, ícono y color elegidos', async () => {
+  it('crea un tipo nuevo a partir de una base, con extras y campos', async () => {
+    await renderWithStore(<EventTypeForm {...props} />);
+
+    await fireEvent.changeText(screen.getByLabelText('Nombre del tipo'), 'Cumple de oficina');
+    await fireEvent.press(screen.getByLabelText('Ícono star'));
+    await fireEvent.press(screen.getByLabelText('Color #4CAF50'));
+    await fireEvent.press(screen.getByLabelText('Base Cumpleaños'));
+    await fireEvent.press(screen.getByLabelText('Agregar campo'));
+    await fireEvent.changeText(screen.getByLabelText('Nombre del campo 1'), 'Qué llevar');
+    await fireEvent.press(screen.getByLabelText('Campo 1: Varias opciones'));
+    await fireEvent.changeText(screen.getByLabelText('Opciones del campo 1'), 'Torta, Bebida');
+    await fireEvent.press(screen.getByText('Guardar'));
+
+    expect(props.onSubmit).toHaveBeenCalledWith({
+      label: 'Cumple de oficina',
+      icon: 'star',
+      color: '#4CAF50',
+      baseKey: 'cumpleanos',
+      extraCapabilities: [],
+      fields: [{ label: 'Qué llevar', kind: 'multi', options: ['Torta', 'Bebida'] }],
+    });
+  });
+
+  it('lo que trae la base viene bloqueado y se cuenta para el límite', async () => {
+    await renderWithStore(<EventTypeForm {...props} />);
+
+    await fireEvent.press(screen.getByLabelText('Base Cumpleaños'));
+
+    // edad, saludado, whatsapp, regalos = 4 de 15
+    expect(screen.getByText('4 de 15')).toBeTruthy();
+    expect(screen.getAllByText('Viene de la base')).toHaveLength(4);
+  });
+
+  it('no deja sumar una capacidad que rompe una regla, y explica por qué', async () => {
+    await renderWithStore(<EventTypeForm {...props} />);
+
+    // La base Evento no se repite: la edad necesita repetición anual.
+    await fireEvent(screen.getByLabelText('Edad'), 'valueChange', true);
+
+    expect(screen.getByText('La edad solo tiene sentido si se repite todos los años.')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Nombre del tipo'), 'Torneo');
+    await fireEvent.press(screen.getByText('Guardar'));
+    expect(props.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ extraCapabilities: [] }));
+  });
+
+  it('un select sin opciones no se puede guardar', async () => {
     await renderWithStore(<EventTypeForm {...props} />);
 
     await fireEvent.changeText(screen.getByLabelText('Nombre del tipo'), 'Torneo');
-    await fireEvent.press(screen.getByLabelText('Ícono star'));
-    await fireEvent.press(screen.getByLabelText('Color #4CAF50'));
+    await fireEvent.press(screen.getByLabelText('Agregar campo'));
+    await fireEvent.changeText(screen.getByLabelText('Nombre del campo 1'), 'Categoría');
+    await fireEvent.press(screen.getByLabelText('Campo 1: Una opción'));
     await fireEvent.press(screen.getByText('Guardar'));
 
-    expect(props.onSubmit).toHaveBeenCalledWith({
-      label: 'Torneo',
-      icon: 'star',
-      color: '#4CAF50',
-      defaultYearly: false,
-    });
+    expect(props.onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('"Categoría" necesita al menos una opción.')).toBeTruthy();
   });
 
-  it('al editar, arranca con los valores del tipo existente', async () => {
-    const initial: EventTypeMeta = {
-      id: 3,
-      key: 'cumpleanos',
-      label: 'Cumpleaños',
-      icon: 'gift',
-      color: '#E91E63',
-      defaultYearly: true,
-      isBuiltin: true,
-      baseKey: 'cumpleanos',
-      extraCapabilities: [],
-    };
-    await renderWithStore(<EventTypeForm {...props} initial={initial} />);
+  it('un tipo de fábrica solo edita nombre, ícono y color', async () => {
+    await renderWithStore(<EventTypeForm {...props} initial={cumpleanos} />);
 
     expect(screen.getByDisplayValue('Cumpleaños')).toBeTruthy();
-
+    expect(screen.queryByLabelText('Agregar campo')).toBeNull();
     await fireEvent.press(screen.getByText('Guardar'));
 
-    expect(props.onSubmit).toHaveBeenCalledWith({
-      label: 'Cumpleaños',
-      icon: 'gift',
-      color: '#E91E63',
-      defaultYearly: true,
-    });
+    expect(props.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'Cumpleaños', icon: 'gift', color: '#E91E63', baseKey: 'cumpleanos' }),
+    );
   });
 
   it('cancelar avisa sin guardar', async () => {

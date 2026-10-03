@@ -1,4 +1,4 @@
-import type { Capability, CustomField, EventBase, EventTypeMeta } from '@/types';
+import type { Capability, CustomField, EventBase, EventTypeMeta, FieldDraft, RemovalPlan } from '@/types';
 
 /**
  * Catálogo de bases y capacidades de los tipos de evento.
@@ -107,6 +107,60 @@ export function countTypeItems(
   return (
     typeCapabilities(type, bases).length + (base?.requiresTime ? 1 : 0) + baseFields + typeFields
   );
+}
+
+/**
+ * Qué se pierde al pasar de `before` a `after`: capacidades quitadas, campos
+ * borrados y opciones sacadas de un select/multi que sigue existiendo.
+ */
+export function planRemovals(
+  before: { capabilities: readonly Capability[]; fields: readonly Pick<CustomField, 'id' | 'options'>[] },
+  after: { capabilities: readonly Capability[]; fields: readonly FieldDraft[] },
+): RemovalPlan {
+  const keptIds = new Set(after.fields.flatMap((f) => (f.id === undefined ? [] : [f.id])));
+  return {
+    capabilities: before.capabilities.filter((c) => !after.capabilities.includes(c)),
+    fieldIds: before.fields.filter((f) => !keptIds.has(f.id)).map((f) => f.id),
+    options: before.fields.flatMap((field) => {
+      const draft = after.fields.find((f) => f.id === field.id);
+      if (!draft) return [];
+      const removed = field.options.filter((o) => !draft.options.includes(o));
+      return removed.length > 0 ? [{ fieldId: field.id, removed }] : [];
+    }),
+  };
+}
+
+export function isEmptyPlan(plan: RemovalPlan): boolean {
+  return plan.capabilities.length === 0 && plan.fieldIds.length === 0 && plan.options.length === 0;
+}
+
+/** Primer problema de los campos en edición (para mostrar), o null si están bien. */
+export function fieldDraftProblem(fields: readonly FieldDraft[]): string | null {
+  for (const field of fields) {
+    if (field.label.trim().length === 0) return 'Todos los campos necesitan un nombre.';
+    if ((field.kind === 'select' || field.kind === 'multi') && field.options.length === 0) {
+      return `"${field.label.trim()}" necesita al menos una opción.`;
+    }
+  }
+  const labels = fields.map((f) => f.label.trim().toLowerCase());
+  if (new Set(labels).size !== labels.length) return 'Hay dos campos con el mismo nombre.';
+  return null;
+}
+
+/** Valor guardado de un campo 'multi' → lista de opciones tildadas (tolera datos corruptos). */
+export function parseMultiValue(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Opciones escritas separadas por coma → lista limpia, sin repetir. */
+export function parseOptionsText(text: string): string[] {
+  return [...new Set(text.split(',').map((o) => o.trim()).filter((o) => o.length > 0))];
 }
 
 /** Mensaje si agregar `adding` cosas más supera el límite; null si entra. */

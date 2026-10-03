@@ -175,7 +175,7 @@ export default function PerfilScreen() {
         icon="pricetags"
         color={colors.primary}
         title="Tipos de evento"
-        subtitle="Creá tipos propios o editá el nombre, ícono y color de los que ya hay"
+        subtitle="Creá tipos y bases propios, con capacidades y campos extra"
         onPress={() => router.push('/tipos-evento')}
       />
 

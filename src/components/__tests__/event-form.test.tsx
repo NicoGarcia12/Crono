@@ -3,7 +3,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 import { renderWithStore } from '@/test-utils';
 
 import { EventForm } from '@/components/event-form';
-import type { EventItem } from '@/types';
+import type { CustomField, EventItem, EventTypeMeta } from '@/types';
 import { todayIso } from '@/utils/dates';
 
 /**
@@ -57,7 +57,7 @@ describe('<EventForm />', () => {
     );
     await fireEvent.press(screen.getByText('Crear evento'));
 
-    expect(onSubmit).toHaveBeenCalledWith({
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual({
       title: 'Cena con amigos', // el título se guarda sin espacios sobrantes
       type: 'evento',
       date: todayIso(),
@@ -81,7 +81,7 @@ describe('<EventForm />', () => {
     await fireEvent.press(screen.getByText('Cumpleaños'));
     await fireEvent.press(screen.getByText('Crear evento'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'cumpleanos', yearly: 1 }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'cumpleanos', yearly: 1 }));
   });
 
   it('permite acumular varios avisos, del más lejano al más cercano', async () => {
@@ -93,7 +93,7 @@ describe('<EventForm />', () => {
     await fireEvent.press(screen.getByText('1 hora antes'));
     await fireEvent.press(screen.getByText('Crear evento'));
 
-    expect(onSubmit).toHaveBeenCalledWith(
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         reminders: [
           { amount: 1, unit: 'meses' },
@@ -113,7 +113,7 @@ describe('<EventForm />', () => {
     await fireEvent.press(screen.getByText('Crear evento'));
 
     const añoNacimiento = new Date().getFullYear() - 30;
-    expect(onSubmit).toHaveBeenCalledWith(
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({ date: expect.stringContaining(String(añoNacimiento)) }),
     );
   });
@@ -133,7 +133,7 @@ describe('<EventForm />', () => {
     await fireEvent.press(screen.getByText('Evento'));
     await fireEvent.press(screen.getByText('Guardar'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'cumpleanos' }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'cumpleanos' }));
   });
 
   it('conserva la repetición anual al editar mi cumpleaños', async () => {
@@ -142,7 +142,7 @@ describe('<EventForm />', () => {
 
     await fireEvent.press(screen.getByText('Guardar'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ yearly: 1 }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ yearly: 1 }));
   });
 
   it('la repetición la decide el tipo: se informa, no hay switch para cambiarla', async () => {
@@ -174,7 +174,7 @@ describe('<EventForm />', () => {
 
     expect(screen.queryByLabelText('Edad que cumple este año')).toBeNull();
     await fireEvent.press(screen.getByText('Crear evento'));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ yearUnknown: 1 }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ yearUnknown: 1 }));
   });
 
   it('el aniversario es una conmemoración: sin teléfono ni edad', async () => {
@@ -193,7 +193,7 @@ describe('<EventForm />', () => {
 
     await fireEvent.press(screen.getByText('Guardar'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'evento', yearly: 1 }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'evento', yearly: 1 }));
   });
 
   it('permite quitar todos los recordatorios', async () => {
@@ -203,6 +203,73 @@ describe('<EventForm />', () => {
     await fireEvent.press(screen.getByLabelText('Quitar aviso 1 día antes'));
     await fireEvent.press(screen.getByText('Crear evento'));
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ reminders: [] }));
+    expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ reminders: [] }));
+  });
+
+  describe('campos personalizados', () => {
+    // Base 5 = Cita médica (orden de DEFAULT_EVENT_BASES). Tipo propio 20 = "Torneo".
+    const torneo: EventTypeMeta = {
+      id: 20, key: 'torneo', label: 'Torneo', icon: 'star', color: '#000',
+      defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [],
+    };
+    const fields: CustomField[] = [
+      { id: 1, owner: 'type', ownerId: 20, label: 'Qué llevar', kind: 'multi', options: ['Pelota', 'Agua'], position: 0 },
+      { id: 2, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0 },
+      { id: 3, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 1 },
+    ];
+
+    const renderWithFields = async (initial?: EventItem, fieldValues = {}) => {
+      const onSubmit = jest.fn();
+      await renderWithStore(
+        <EventForm initial={initial} submitLabel="Guardar" onSubmit={onSubmit} />,
+        { fields, types: [torneo], fieldValues },
+      );
+      return onSubmit;
+    };
+
+    it('los extras del tipo son opcionales y viajan con sus valores', async () => {
+      const onSubmit = await renderWithFields();
+
+      await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Final');
+      await fireEvent.press(screen.getByText('Torneo'));
+      expect(screen.getByText('Qué llevar (opcional)')).toBeTruthy();
+      await fireEvent.press(screen.getByLabelText('Qué llevar: Agua'));
+      await fireEvent.press(screen.getByLabelText('Qué llevar: Pelota'));
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit.mock.calls[0]?.[1]).toEqual({ 1: '["Agua","Pelota"]' });
+    });
+
+    it('un campo obligatorio de la base no deja guardar vacío', async () => {
+      const onSubmit = await renderWithFields();
+
+      await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Dentista');
+      await fireEvent.press(screen.getByText('Cita médica'));
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText('Completá "Obra social".')).toBeTruthy();
+    });
+
+    it('un campo numérico rechaza texto', async () => {
+      const onSubmit = await renderWithFields();
+
+      await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Final');
+      await fireEvent.press(screen.getByText('Torneo'));
+      await fireEvent.changeText(screen.getByLabelText('Cancha'), 'la del club');
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText('"Cancha" tiene que ser un número.')).toBeTruthy();
+    });
+
+    it('al editar, arranca con los valores guardados', async () => {
+      const final: EventItem = { ...miCumple, id: 30, title: 'Final', type: 'torneo', isMine: 0, yearly: 0 };
+      const onSubmit = await renderWithFields(final, { 30: { 3: '4' } });
+
+      expect(screen.getByDisplayValue('4')).toBeTruthy();
+      await fireEvent.press(screen.getByText('Guardar'));
+      expect(onSubmit.mock.calls[0]?.[1]).toEqual({ 3: '4' });
+    });
   });
 });

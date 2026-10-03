@@ -23,11 +23,12 @@ interface EventTypeRow {
   isBuiltin: 0 | 1;
   baseKey: string;
   extraCapabilities: string;
+  hidden: 0 | 1;
 }
 
 const SELECT_FIELDS =
   'id, key, label, icon, color, default_yearly AS defaultYearly, is_builtin AS isBuiltin, ' +
-  'base_key AS baseKey, extra_capabilities AS extraCapabilities';
+  'base_key AS baseKey, extra_capabilities AS extraCapabilities, hidden';
 
 function toMeta(row: EventTypeRow): EventTypeMeta {
   return {
@@ -35,6 +36,7 @@ function toMeta(row: EventTypeRow): EventTypeMeta {
     defaultYearly: row.defaultYearly === 1,
     isBuiltin: row.isBuiltin === 1,
     extraCapabilities: parseCapabilities(row.extraCapabilities),
+    hidden: row.hidden === 1,
   };
 }
 
@@ -98,6 +100,7 @@ export async function createEventType(data: NewEventType): Promise<EventTypeMeta
     isBuiltin: false,
     baseKey: data.baseKey,
     extraCapabilities: data.extraCapabilities,
+    hidden: false,
   };
 }
 

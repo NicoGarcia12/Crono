@@ -1,13 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useStore } from 'react-redux';
 
-import { confirmDestructive, impactMessage, notify } from '@/components/confirm';
+import { confirmAction, confirmDestructive, impactMessage, notify } from '@/components/confirm';
 import { DeleteTypePanel } from '@/components/delete-type-panel';
 import { EventBaseForm } from '@/components/event-base-form';
+import { FillFieldsPanel } from '@/components/fill-fields-panel';
 import { EventTypeForm } from '@/components/event-type-form';
 import { DEFAULT_TYPE_KEY, isEmptyPlan, planRemovals } from '@/constants/event-bases';
-import { useAppDispatch, useAppSelector } from '@/store';
+import { useAppDispatch, useAppSelector, type RootState } from '@/store';
 import {
   countRemovals,
   createBaseConfig,
@@ -31,12 +33,34 @@ export default function TiposEventoScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const dispatch = useAppDispatch();
-  const types = useAppSelector((state) => state.eventTypes.items);
+  const allTypes = useAppSelector((state) => state.eventTypes.items);
+  // Los ocultos (ej. "Mi cumpleaños") no se editan ni se borran desde acá.
+  const types = useMemo(() => allTypes.filter((t) => !t.hidden), [allTypes]);
   const bases = useAppSelector((state) => state.eventBases.bases);
   const fields = useAppSelector((state) => state.eventBases.fields);
   const events = useAppSelector((state) => state.events.items);
 
   const [editing, setEditing] = useState<{ kind: 'type' | 'base' | 'delete'; id: number | 'nuevo' } | null>(null);
+  const [filling, setFilling] = useState<{ eventIds: number[]; fieldIds: number[] } | null>(null);
+  const store = useStore<RootState>();
+
+  /**
+   * Si al guardar se agregaron datos nuevos y hay eventos de esos tipos,
+   * pregunta si se quieren cargar ahora, de a uno.
+   */
+  const offerToFill = async (owner: 'type' | 'base', ownerId: number, typeKeys: string[], previousFieldIds: Set<number>) => {
+    const state = store.getState();
+    const added = state.eventBases.fields.filter((f) => f.owner === owner && f.ownerId === ownerId && !previousFieldIds.has(f.id));
+    const eventIds = state.events.items.filter((e) => typeKeys.includes(e.type)).map((e) => e.id);
+    if (added.length === 0 || eventIds.length === 0) return;
+    const names = added.map((f) => `«${f.label}»`).join(', ');
+    const ok = await confirmAction(
+      'Dato nuevo',
+      `Agregaste ${names}. Hay ${eventIds.length} ${eventIds.length === 1 ? 'evento' : 'eventos'} que todavía no lo tienen. ¿Querés cargarlo ahora, uno por uno?`,
+      'Cargar',
+    );
+    if (ok) setFilling({ eventIds, fieldIds: added.map((f) => f.id) });
+  };
 
   const usageCount = (key: string) => events.filter((event) => event.type === key).length;
   const fieldLabels = useMemo(() => Object.fromEntries(fields.map((f) => [f.id, f.label])), [fields]);
@@ -62,8 +86,10 @@ export default function TiposEventoScreen() {
           { capabilities: data.extraCapabilities, fields: data.fields },
         );
     if (!(await confirmPlan([type.key], plan))) return;
+    const previous = new Set(fields.filter((f) => f.owner === 'type' && f.ownerId === type.id).map((f) => f.id));
     await dispatch(saveTypeConfig({ id: type.id, data, plan })).unwrap();
     setEditing(null);
+    await offerToFill('type', type.id, [type.key], previous);
   };
 
   const handleSaveBase = async (base: EventBase | null, data: NewEventBase) => {
@@ -78,23 +104,14 @@ export default function TiposEventoScreen() {
     );
     const typeKeys = types.filter((t) => t.baseKey === base.key).map((t) => t.key);
     if (!(await confirmPlan(typeKeys, plan))) return;
+    const previous = new Set(fields.filter((f) => f.owner === 'base' && f.ownerId === base.id).map((f) => f.id));
     await dispatch(saveBaseConfig({ id: base.id, data, plan })).unwrap();
     setEditing(null);
+    await offerToFill('base', base.id, typeKeys, previous);
   };
 
-  /**
-   * Sin eventos se borra con una confirmación simple; con eventos se abre el
-   * panel que pregunta si moverlos. "Cumpleaños" no se borra mientras tenga mi
-   * cumpleaños (que siempre es de ese tipo).
-   */
+  /** Sin eventos se borra con una confirmación simple; con eventos se abre el panel que pregunta si moverlos. */
   const handleDelete = async (type: EventTypeMeta) => {
-    if (type.key === 'cumpleanos' && events.some((e) => e.type === type.key && e.isMine === 1)) {
-      notify(
-        'No se puede borrar',
-        'Tu cumpleaños es de este tipo. Si lo borrás, tu cumpleaños, "¿Quién me saludó?" y la importación de contactos se quedan sin tipo.',
-      );
-      return;
-    }
     if (usageCount(type.key) > 0) {
       setEditing({ kind: 'delete', id: type.id });
       return;
@@ -123,6 +140,10 @@ export default function TiposEventoScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {filling ? (
+        <FillFieldsPanel eventIds={filling.eventIds} fieldIds={filling.fieldIds} onDone={() => setFilling(null)} />
+      ) : null}
+
       <Text style={styles.section}>Tipos</Text>
       {types.map((type) =>
         isEditing('delete', type.id) ? (

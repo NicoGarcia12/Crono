@@ -21,6 +21,7 @@ const cumpleanos: EventTypeMeta = {
   isBuiltin: true,
   baseKey: 'cumpleanos',
   extraCapabilities: [],
+  hidden: false,
 };
 
 describe('<EventTypeForm />', () => {
@@ -91,15 +92,31 @@ describe('<EventTypeForm />', () => {
     expect(screen.getByText('"Categoría" necesita al menos una opción.')).toBeTruthy();
   });
 
-  it('un tipo de fábrica solo edita nombre, ícono y color', async () => {
+  it('un tipo de fábrica solo edita el nombre', async () => {
     await renderWithStore(<EventTypeForm {...props} initial={cumpleanos} />);
 
     expect(screen.getByDisplayValue('Cumpleaños')).toBeTruthy();
     expect(screen.queryByLabelText('Agregar campo')).toBeNull();
+    expect(screen.queryByLabelText('Ícono star')).toBeNull();
+    expect(screen.queryByLabelText('Color #4CAF50')).toBeNull();
     await fireEvent.press(screen.getByText('Guardar'));
 
     expect(props.onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ label: 'Cumpleaños', icon: 'gift', color: '#E91E63', baseKey: 'cumpleanos' }),
+    );
+  });
+
+  it('al editar un tipo propio se cambian el nombre y los extras, no el ícono ni el color', async () => {
+    const torneo: EventTypeMeta = { ...cumpleanos, id: 20, key: 'torneo', label: 'Torneo', icon: 'star', color: '#000', isBuiltin: false, baseKey: 'evento' };
+    await renderWithStore(<EventTypeForm {...props} initial={torneo} />);
+
+    expect(screen.queryByLabelText('Ícono star')).toBeNull();
+    expect(screen.getByLabelText('Agregar campo')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('Nombre del tipo'), 'Torneo de fútbol');
+    await fireEvent.press(screen.getByText('Guardar'));
+
+    expect(props.onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'Torneo de fútbol', icon: 'star', color: '#000' }),
     );
   });
 

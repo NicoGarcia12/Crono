@@ -26,7 +26,7 @@ const { confirmDestructive } = require('@/components/confirm');
 
 const type = (over: Partial<EventTypeMeta>): EventTypeMeta => ({
   id: 1, key: 'x', label: 'X', icon: 'star', color: '#000',
-  defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [], ...over,
+  defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [], hidden: false, ...over,
 });
 const torneo = type({ id: 20, key: 'torneo', label: 'Torneo' });
 const evento = type({ id: 1, key: 'evento', label: 'Evento', isBuiltin: true });

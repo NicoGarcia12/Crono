@@ -78,7 +78,7 @@ describe('backup de tipos propios y campos', () => {
     types: [
       {
         id: 20, key: 'firulais', label: 'Mascota', icon: 'paw', color: '#795548', defaultYearly: true,
-        isBuiltin: false, baseKey: 'base_mascota', extraCapabilities: ['regalos' as const],
+        isBuiltin: false, baseKey: 'base_mascota', extraCapabilities: ['regalos' as const], hidden: false,
       },
     ],
     fields: [

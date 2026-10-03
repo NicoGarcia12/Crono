@@ -39,9 +39,9 @@ interface EventTypeFormProps {
 }
 
 /**
- * Editor de un tipo de evento: nombre, ícono y color, la base de la que sale
- * (solo al crearlo) y los extras opcionales que le suma. Lo de la base se
- * muestra bloqueado. Los de fábrica solo cambian nombre, ícono y color.
+ * Editor de un tipo de evento. Al crearlo: nombre, ícono, color, base y
+ * extras. Al editarlo: solo el nombre y los extras (en los de fábrica, solo
+ * el nombre). Lo de la base se muestra bloqueado.
  */
 export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: EventTypeFormProps) {
   const colors = useThemeColors();
@@ -121,39 +121,44 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
         onChangeText={setLabel}
       />
 
-      <Text style={styles.label}>Ícono</Text>
-      <View style={styles.chipRow}>
-        {ICON_OPTIONS.map((option) => {
-          const active = option === icon;
-          return (
-            <Pressable
-              key={option}
-              accessibilityLabel={`Ícono ${option}`}
-              accessibilityState={{ selected: active }}
-              style={[styles.iconChip, active && { backgroundColor: color, borderColor: color }]}
-              onPress={() => setIcon(option)}
-            >
-              <Ionicons name={option} size={18} color={active ? '#fff' : colors.textMuted} />
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Ícono y color se eligen al crear el tipo; después solo cambian el nombre y los extras. */}
+      {!initial ? (
+        <>
+          <Text style={styles.label}>Ícono</Text>
+          <View style={styles.chipRow}>
+            {ICON_OPTIONS.map((option) => {
+              const active = option === icon;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityLabel={`Ícono ${option}`}
+                  accessibilityState={{ selected: active }}
+                  style={[styles.iconChip, active && { backgroundColor: color, borderColor: color }]}
+                  onPress={() => setIcon(option)}
+                >
+                  <Ionicons name={option} size={18} color={active ? '#fff' : colors.textMuted} />
+                </Pressable>
+              );
+            })}
+          </View>
 
-      <Text style={styles.label}>Color</Text>
-      <View style={styles.chipRow}>
-        {COLOR_OPTIONS.map((option) => {
-          const active = option === color;
-          return (
-            <Pressable
-              key={option}
-              accessibilityLabel={`Color ${option}`}
-              accessibilityState={{ selected: active }}
-              style={[styles.colorChip, { backgroundColor: option }, active && styles.colorChipActive]}
-              onPress={() => setColor(option)}
-            />
-          );
-        })}
-      </View>
+          <Text style={styles.label}>Color</Text>
+          <View style={styles.chipRow}>
+            {COLOR_OPTIONS.map((option) => {
+              const active = option === color;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityLabel={`Color ${option}`}
+                  accessibilityState={{ selected: active }}
+                  style={[styles.colorChip, { backgroundColor: option }, active && styles.colorChipActive]}
+                  onPress={() => setColor(option)}
+                />
+              );
+            })}
+          </View>
+        </>
+      ) : null}
 
       <Text style={styles.label}>Base</Text>
       {initial || lockedBaseKey ? (
@@ -197,7 +202,7 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
       </View>
 
       {isBuiltin ? (
-        <Text style={styles.hint}>Los tipos de fábrica no se amplían: creá uno nuevo a partir de esta base.</Text>
+        <Text style={styles.hint}>De un tipo de fábrica solo se cambia el nombre: para sumarle cosas, creá uno nuevo a partir de esta base.</Text>
       ) : (
         <>
           <View style={styles.extrasHeader}>

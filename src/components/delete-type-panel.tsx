@@ -37,7 +37,7 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
   const allEvents = useAppSelector((state) => state.events.items);
 
   const events = allEvents.filter((e) => e.type === type.key);
-  const candidates = types.filter((t) => t.baseKey === type.baseKey && t.key !== type.key);
+  const candidates = types.filter((t) => t.baseKey === type.baseKey && t.key !== type.key && !t.hidden);
   const baseLabel = bases.find((b) => b.key === type.baseKey)?.label ?? type.baseKey;
 
   const [mode, setMode] = useState<'preguntar' | 'mover' | 'crear'>('preguntar');

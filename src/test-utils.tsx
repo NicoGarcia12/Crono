@@ -24,6 +24,7 @@ const defaultEventTypes: EventTypeMeta[] = Object.entries(DEFAULT_EVENT_TYPES).m
   isBuiltin: true,
   baseKey: key,
   extraCapabilities: [],
+  hidden: false,
 }));
 
 /** Mismas 5 bases que siembra la migración v12. */

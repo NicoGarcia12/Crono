@@ -6,6 +6,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CountdownBanner } from '@/components/countdown-banner';
 import { EventForm } from '@/components/event-form';
 import { GreetButton } from '@/components/greet-button';
+import { useTypeCapabilities } from '@/constants/use-event-types';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { editEvent, removeEvent } from '@/store/events-slice';
 import type { ThemeColors } from '@/theme/theme';
@@ -25,6 +26,8 @@ export default function EditarEventoScreen() {
   const router = useRouter();
 
   const event = useAppSelector((state) => state.events.items.find((e) => e.id === Number(id)));
+  // Antes del return temprano: los hooks no pueden depender de que el evento exista.
+  const capabilities = useTypeCapabilities(event?.type ?? '');
 
   // Puede pasar al borrar: la pantalla sigue montada un instante sin el evento.
   if (!event) {
@@ -70,21 +73,8 @@ export default function EditarEventoScreen() {
       <CountdownBanner event={event} />
       <GreetButton event={event} />
 
-      {/* Solo en MI cumpleaños: la lista de quién me saludó. */}
-      {event.isMine === 1 ? (
-        <Pressable
-          style={styles.greetings}
-          accessibilityLabel="Ver quién me saludó"
-          onPress={() => router.push('/saludos')}
-        >
-          <Ionicons name="people" size={20} color={colors.primary} />
-          <Text style={styles.greetingsText}>¿Quién me saludó?</Text>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
-        </Pressable>
-      ) : null}
-
-      {/* Ideas de regalo: no aplica a festivos ni citas médicas, que no son de una persona. */}
-      {event.type !== 'festivo' && event.type !== 'cita_medica' ? (
+      {/* Ideas de regalo: solo si el tipo tiene esa capacidad. */}
+      {capabilities.includes('regalos') ? (
         <Pressable
           style={styles.greetings}
           accessibilityLabel="Ver ideas de regalo"

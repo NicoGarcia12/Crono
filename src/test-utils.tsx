@@ -3,7 +3,8 @@ import { render } from '@testing-library/react-native';
 import type { ReactElement, ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
-import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
+import { DEFAULT_EVENT_BASES, capabilityLookup, typeCapabilities } from '@/constants/event-bases';
+import type { EventTypeMeta } from '@/types';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
@@ -15,7 +16,7 @@ import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 
 /** Mismos 5 tipos que siembra la migración — para que los componentes vean los mismos label/ícono/color que en la app real. */
-const defaultEventTypes = Object.entries(DEFAULT_EVENT_TYPES).map(([key, meta], index) => ({
+const defaultEventTypes: EventTypeMeta[] = Object.entries(DEFAULT_EVENT_TYPES).map(([key, meta], index) => ({
   id: index + 1,
   key,
   ...meta,
@@ -31,6 +32,15 @@ const defaultEventBases = Object.entries(DEFAULT_EVENT_BASES).map(([key, base], 
   ...base,
   isBuiltin: true,
 }));
+
+/** "¿El tipo X tiene la capacidad Y?" con los tipos y bases de fábrica, para tests de funciones puras. */
+export const defaultHasCapability = capabilityLookup(defaultEventTypes, defaultEventBases);
+
+/** Capacidades de un tipo de fábrica (ej. 'cumpleanos' → edad, saludado, whatsapp, regalos). */
+export const capabilitiesOf = (typeKey: string) => typeCapabilities(
+  defaultEventTypes.find((t) => t.key === typeKey),
+  defaultEventBases,
+);
 
 /**
  * Helper para tests de componentes.

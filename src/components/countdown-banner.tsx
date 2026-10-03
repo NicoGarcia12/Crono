@@ -1,23 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useEventTypeMeta } from '@/constants/use-event-types';
+import { useEventTypeMeta, useTypeCapabilities } from '@/constants/use-event-types';
 import type { EventItem } from '@/types';
-import { countdownLabel, dateToIso, formatLongDate, nextOccurrence, yearsSince } from '@/utils/dates';
+import { countdownLabel, dateToIso, formatLongDate, nextOccurrence, yearsToShow } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Banner de cuenta regresiva en el detalle del evento: cuántos días faltan,
- * cuándo cae y, si es cumpleaños o aniversario, cuántos años cumple.
+ * cuándo cae y, si el tipo muestra años, la edad o los años transcurridos.
  */
 export function CountdownBanner({ event }: { event: EventItem }) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const meta = useEventTypeMeta(event.type);
+  const capabilities = useTypeCapabilities(event.type);
   const next = nextOccurrence(event);
-  const years = event.yearly ? yearsSince(event.date, next) : 0;
+  const shown = yearsToShow(event, capabilities, next);
 
   return (
     <View style={[styles.banner, { backgroundColor: `${meta.color}15` }]}>
@@ -28,7 +29,8 @@ export function CountdownBanner({ event }: { event: EventItem }) {
       <Text style={styles.detail}>
         {formatLongDate(dateToIso(next))}
         {event.time ? ` · ${event.time} h` : ''}
-        {event.yearly && years > 0 ? ` · cumple ${years}` : ''}
+        {shown?.kind === 'edad' ? ` · cumple ${shown.years}` : ''}
+        {shown?.kind === 'anios' ? ` · ${shown.years} años` : ''}
       </Text>
     </View>
   );

@@ -2,11 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { useEventTypeMeta } from '@/constants/use-event-types';
+import { useEventTypeMeta, useTypeCapabilities } from '@/constants/use-event-types';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 import type { EventItem } from '@/types';
-import { formatRelative, nextOccurrence, yearsSince } from '@/utils/dates';
+import { formatRelative, nextOccurrence, yearsToShow } from '@/utils/dates';
 
 /**
  * Tarjeta de un evento en la lista de la agenda.
@@ -24,8 +24,9 @@ export function EventCard({ event, occurrence }: EventCardProps) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const meta = useEventTypeMeta(event.type);
+  const capabilities = useTypeCapabilities(event.type);
   const next = occurrence ?? nextOccurrence(event);
-  const years = event.yearly ? yearsSince(event.date, next) : 0;
+  const shown = yearsToShow(event, capabilities, next);
   // El modelo usa 1/0; este texto es una decisión de presentación local a la tarjeta.
   const title = event.isMine === 1 ? 'Mi cumpleaños' : event.title;
 
@@ -45,7 +46,7 @@ export function EventCard({ event, occurrence }: EventCardProps) {
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>
           {meta.label}
-          {event.yearly && years > 0 ? ` · ${years} años` : ''}
+          {shown ? ` · ${shown.years} años` : ''}
           {event.time ? ` · ${event.time} h` : ''}
         </Text>
         {event.tags.length > 0 ? (

@@ -31,6 +31,7 @@ describe('<EventForm />', () => {
     isMine: 1,
     tags: [],
     photoUri: null,
+    yearUnknown: 0,
   };
 
   const renderForm = async () => {
@@ -69,6 +70,7 @@ describe('<EventForm />', () => {
       isMine: 0,
       tags: [],
       photoUri: null,
+      yearUnknown: 0,
     });
   });
 
@@ -138,10 +140,60 @@ describe('<EventForm />', () => {
     const onSubmit = jest.fn();
     await renderWithStore(<EventForm initial={miCumple} submitLabel="Guardar" onSubmit={onSubmit} />);
 
-    await fireEvent(screen.getByRole('switch'), 'valueChange', false);
     await fireEvent.press(screen.getByText('Guardar'));
 
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ yearly: 1 }));
+  });
+
+  it('la repetición la decide el tipo: se informa, no hay switch para cambiarla', async () => {
+    await renderForm();
+    expect(screen.getByText('Es por única vez')).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('Día festivo'));
+    expect(screen.getByText('Se repite todos los años')).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('una cita médica no se puede guardar sin hora', async () => {
+    const onSubmit = await renderForm();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Dentista');
+    await fireEvent.press(screen.getByText('Cita médica'));
+    await fireEvent.press(screen.getByText('Crear evento'));
+
+    expect(screen.getByText('Hora')).toBeTruthy();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('en un cumpleaños se puede marcar que no se sabe el año: oculta la edad', async () => {
+    const onSubmit = await renderForm();
+
+    await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Ana');
+    await fireEvent.press(screen.getByText('Cumpleaños'));
+    await fireEvent(screen.getByLabelText('No sé el año de nacimiento'), 'valueChange', true);
+
+    expect(screen.queryByLabelText('Edad que cumple este año')).toBeNull();
+    await fireEvent.press(screen.getByText('Crear evento'));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ yearUnknown: 1 }));
+  });
+
+  it('el aniversario es una conmemoración: sin teléfono ni edad', async () => {
+    await renderForm();
+
+    await fireEvent.press(screen.getByText('Aniversario'));
+
+    expect(screen.queryByLabelText('Teléfono')).toBeNull();
+    expect(screen.queryByLabelText('Edad que cumple este año')).toBeNull();
+  });
+
+  it('un evento viejo conserva su repetición mientras no le cambien el tipo', async () => {
+    const onSubmit = jest.fn();
+    const viejo: EventItem = { ...miCumple, id: 9, title: 'Aniversario de casados', type: 'evento', isMine: 0 };
+    await renderWithStore(<EventForm initial={viejo} submitLabel="Guardar" onSubmit={onSubmit} />);
+
+    await fireEvent.press(screen.getByText('Guardar'));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'evento', yearly: 1 }));
   });
 
   it('permite quitar todos los recordatorios', async () => {

@@ -136,6 +136,8 @@ export interface EventItem {
   tags: Tag[];
   /** Ruta a la foto del evento ya copiada al sandbox de la app (ver src/media/photos.ts). */
   photoUri: string | null;
+  /** 1 = no se sabe el año (ej. un cumpleaños sin año de nacimiento): no se muestra la edad. */
+  yearUnknown: 0 | 1;
 }
 
 /** Etiqueta libre, reutilizable entre eventos (relación muchos a muchos). */

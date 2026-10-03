@@ -82,6 +82,19 @@ export function typeCapabilities(
   return [...new Set([...(base?.capabilities ?? []), ...type.extraCapabilities])];
 }
 
+/**
+ * Arma un consultador "¿el tipo X tiene la capacidad Y?" a partir de los
+ * tipos y bases cargados. Lo usan las funciones puras (calendario, saludos,
+ * WhatsApp) para no depender de claves literales.
+ */
+export function capabilityLookup(
+  types: readonly Pick<EventTypeMeta, 'key' | 'baseKey' | 'extraCapabilities'>[],
+  bases: readonly Pick<EventBase, 'key' | 'capabilities'>[],
+): (typeKey: string, capability: Capability) => boolean {
+  const byType = new Map(types.map((t) => [t.key, new Set(typeCapabilities(t, bases))]));
+  return (typeKey, capability) => byType.get(typeKey)?.has(capability) ?? false;
+}
+
 /** Cuántas cosas suma un tipo contra el límite de MAX_TYPE_ITEMS. */
 export function countTypeItems(
   type: Pick<EventTypeMeta, 'id' | 'baseKey' | 'extraCapabilities'>,

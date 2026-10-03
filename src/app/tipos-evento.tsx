@@ -1,17 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { confirmDestructive, impactMessage } from '@/components/confirm';
+import { confirmDestructive, impactMessage, notify } from '@/components/confirm';
+import { DeleteTypePanel } from '@/components/delete-type-panel';
 import { EventBaseForm } from '@/components/event-base-form';
 import { EventTypeForm } from '@/components/event-type-form';
-import { isEmptyPlan, planRemovals } from '@/constants/event-bases';
+import { DEFAULT_TYPE_KEY, isEmptyPlan, planRemovals } from '@/constants/event-bases';
 import { useAppDispatch, useAppSelector } from '@/store';
-import { removeEventType } from '@/store/event-types-slice';
 import {
   countRemovals,
   createBaseConfig,
   createTypeConfig,
+  deleteBaseConfig,
+  deleteTypeConfig,
   saveBaseConfig,
   saveTypeConfig,
 } from '@/store/type-config-thunks';
@@ -34,7 +36,7 @@ export default function TiposEventoScreen() {
   const fields = useAppSelector((state) => state.eventBases.fields);
   const events = useAppSelector((state) => state.events.items);
 
-  const [editing, setEditing] = useState<{ kind: 'type' | 'base'; id: number | 'nuevo' } | null>(null);
+  const [editing, setEditing] = useState<{ kind: 'type' | 'base' | 'delete'; id: number | 'nuevo' } | null>(null);
 
   const usageCount = (key: string) => events.filter((event) => event.type === key).length;
   const fieldLabels = useMemo(() => Object.fromEntries(fields.map((f) => [f.id, f.label])), [fields]);
@@ -80,28 +82,52 @@ export default function TiposEventoScreen() {
     setEditing(null);
   };
 
-  const handleDelete = (type: EventTypeMeta) => {
-    const count = usageCount(type.key);
-    if (count > 0) {
-      Alert.alert(
+  /**
+   * Sin eventos se borra con una confirmación simple; con eventos se abre el
+   * panel que pregunta si moverlos. "Cumpleaños" no se borra mientras tenga mi
+   * cumpleaños (que siempre es de ese tipo).
+   */
+  const handleDelete = async (type: EventTypeMeta) => {
+    if (type.key === 'cumpleanos' && events.some((e) => e.type === type.key && e.isMine === 1)) {
+      notify(
         'No se puede borrar',
-        `Hay ${count} ${count === 1 ? 'evento' : 'eventos'} usando "${type.label}". Cambiales el tipo antes de borrarlo.`,
+        'Tu cumpleaños es de este tipo. Si lo borrás, tu cumpleaños, "¿Quién me saludó?" y la importación de contactos se quedan sin tipo.',
       );
       return;
     }
-    Alert.alert('Borrar tipo', `¿Borrar "${type.label}"? No se puede deshacer.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Borrar', style: 'destructive', onPress: () => void dispatch(removeEventType(type.id)) },
-    ]);
+    if (usageCount(type.key) > 0) {
+      setEditing({ kind: 'delete', id: type.id });
+      return;
+    }
+    if (await confirmDestructive('Borrar tipo', `¿Borrar "${type.label}"? No se puede deshacer.`, 'Borrar')) {
+      await dispatch(deleteTypeConfig(type.id)).unwrap();
+    }
   };
 
-  const isEditing = (kind: 'type' | 'base', id: number | 'nuevo') => editing?.kind === kind && editing.id === id;
+  const handleDeleteBase = async (base: EventBase) => {
+    const used = types.filter((t) => t.baseKey === base.key).length;
+    if (used > 0) {
+      notify(
+        'No se puede borrar',
+        `Hay ${used} ${used === 1 ? 'tipo' : 'tipos'} con la base "${base.label}". Borralos (o mové sus eventos) primero.`,
+      );
+      return;
+    }
+    if (await confirmDestructive('Borrar base', `¿Borrar la base "${base.label}"? No se puede deshacer.`, 'Borrar')) {
+      await dispatch(deleteBaseConfig(base.id)).unwrap();
+    }
+  };
+
+  const isEditing = (kind: 'type' | 'base' | 'delete', id: number | 'nuevo') =>
+    editing?.kind === kind && editing.id === id;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={styles.section}>Tipos</Text>
       {types.map((type) =>
-        isEditing('type', type.id) ? (
+        isEditing('delete', type.id) ? (
+          <DeleteTypePanel key={type.id} type={type} onDone={() => setEditing(null)} onCancel={() => setEditing(null)} />
+        ) : isEditing('type', type.id) ? (
           <EventTypeForm
             key={type.id}
             initial={type}
@@ -126,8 +152,9 @@ export default function TiposEventoScreen() {
             >
               <Ionicons name="pencil" size={18} color={colors.textSubtle} />
             </Pressable>
-            {!type.isBuiltin ? (
-              <Pressable accessibilityLabel={`Borrar tipo ${type.label}`} hitSlop={8} onPress={() => handleDelete(type)}>
+            {/* "Evento" es el tipo por defecto al crear: no se puede borrar. */}
+            {type.key !== DEFAULT_TYPE_KEY ? (
+              <Pressable accessibilityLabel={`Borrar tipo ${type.label}`} hitSlop={8} onPress={() => void handleDelete(type)}>
                 <Ionicons name="trash" size={18} color={colors.danger} />
               </Pressable>
             ) : null}
@@ -169,13 +196,18 @@ export default function TiposEventoScreen() {
               </Text>
             </View>
             {!base.isBuiltin ? (
-              <Pressable
-                accessibilityLabel={`Editar base ${base.label}`}
-                hitSlop={8}
-                onPress={() => setEditing({ kind: 'base', id: base.id })}
-              >
-                <Ionicons name="pencil" size={18} color={colors.textSubtle} />
-              </Pressable>
+              <>
+                <Pressable
+                  accessibilityLabel={`Editar base ${base.label}`}
+                  hitSlop={8}
+                  onPress={() => setEditing({ kind: 'base', id: base.id })}
+                >
+                  <Ionicons name="pencil" size={18} color={colors.textSubtle} />
+                </Pressable>
+                <Pressable accessibilityLabel={`Borrar base ${base.label}`} hitSlop={8} onPress={() => void handleDeleteBase(base)}>
+                  <Ionicons name="trash" size={18} color={colors.danger} />
+                </Pressable>
+              </>
             ) : (
               <Ionicons name="lock-closed" size={16} color={colors.textSubtle} />
             )}

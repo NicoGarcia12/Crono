@@ -1,5 +1,18 @@
-import { REMINDER_UNITS } from '@/types';
-import type { EventItem, Greeting, NewEvent, NewNote, Note, ReminderInput } from '@/types';
+import { CAPABILITIES, FIELD_KINDS, REMINDER_UNITS } from '@/types';
+import type {
+  Capability,
+  CustomField,
+  EventBase,
+  EventItem,
+  EventTypeMeta,
+  FieldKind,
+  FieldValues,
+  Greeting,
+  NewEvent,
+  NewNote,
+  Note,
+  ReminderInput,
+} from '@/types';
 
 /**
  * Copia de seguridad: exportar toda la agenda a un archivo de texto (JSON) y
@@ -16,16 +29,75 @@ export const BACKUP_FORMAT_VERSION = 1;
 /** Un saludo no conserva ids del dispositivo de origen. */
 export type BackupGreeting = Omit<Greeting, 'id' | 'eventId'> & { eventId: null };
 
+/** Un campo personalizado sin ids: se reconoce por su dueño y su nombre. */
+export interface BackupField {
+  label: string;
+  kind: FieldKind;
+  options: string[];
+}
+
+export interface BackupBase {
+  key: string;
+  label: string;
+  yearly: boolean;
+  requiresTime: boolean;
+  capabilities: Capability[];
+  fields: BackupField[];
+}
+
+export interface BackupType {
+  key: string;
+  label: string;
+  icon: string;
+  color: string;
+  baseKey: string;
+  extraCapabilities: Capability[];
+  fields: BackupField[];
+}
+
+/** Bases y tipos PROPIOS (los de fábrica ya vienen en cualquier instalación). */
+export interface BackupTypeConfig {
+  bases: BackupBase[];
+  types: BackupType[];
+}
+
+/**
+ * Un evento del backup. Los valores de sus campos van por clave
+ * 'base:Obra social' / 'type:Qué llevar', porque los ids son de ESTE celular.
+ */
+export type BackupEvent = NewEvent & { fieldValues?: Record<string, string> };
+
 export interface BackupFile {
   app: 'crono';
   formatVersion: number;
   exportedAt: string;
   displayName: string | null;
-  events: NewEvent[];
+  events: BackupEvent[];
   notes: NewNote[];
   /** Opcional para mantener compatibilidad con backups v1 ya exportados. */
   greetings?: BackupGreeting[];
+  /** Opcional: los backups anteriores a los tipos componibles no lo traen. */
+  typeConfig?: BackupTypeConfig;
 }
+
+/** Clave estable de un campo dentro de un evento: dueño + nombre. */
+export function backupFieldKey(field: Pick<CustomField, 'owner' | 'label'>): string {
+  return `${field.owner}:${field.label}`;
+}
+
+/** Lo que hace falta para exportar bases, tipos y valores de campos. */
+export interface TypeConfigSnapshot {
+  bases: EventBase[];
+  types: EventTypeMeta[];
+  fields: CustomField[];
+  values: Record<number, FieldValues>;
+}
+
+const toBackupFields = (fields: CustomField[], owner: CustomField['owner'], ownerId: number): BackupField[] =>
+  fields
+    .filter((f) => f.owner === owner && f.ownerId === ownerId)
+    .sort((a, b) => a.position - b.position)
+    .map(({ label, kind, options }) => ({ label, kind, options }));
 
 /** Arma el contenido del backup a partir de lo que hay en la app. */
 export function buildBackup(
@@ -34,7 +106,17 @@ export function buildBackup(
   displayName: string | null,
   now: Date = new Date(),
   greetings?: Greeting[],
+  config?: TypeConfigSnapshot,
 ): BackupFile {
+  const fieldsById = new Map((config?.fields ?? []).map((f) => [f.id, f]));
+  const valuesFor = (eventId: number): Record<string, string> | undefined => {
+    const entries = Object.entries(config?.values[eventId] ?? {}).flatMap(([id, value]) => {
+      const field = fieldsById.get(Number(id));
+      return field ? [[backupFieldKey(field), value] as const] : [];
+    });
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  };
+
   const backup: BackupFile = {
     app: 'crono',
     formatVersion: BACKUP_FORMAT_VERSION,
@@ -45,14 +127,32 @@ export function buildBackup(
     // La foto NO viaja: es un archivo local (FileSystem.documentDirectory) que
     // no existe en el celular que restaura — restaurar sin foto es mejor que
     // guardar una ruta rota.
-    events: events.map(({ id: _id, reminders, tags, photoUri: _photoUri, ...event }) => ({
-      ...event,
-      reminders: reminders.map(({ amount, unit }) => ({ amount, unit })),
-      tags: tags.map((tag) => tag.name),
-      photoUri: null,
-    })),
+    events: events.map(({ id, reminders, tags, photoUri: _photoUri, ...event }) => {
+      const fieldValues = valuesFor(id);
+      return {
+        ...event,
+        reminders: reminders.map(({ amount, unit }) => ({ amount, unit })),
+        tags: tags.map((tag) => tag.name),
+        photoUri: null,
+        ...(fieldValues ? { fieldValues } : {}),
+      };
+    }),
     notes: notes.map(({ title, content }) => ({ title, content })),
   };
+  if (config) {
+    backup.typeConfig = {
+      bases: config.bases
+        .filter((b) => !b.isBuiltin)
+        .map(({ id, key, label, yearly, requiresTime, capabilities }) => ({
+          key, label, yearly, requiresTime, capabilities, fields: toBackupFields(config.fields, 'base', id),
+        })),
+      types: config.types
+        .filter((t) => !t.isBuiltin)
+        .map(({ id, key, label, icon, color, baseKey, extraCapabilities }) => ({
+          key, label, icon, color, baseKey, extraCapabilities, fields: toBackupFields(config.fields, 'type', id),
+        })),
+    };
+  }
   if (greetings !== undefined) {
     // eventId es local a la SQLite origen; restaurarlo sería enlazar a un
     // evento arbitrario. Se recupera el saludo como invitado independiente.
@@ -97,6 +197,7 @@ export function parseBackup(raw: string): ParseResult {
   const events = Array.isArray(data.events) ? data.events.flatMap(toEvent) : [];
   const notes = Array.isArray(data.notes) ? data.notes.flatMap(toNote) : [];
   const greetings = Array.isArray(data.greetings) ? data.greetings.flatMap(toGreeting) : [];
+  const typeConfig = toTypeConfig(data.typeConfig);
 
   if (events.length === 0 && notes.length === 0 && greetings.length === 0) {
     return { ok: false, error: 'El backup no tiene eventos ni notas para restaurar.' };
@@ -112,8 +213,62 @@ export function parseBackup(raw: string): ParseResult {
       events,
       notes,
       greetings,
+      ...(typeConfig ? { typeConfig } : {}),
     },
   };
+}
+
+const isStringList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === 'string');
+
+const toCapabilities = (value: unknown): Capability[] =>
+  isStringList(value) ? value.filter((c): c is Capability => (CAPABILITIES as readonly string[]).includes(c)) : [];
+
+function toFields(value: unknown): BackupField[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((f): BackupField[] => {
+    if (!isRecord(f) || typeof f.label !== 'string' || f.label.trim().length === 0) return [];
+    if (typeof f.kind !== 'string' || !(FIELD_KINDS as readonly string[]).includes(f.kind)) return [];
+    return [{ label: f.label.trim(), kind: f.kind as FieldKind, options: isStringList(f.options) ? f.options : [] }];
+  });
+}
+
+/** Normaliza la configuración de tipos del archivo; lo inválido se descarta. */
+function toTypeConfig(value: unknown): BackupTypeConfig | undefined {
+  if (!isRecord(value)) return undefined;
+  const text = (v: unknown) => (typeof v === 'string' && v.trim().length > 0 ? v.trim() : null);
+
+  const bases = (Array.isArray(value.bases) ? value.bases : []).flatMap((b): BackupBase[] => {
+    if (!isRecord(b)) return [];
+    const key = text(b.key);
+    const label = text(b.label);
+    if (!key || !label) return [];
+    return [{
+      key, label, yearly: b.yearly === true, requiresTime: b.requiresTime === true,
+      capabilities: toCapabilities(b.capabilities), fields: toFields(b.fields),
+    }];
+  });
+  const types = (Array.isArray(value.types) ? value.types : []).flatMap((t): BackupType[] => {
+    if (!isRecord(t)) return [];
+    const key = text(t.key);
+    const label = text(t.label);
+    const baseKey = text(t.baseKey);
+    if (!key || !label || !baseKey) return [];
+    return [{
+      key, label, baseKey,
+      icon: text(t.icon) ?? 'calendar',
+      color: text(t.color) ?? '#208AEF',
+      extraCapabilities: toCapabilities(t.extraCapabilities),
+      fields: toFields(t.fields),
+    }];
+  });
+  return bases.length > 0 || types.length > 0 ? { bases, types } : undefined;
+}
+
+function toFieldValues(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 /**
@@ -125,7 +280,7 @@ export function itemsToRestore(
   backup: BackupFile,
   existingEvents: EventItem[],
   existingNotes: Note[],
-): { events: NewEvent[]; notes: NewNote[] } {
+): { events: BackupEvent[]; notes: NewNote[] } {
   const eventKeys = new Set(existingEvents.map((e) => eventKey(e)));
   const noteKeys = new Set(existingNotes.map((n) => noteKey(n)));
 
@@ -148,7 +303,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Devuelve el evento normalizado, o [] si el ítem del archivo no sirve (para usar con flatMap). */
-function toEvent(value: unknown): NewEvent[] {
+function toEvent(value: unknown): BackupEvent[] {
   if (!isRecord(value)) return [];
 
   const { title, type, date, yearly } = value;
@@ -178,6 +333,7 @@ function toEvent(value: unknown): NewEvent[] {
       photoUri: null, // nunca se restaura: ver comentario en buildBackup
       // Las copias anteriores a "año desconocido" no traen el campo: se asume conocido.
       yearUnknown: value.yearUnknown === 1 ? 1 : 0,
+      ...(toFieldValues(value.fieldValues) ? { fieldValues: toFieldValues(value.fieldValues) } : {}),
     },
   ];
 }

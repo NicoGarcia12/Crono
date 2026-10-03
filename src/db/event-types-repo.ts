@@ -1,7 +1,11 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+
+import type { BackupTypeConfig } from '@/backup/backup';
+import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import { applyRemovals, writeFields } from '@/db/custom-fields-repo';
 import { getDb } from '@/db/database';
 import { parseCapabilities } from '@/db/json-columns';
-import type { EventTypeMeta, NewEventType, RemovalPlan } from '@/types';
+import type { BuiltinEventType, EventTypeMeta, NewEventType, RemovalPlan } from '@/types';
 
 /**
  * Tipos de evento: los 5 de fábrica (sembrados por la migración v11) más los
@@ -123,7 +127,93 @@ export async function updateEventType(id: number, data: NewEventType, plan: Remo
   });
 }
 
-/** El repo confía en que la UI ya validó que no sea de fábrica y no esté en uso; acá solo borra. */
+/** Borra el tipo y sus campos extra (sus valores caen por cascada). */
+async function deleteTypeRow(db: Pick<SQLiteDatabase, 'runAsync'>, id: number): Promise<void> {
+  await db.runAsync('DELETE FROM event_field_values WHERE field_id IN (SELECT id FROM custom_fields WHERE type_id = ?)', id);
+  await db.runAsync('DELETE FROM custom_fields WHERE type_id = ?', id);
+  await db.runAsync('DELETE FROM event_types WHERE id = ?', id);
+}
+
+/**
+ * Borra un tipo pasando sus eventos a otro tipo de la misma base. Antes se
+ * borran (con el plan ya confirmado) los datos que el tipo destino no admite.
+ * Todo en una transacción: o se mueve y borra todo, o nada.
+ */
+export async function deleteEventTypeMovingEvents(
+  id: number,
+  sourceKey: string,
+  destinationKey: string,
+  plan: RemovalPlan,
+): Promise<void> {
+  const db = getDb();
+  await db.withTransactionAsync(async () => {
+    await applyRemovals(db, [sourceKey], plan);
+    await db.runAsync('UPDATE events SET type = ? WHERE type = ?', destinationKey, sourceKey);
+    await deleteTypeRow(db, id);
+  });
+}
+
+/**
+ * Borra un tipo junto con todos sus eventos (recordatorios, etiquetas, ideas
+ * de regalo y valores caen por ON DELETE CASCADE). Los avisos del sistema se
+ * cancelan antes, en el thunk, porque no tienen rollback.
+ */
+export async function deleteEventTypeWithEvents(id: number, key: string): Promise<void> {
+  const db = getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM events WHERE type = ?', key);
+    await deleteTypeRow(db, id);
+  });
+}
+
+/** Borra un tipo sin eventos. */
 export async function deleteEventType(id: number): Promise<void> {
-  await getDb().runAsync('DELETE FROM event_types WHERE id = ?', id);
+  const db = getDb();
+  await db.withTransactionAsync(async () => deleteTypeRow(db, id));
+}
+
+/**
+ * Restaura bases y tipos propios de un backup, conservando sus claves (los
+ * eventos del archivo apuntan a ellas). Los que ya existen con esa clave no se
+ * tocan; un tipo cuya base no existe se saltea. Todo en una transacción.
+ */
+export async function importTypeConfig(config: BackupTypeConfig): Promise<void> {
+  const db = getDb();
+  await db.withTransactionAsync(async () => {
+    for (const base of config.bases) {
+      if (await db.getFirstAsync('SELECT 1 FROM event_bases WHERE key = ?', base.key)) continue;
+      const result = await db.runAsync(
+        'INSERT INTO event_bases (key, label, yearly, requires_time, capabilities, is_builtin) VALUES (?, ?, ?, ?, ?, 0)',
+        base.key, base.label, base.yearly ? 1 : 0, base.requiresTime ? 1 : 0, JSON.stringify(base.capabilities),
+      );
+      await writeFields(db, { column: 'base_id', id: result.lastInsertRowId }, base.fields);
+    }
+    for (const type of config.types) {
+      if (await db.getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', type.key)) continue;
+      const base = await db.getFirstAsync<{ yearly: 0 | 1 }>('SELECT yearly FROM event_bases WHERE key = ?', type.baseKey);
+      if (!base) continue;
+      const result = await db.runAsync(
+        'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities) ' +
+          'VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
+        type.key, type.label, type.icon, type.color, base.yearly, type.baseKey, JSON.stringify(type.extraCapabilities),
+      );
+      await writeFields(db, { column: 'type_id', id: result.lastInsertRowId }, type.fields);
+    }
+  });
+}
+
+/**
+ * Vuelve a crear un tipo de fábrica si el usuario lo había borrado (ej.
+ * importar contactos necesita "Cumpleaños"). Devuelve true si lo creó.
+ */
+export async function ensureBuiltinType(key: BuiltinEventType): Promise<boolean> {
+  const db = getDb();
+  if (await db.getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', key)) return false;
+  const meta = DEFAULT_EVENT_TYPES[key];
+  await db.runAsync(
+    'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities) ' +
+      "VALUES (?, ?, ?, ?, ?, 1, ?, '[]')",
+    key, meta.label, meta.icon, meta.color, meta.defaultYearly ? 1 : 0, key,
+  );
+  return true;
 }

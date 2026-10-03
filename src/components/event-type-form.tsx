@@ -32,6 +32,8 @@ const COLOR_OPTIONS = [
 interface EventTypeFormProps {
   /** Tipo existente al editar; undefined al crear uno nuevo. */
   initial?: EventTypeMeta;
+  /** Al crear: base fija, sin poder elegir otra (ej. "crear tipo y mover los eventos"). */
+  lockedBaseKey?: string;
   onSubmit: (data: NewEventType) => void;
   onCancel: () => void;
 }
@@ -41,7 +43,7 @@ interface EventTypeFormProps {
  * (solo al crearlo) y los extras opcionales que le suma. Lo de la base se
  * muestra bloqueado. Los de fábrica solo cambian nombre, ícono y color.
  */
-export function EventTypeForm({ initial, onSubmit, onCancel }: EventTypeFormProps) {
+export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: EventTypeFormProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -53,7 +55,7 @@ export function EventTypeForm({ initial, onSubmit, onCancel }: EventTypeFormProp
     (initial?.icon as keyof typeof Ionicons.glyphMap) ?? ICON_OPTIONS[0],
   );
   const [color, setColor] = useState(initial?.color ?? COLOR_OPTIONS[0]);
-  const [baseKey, setBaseKey] = useState(initial?.baseKey ?? DEFAULT_TYPE_KEY);
+  const [baseKey, setBaseKey] = useState(initial?.baseKey ?? lockedBaseKey ?? DEFAULT_TYPE_KEY);
   const [extras, setExtras] = useState<Capability[]>(initial?.extraCapabilities ?? []);
   const [fields, setFields] = useState<FieldDraft[]>(() =>
     initial
@@ -154,7 +156,7 @@ export function EventTypeForm({ initial, onSubmit, onCancel }: EventTypeFormProp
       </View>
 
       <Text style={styles.label}>Base</Text>
-      {initial ? (
+      {initial || lockedBaseKey ? (
         <Text style={styles.hint}>{base?.label ?? 'Sin base'} · la base no cambia después de crear el tipo</Text>
       ) : (
         <View style={styles.chipRow}>

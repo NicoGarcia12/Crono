@@ -126,11 +126,23 @@ describe('<EventForm />', () => {
     expect(screen.queryByLabelText('Este es mi cumpleaños')).toBeNull();
   });
 
+  it('al editar, el tipo queda fijo: no ofrece cambiarlo a otro', async () => {
+    const onSubmit = jest.fn();
+    const asado: EventItem = { ...miCumple, id: 10, title: 'Asado', type: 'evento', isMine: 0, yearly: 0 };
+    await renderWithStore(<EventForm initial={asado} submitLabel="Guardar" onSubmit={onSubmit} />);
+
+    expect(screen.getByText('Evento')).toBeTruthy();
+    expect(screen.queryByText('Cumpleaños')).toBeNull();
+    expect(screen.queryByText('Cita médica')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Guardar'));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'evento' }), {});
+  });
+
   it('conserva el tipo cumpleaños al editar mi cumpleaños', async () => {
     const onSubmit = jest.fn();
     await renderWithStore(<EventForm initial={miCumple} submitLabel="Guardar" onSubmit={onSubmit} />);
 
-    await fireEvent.press(screen.getByText('Evento'));
     await fireEvent.press(screen.getByText('Guardar'));
 
     expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'cumpleanos' }));
@@ -186,7 +198,7 @@ describe('<EventForm />', () => {
     expect(screen.queryByLabelText('Edad que cumple este año')).toBeNull();
   });
 
-  it('un evento viejo conserva su repetición mientras no le cambien el tipo', async () => {
+  it('al editar, un evento viejo conserva su repetición guardada', async () => {
     const onSubmit = jest.fn();
     const viejo: EventItem = { ...miCumple, id: 9, title: 'Aniversario de casados', type: 'evento', isMine: 0 };
     await renderWithStore(<EventForm initial={viejo} submitLabel="Guardar" onSubmit={onSubmit} />);

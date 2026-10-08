@@ -6,7 +6,7 @@ import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
 import { TagsField } from '@/components/tags-field';
 import { DEFAULT_TYPE_KEY } from '@/constants/event-bases';
-import { useEventBase, useEventTypesList, useTypeCapabilities } from '@/constants/use-event-types';
+import { useEventBase, useEventTypeMeta, useEventTypesList, useTypeCapabilities } from '@/constants/use-event-types';
 import type { EventItem, EventType, NewEvent, ReminderInput } from '@/types';
 import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
@@ -56,23 +56,25 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
   const [yearUnknown, setYearUnknown] = useState(initial?.yearUnknown === 1);
 
+  const isEditing = initial !== undefined;
   const isMine = initial?.isMine === 1;
+  const typeMeta = useEventTypeMeta(type);
   const hasAge = capabilities.includes('edad');
   const hasPhone = capabilities.includes('whatsapp');
   const requiresTime = base?.requiresTime ?? false;
 
   /**
-   * La repetición la decide la base del tipo. Un evento viejo que se guardó
-   * con otra repetición la conserva mientras no le cambien el tipo (así una
-   * migración no hace desaparecer de la agenda algo que se repetía).
+   * La repetición la decide la base del tipo. Al editar, el tipo no cambia y se
+   * conserva la repetición guardada (así un evento viejo migrado con otra
+   * repetición no desaparece de la agenda).
    */
-  const keepsOwnRepetition = initial !== undefined && type === initial.type;
-  const yearly = isMine || (keepsOwnRepetition ? initial.yearly === 1 : (base?.yearly ?? false));
+  const yearly = isMine || (isEditing ? initial.yearly === 1 : (base?.yearly ?? false));
 
   const canSave = title.trim().length > 0 && (!requiresTime || time !== null);
 
   const selectType = (t: EventType) => {
-    if (isMine) return; // La UI no ofrece una acción que viole el invariante.
+    // Una vez creado, el evento queda atado a su tipo: solo se editan sus campos.
+    if (isEditing) return;
     setType(t);
   };
 
@@ -134,21 +136,29 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       />
 
       <Text style={styles.label}>Tipo</Text>
-      <View style={styles.chipRow}>
-        {eventTypes.map((meta) => {
-          const active = meta.key === type;
-          return (
-            <Pressable
-              key={meta.key}
-              style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
-              disabled={isMine}
-              onPress={() => selectType(meta.key)}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Al editar, el tipo queda fijo: solo se muestra el asignado. */}
+      {isEditing ? (
+        <View style={styles.chipRow}>
+          <View style={[styles.chip, { backgroundColor: typeMeta.color, borderColor: typeMeta.color }]}>
+            <Text style={[styles.chipText, styles.chipTextActive]}>{typeMeta.label}</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.chipRow}>
+          {eventTypes.map((meta) => {
+            const active = meta.key === type;
+            return (
+              <Pressable
+                key={meta.key}
+                style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
+                onPress={() => selectType(meta.key)}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       <Text style={styles.label}>Fecha</Text>
       <DateField value={date} onChange={handleDateChange} />

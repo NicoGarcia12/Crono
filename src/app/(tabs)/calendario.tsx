@@ -8,9 +8,10 @@ import { EventCard } from '@/components/event-card';
 import { MonthBirthdaysList } from '@/components/month-birthdays-list';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { loadGreetingsSent, toggleGreetingSent } from '@/store/greetings-sent-slice';
+import { useCapabilityLookup } from '@/constants/use-event-types';
 import {
-  birthdaysAndAnniversariesInMonth,
   buildMonthGrid,
+  greetableInMonth,
   buildWeek,
   eventsByDay as groupEventsByDay,
   periodLabel,
@@ -45,9 +46,10 @@ export default function CalendarioScreen(): JSX.Element {
     void dispatch(loadGreetingsSent(anchorYear));
   }, [dispatch, anchorYear]);
 
+  const hasCapability = useCapabilityLookup();
   const monthBirthdays = useMemo(
-    () => (mode === 'mes' ? birthdaysAndAnniversariesInMonth(events, anchor) : []),
-    [events, anchor, mode],
+    () => (mode === 'mes' ? greetableInMonth(events, anchor, hasCapability) : []),
+    [events, anchor, mode, hasCapability],
   );
   const greetedEventIds = useMemo(
     () =>

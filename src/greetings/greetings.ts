@@ -1,4 +1,4 @@
-import type { EventItem, Greeting } from '@/types';
+import type { Capability, EventItem, Greeting } from '@/types';
 
 /**
  * La lista de "¿quién me saludó?" combina dos cosas:
@@ -27,7 +27,11 @@ export interface GreetingRow {
  * Arma la lista del año: los cumpleaños de la agenda (menos el mío) más los
  * invitados anotados a mano, ordenados alfabéticamente.
  */
-export function buildGreetingRows(events: EventItem[], greetings: Greeting[]): GreetingRow[] {
+export function buildGreetingRows(
+  events: EventItem[],
+  greetings: Greeting[],
+  hasCapability: (typeKey: string, capability: Capability) => boolean,
+): GreetingRow[] {
   const byEvent = new Map<number, Greeting>();
   const guests: Greeting[] = [];
 
@@ -37,7 +41,8 @@ export function buildGreetingRows(events: EventItem[], greetings: Greeting[]): G
   }
 
   const fromAgenda: GreetingRow[] = events
-    .filter((event) => event.type === 'cumpleanos' && !event.isMine)
+    // Las personas de la agenda: los tipos con "¿ya lo saludé?" (cumpleaños ajenos).
+    .filter((event) => hasCapability(event.type, 'saludado') && !event.isMine)
     .map((event) => {
       const saved = byEvent.get(event.id);
       return {

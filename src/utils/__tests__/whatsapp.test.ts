@@ -1,3 +1,4 @@
+import { capabilitiesOf } from '@/test-utils';
 import { canGreet, greetingMessage, normalizePhone, whatsappUrl } from '@/utils/whatsapp';
 
 describe('normalizePhone', () => {
@@ -31,31 +32,32 @@ describe('normalizePhone', () => {
 
 describe('greetingMessage', () => {
   it('saluda con el nombre de pila en un cumpleaños', () => {
-    expect(greetingMessage({ title: 'Ana Perez', type: 'cumpleanos' })).toBe('¡Feliz cumple, Ana! 🎉');
+    expect(greetingMessage({ title: 'Ana Perez' }, capabilitiesOf('cumpleanos'))).toBe('¡Feliz cumple, Ana! 🎉');
   });
 
-  it('usa un saludo distinto en un aniversario', () => {
-    expect(greetingMessage({ title: 'Ana', type: 'aniversario' })).toBe('¡Feliz aniversario! 🎊');
+  it('en un tipo sin edad, saluda sin desear feliz cumple', () => {
+    expect(greetingMessage({ title: 'Ana' }, ['whatsapp'])).toBe('¡Hola, Ana!');
   });
 });
 
 describe('whatsappUrl', () => {
   it('arma el link de wa.me con el saludo codificado', () => {
-    const url = whatsappUrl({ title: 'Ana', type: 'cumpleanos', phone: '+54 9 11 5555-0001' });
+    const url = whatsappUrl({ title: 'Ana', phone: '+54 9 11 5555-0001' }, capabilitiesOf('cumpleanos'));
 
     expect(url).toBe(`https://wa.me/5491155550001?text=${encodeURIComponent('¡Feliz cumple, Ana! 🎉')}`);
   });
 
   it('devuelve null si el evento no tiene teléfono', () => {
-    expect(whatsappUrl({ title: 'Ana', type: 'cumpleanos', phone: null })).toBeNull();
+    expect(whatsappUrl({ title: 'Ana', phone: null }, capabilitiesOf('cumpleanos'))).toBeNull();
   });
 });
 
 describe('canGreet', () => {
-  it('habilita el saludo solo en cumpleaños y aniversarios con teléfono', () => {
-    expect(canGreet({ type: 'cumpleanos', phone: '+5491155550001' })).toBe(true);
-    expect(canGreet({ type: 'aniversario', phone: '+5491155550001' })).toBe(true);
-    expect(canGreet({ type: 'cita_medica', phone: '+5491155550001' })).toBe(false);
-    expect(canGreet({ type: 'cumpleanos', phone: null })).toBe(false);
+  it('habilita el saludo solo si el tipo tiene WhatsApp y hay número', () => {
+    expect(canGreet({ phone: '+5491155550001' }, capabilitiesOf('cumpleanos'))).toBe(true);
+    // El aniversario ahora es una conmemoración: no se saluda a nadie.
+    expect(canGreet({ phone: '+5491155550001' }, capabilitiesOf('aniversario'))).toBe(false);
+    expect(canGreet({ phone: '+5491155550001' }, capabilitiesOf('cita_medica'))).toBe(false);
+    expect(canGreet({ phone: null }, capabilitiesOf('cumpleanos'))).toBe(false);
   });
 });

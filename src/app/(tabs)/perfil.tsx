@@ -77,6 +77,7 @@ export default function PerfilScreen() {
         isMine: 1,
         tags: [],
         photoUri: null,
+        yearUnknown: 0,
       }),
     ).unwrap();
   };

@@ -88,10 +88,13 @@ export function EventTypeForm({ initial, onSubmit, onCancel }: EventTypeFormProp
         })}
       </View>
 
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Se repite todos los años por defecto</Text>
-        <Switch value={defaultYearly} onValueChange={setDefaultYearly} trackColor={{ true: colors.primary }} />
-      </View>
+      {/* La repetición define la base del tipo al crearlo; después ya no cambia. */}
+      {!initial ? (
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Se repite todos los años</Text>
+          <Switch value={defaultYearly} onValueChange={setDefaultYearly} trackColor={{ true: colors.primary }} />
+        </View>
+      ) : null}
 
       <View style={styles.actions}>
         <Pressable style={styles.cancelButton} onPress={onCancel}>

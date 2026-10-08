@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text } from 'react-native';
+import { useTypeCapabilities } from '@/constants/use-event-types';
 import type { EventItem } from '@/types';
 import { canGreet, whatsappUrl } from '@/utils/whatsapp';
 import type { ThemeColors } from '@/theme/theme';
@@ -8,8 +9,8 @@ import { useThemeColors } from '@/theme/use-theme';
 
 /**
  * Botón "Saludar por WhatsApp": abre el chat de la persona con el saludo ya
- * escrito (se puede editar antes de enviarlo). Solo aparece en cumpleaños y
- * aniversarios que tengan teléfono.
+ * escrito (se puede editar antes de enviarlo). Solo aparece si el tipo tiene
+ * saludo por WhatsApp y el evento tiene teléfono.
  *
  * 💡 Aprendizaje: `Linking.openURL` le pasa el link al sistema operativo, que
  * decide qué app lo abre. Con wa.me, si WhatsApp está instalado abre la app; si
@@ -18,11 +19,12 @@ import { useThemeColors } from '@/theme/use-theme';
 export function GreetButton({ event }: { event: EventItem }) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const capabilities = useTypeCapabilities(event.type);
 
-  if (!canGreet(event)) return null;
+  if (!canGreet(event, capabilities)) return null;
 
   const open = async () => {
-    const url = whatsappUrl(event);
+    const url = whatsappUrl(event, capabilities);
     if (!url) return;
 
     try {

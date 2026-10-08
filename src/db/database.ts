@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+import type { Capability } from '@/types';
 
 /**
  * Capa de base de datos local (SQLite).
@@ -19,7 +20,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 12;
+const DATABASE_VERSION = 13;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -359,7 +360,39 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 12;
   }
 
+  if (currentVersion === 12) {
+    // v13: la lógica pasa a depender de las capacidades del tipo. Los datos de
+    // una capacidad que el tipo ya no tiene se borran (ej. el teléfono y los
+    // "ya lo saludé" de los aniversarios, que ahora son conmemoraciones, o las
+    // ideas de regalo del tipo Evento). También se agrega "año desconocido".
+    await database.withTransactionAsync(async () => {
+      await addColumnIfMissing(database, 'year_unknown', 'INTEGER NOT NULL DEFAULT 0');
+      await database.execAsync(`
+        DELETE FROM gift_ideas WHERE event_id IN (${eventsWithoutCapability('regalos')});
+        DELETE FROM greetings_sent WHERE event_id IN (${eventsWithoutCapability('saludado')});
+        UPDATE events SET phone = NULL WHERE id IN (${eventsWithoutCapability('whatsapp')});
+      `);
+      await database.execAsync('PRAGMA user_version = 13');
+    });
+    currentVersion = 13;
+  }
+
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/**
+ * Subconsulta con los ids de eventos cuyo tipo NO tiene la capacidad, ni por
+ * su base ni como extra. Las capacidades se guardan como lista JSON, así que
+ * alcanza con buscar la clave entre comillas.
+ */
+function eventsWithoutCapability(capability: Capability): string {
+  const needle = `'"${capability}"'`;
+  return `
+    SELECT e.id FROM events e
+    JOIN event_types t ON t.key = e.type
+    JOIN event_bases b ON b.key = t.base_key
+    WHERE instr(b.capabilities, ${needle}) = 0 AND instr(t.extra_capabilities, ${needle}) = 0
+  `;
 }
 
 /** Escapa comillas simples para embeber texto en SQL crudo (sql = ''valor''). */
@@ -369,8 +402,8 @@ function sqlEscape(value: string): string {
 
 async function addColumnIfMissing(
   database: SQLite.SQLiteDatabase,
-  columnName: 'contact_id' | 'phone' | 'photo_uri',
-  definition: 'TEXT',
+  columnName: 'contact_id' | 'phone' | 'photo_uri' | 'year_unknown',
+  definition: 'TEXT' | 'INTEGER NOT NULL DEFAULT 0',
 ): Promise<void> {
   try {
     await database.execAsync(`ALTER TABLE events ADD COLUMN ${columnName} ${definition}`);

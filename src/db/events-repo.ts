@@ -26,6 +26,7 @@ interface EventRow {
   yearly: 0 | 1;
   isMine: 0 | 1;
   photoUri: string | null;
+  yearUnknown: 0 | 1;
 }
 
 interface ReminderRow {
@@ -67,7 +68,8 @@ export async function findAllEvents(): Promise<EventItem[]> {
   const db = getDb();
   const events = await db.getAllAsync<EventRow>(
     `SELECT id, title, type, date, time, description, yearly,
-            contact_id AS contactId, phone, is_mine AS isMine, photo_uri AS photoUri
+            contact_id AS contactId, phone, is_mine AS isMine, photo_uri AS photoUri,
+            year_unknown AS yearUnknown
      FROM events ORDER BY date ASC`,
   );
   const reminders = await db.getAllAsync<ReminderRow>(
@@ -126,8 +128,8 @@ export async function insertContactBirthdays(
       if (existing) continue;
 
       const result = await transaction.runAsync(
-        `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, year_unknown)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         event.title,
         event.type,
         event.date,
@@ -136,6 +138,7 @@ export async function insertContactBirthdays(
         event.yearly,
         event.contactId,
         event.phone,
+        event.yearUnknown,
       );
       // Antes de persistir, un reminder elegido en UI se completa con `null`:
       // después el scheduler puede guardar un id nativo, pero web no tiene uno.
@@ -197,10 +200,10 @@ async function writeEvent(
     await db.runAsync(
       `UPDATE events
        SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
-           contact_id = ?, phone = ?, is_mine = ?, photo_uri = ?
+           contact_id = ?, phone = ?, is_mine = ?, photo_uri = ?, year_unknown = ?
        WHERE id = ?`,
       data.title, data.type, data.date, data.time, data.description, data.yearly,
-      data.contactId, data.phone, data.isMine, data.photoUri, existingId,
+      data.contactId, data.phone, data.isMine, data.photoUri, data.yearUnknown, existingId,
     );
     await db.runAsync('DELETE FROM reminders WHERE event_id = ?', existingId);
     await insertReminders(db, existingId, reminders);
@@ -209,10 +212,10 @@ async function writeEvent(
   }
 
   const result: SQLite.SQLiteRunResult = await db.runAsync(
-    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine, photo_uri)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine, photo_uri, year_unknown)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     data.title, data.type, data.date, data.time, data.description, data.yearly,
-    data.contactId, data.phone, data.isMine, data.photoUri,
+    data.contactId, data.phone, data.isMine, data.photoUri, data.yearUnknown,
   );
   await insertReminders(db, result.lastInsertRowId, reminders);
   const tags = await tagsRepo.setEventTags(db, result.lastInsertRowId, data.tags);

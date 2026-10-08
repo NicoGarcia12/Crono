@@ -13,6 +13,7 @@ import { store, useAppSelector } from '@/store';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
+import { loadFieldValues } from '@/store/field-values-slice';
 import { loadNotes } from '@/store/notes-slice';
 import { loadSettings } from '@/store/settings-slice';
 import { useTheme } from '@/theme/use-theme';
@@ -64,6 +65,7 @@ export default function RootLayout() {
         store.dispatch(loadEventBases()),
         store.dispatch(loadEventTypes()),
         store.dispatch(loadEvents()),
+        store.dispatch(loadFieldValues()),
         store.dispatch(loadNotes()),
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).

@@ -4,11 +4,12 @@ import type { ReactElement, ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
 import { DEFAULT_EVENT_BASES, capabilityLookup, typeCapabilities } from '@/constants/event-bases';
-import type { EventTypeMeta } from '@/types';
+import type { CustomField, EventTypeMeta, FieldValues } from '@/types';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
+import fieldValuesReducer from '@/store/field-values-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
 import greetingsSentReducer from '@/store/greetings-sent-slice';
@@ -49,12 +50,16 @@ export const capabilitiesOf = (typeKey: string) => typeCapabilities(
  * Redux), cualquier componente con estilos necesita el <Provider> para
  * renderizar. Este helper evita repetir ese armado en cada test.
  */
-export function renderWithStore(ui: ReactElement) {
+export function renderWithStore(
+  ui: ReactElement,
+  extra: { fields?: CustomField[]; types?: EventTypeMeta[]; fieldValues?: Record<number, FieldValues> } = {},
+) {
   const store = configureStore({
     reducer: {
       events: eventsReducer,
       eventBases: eventBasesReducer,
       eventTypes: eventTypesReducer,
+      fieldValues: fieldValuesReducer,
       giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
       greetingsSent: greetingsSentReducer,
@@ -62,8 +67,9 @@ export function renderWithStore(ui: ReactElement) {
       settings: settingsReducer,
     },
     preloadedState: {
-      eventBases: { bases: defaultEventBases, fields: [], status: 'ready' as const },
-      eventTypes: { items: defaultEventTypes, status: 'ready' as const },
+      eventBases: { bases: defaultEventBases, fields: extra.fields ?? [], status: 'ready' as const },
+      eventTypes: { items: [...defaultEventTypes, ...(extra.types ?? [])], status: 'ready' as const },
+      fieldValues: { byEvent: extra.fieldValues ?? {}, status: 'ready' as const },
     },
   });
 

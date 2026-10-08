@@ -9,6 +9,7 @@ import { scheduleEventReminders } from '@/notifications/notifications';
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
+import fieldValuesReducer from '@/store/field-values-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
 import greetingsSentReducer from '@/store/greetings-sent-slice';
@@ -70,6 +71,7 @@ const makeStore = (greetings: Greeting[] = []) =>
       events: eventsReducer,
       eventBases: eventBasesReducer,
       eventTypes: eventTypesReducer,
+      fieldValues: fieldValuesReducer,
       giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
       greetingsSent: greetingsSentReducer,
@@ -80,6 +82,7 @@ const makeStore = (greetings: Greeting[] = []) =>
       events: { items: [evento], status: 'ready' as const },
       eventBases: { bases: [], fields: [], status: 'ready' as const },
       eventTypes: { items: [], status: 'ready' as const },
+      fieldValues: { byEvent: {}, status: 'ready' as const },
       giftIdeas: { eventId: null, items: [], status: 'ready' as const },
       greetings: { year: 2026, items: greetings, status: 'ready' as const },
       greetingsSent: { year: 2026, items: [], status: 'ready' as const },

@@ -225,9 +225,9 @@ describe('<EventForm />', () => {
       defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [],
     };
     const fields: CustomField[] = [
-      { id: 1, owner: 'type', ownerId: 20, label: 'Qué llevar', kind: 'multi', options: ['Pelota', 'Agua'], position: 0 },
-      { id: 2, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0 },
-      { id: 3, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 1 },
+      { id: 1, owner: 'type', ownerId: 20, label: 'Qué llevar', kind: 'multi', options: ['Pelota', 'Agua'], position: 0, required: false },
+      { id: 2, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0, required: true },
+      { id: 3, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 1, required: false },
     ];
 
     const renderWithFields = async (initial?: EventItem, fieldValues = {}) => {
@@ -261,6 +261,22 @@ describe('<EventForm />', () => {
 
       expect(onSubmit).not.toHaveBeenCalled();
       expect(screen.getByText('Completá "Obra social".')).toBeTruthy();
+    });
+
+    it('un campo del tipo marcado como obligatorio tampoco deja guardar vacío', async () => {
+      const onSubmit = jest.fn();
+      await renderWithStore(<EventForm submitLabel="Guardar" onSubmit={onSubmit} />, {
+        fields: [{ ...fields[2], required: true }],
+        types: [torneo],
+      });
+
+      await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Final');
+      await fireEvent.press(screen.getByText('Torneo'));
+      expect(screen.getByText('Cancha')).toBeTruthy();
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText('Completá "Cancha".')).toBeTruthy();
     });
 
     it('un campo numérico rechaza texto', async () => {

@@ -20,19 +20,19 @@ export type FieldOwner = { column: 'base_id' | 'type_id'; id: number };
 
 const placeholders = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 
-/** Inserta los campos nuevos y actualiza los existentes (nombre, opciones y orden; la clase no cambia). */
+/** Inserta los campos nuevos y actualiza los existentes (nombre, opciones, obligatoriedad y orden; la clase no cambia). */
 export async function writeFields(db: Executor, owner: FieldOwner, drafts: readonly FieldDraft[]): Promise<void> {
   for (const [position, draft] of drafts.entries()) {
     const options = JSON.stringify(draft.options);
     if (draft.id === undefined) {
       await db.runAsync(
-        `INSERT INTO custom_fields (${owner.column}, label, kind, options, position) VALUES (?, ?, ?, ?, ?)`,
-        owner.id, draft.label.trim(), draft.kind, options, position,
+        `INSERT INTO custom_fields (${owner.column}, label, kind, options, position, required) VALUES (?, ?, ?, ?, ?, ?)`,
+        owner.id, draft.label.trim(), draft.kind, options, position, draft.required ? 1 : 0,
       );
     } else {
       await db.runAsync(
-        `UPDATE custom_fields SET label = ?, options = ?, position = ? WHERE id = ? AND ${owner.column} = ?`,
-        draft.label.trim(), options, position, draft.id, owner.id,
+        `UPDATE custom_fields SET label = ?, options = ?, position = ?, required = ? WHERE id = ? AND ${owner.column} = ?`,
+        draft.label.trim(), options, position, draft.required ? 1 : 0, draft.id, owner.id,
       );
     }
   }

@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
-import { parseOptionsText } from '@/constants/event-bases';
+import { parseOptionsText, requiredBlockedMessage } from '@/constants/event-bases';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 import { FIELD_KINDS, type FieldDraft, type FieldKind } from '@/types';
@@ -20,13 +20,21 @@ interface FieldsEditorProps {
   /** Mensaje del límite de 15 si ya no se puede agregar otro; null si se puede. */
   limitMessage: string | null;
   addLabel: string;
+  /** Con qué obligatoriedad arranca un campo nuevo (después se cambia por campo). */
+  defaultRequired: boolean;
+  /**
+   * Cuántos eventos ya existentes no tienen el campo completado: si hay
+   * alguno, no se lo deja pasar a obligatorio.
+   */
+  missingCount: (field: FieldDraft) => number;
 }
 
 /**
  * Lista editable de campos personalizados. La clase de un campo se elige al
- * crearlo y después no cambia (cambiarla dejaría valores sin sentido).
+ * crearlo y después no cambia (cambiarla dejaría valores sin sentido). Si es
+ * obligatorio se elige por campo y se puede cambiar cuando quieras.
  */
-export function FieldsEditor({ value, onChange, limitMessage, addLabel }: FieldsEditorProps) {
+export function FieldsEditor({ value, onChange, limitMessage, addLabel, defaultRequired, missingCount }: FieldsEditorProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showLimit, setShowLimit] = useState(false);
@@ -39,7 +47,9 @@ export function FieldsEditor({ value, onChange, limitMessage, addLabel }: Fields
       setShowLimit(true);
       return;
     }
-    onChange([...value, { label: '', kind: 'texto', options: [] }]);
+    const draft: FieldDraft = { label: '', kind: 'texto', options: [], required: false };
+    // Si ya hay eventos, ninguno tiene el campo nuevo: arranca opcional.
+    onChange([...value, { ...draft, required: defaultRequired && missingCount(draft) === 0 }]);
   };
 
   return (
@@ -50,6 +60,7 @@ export function FieldsEditor({ value, onChange, limitMessage, addLabel }: Fields
           key={field.id ?? `nuevo-${index}`}
           field={field}
           index={index}
+          missing={missingCount(field)}
           onChange={(patch) => update(index, patch)}
           onRemove={() => {
             setShowLimit(false);
@@ -70,15 +81,18 @@ export function FieldsEditor({ value, onChange, limitMessage, addLabel }: Fields
 interface FieldRowProps {
   field: FieldDraft;
   index: number;
+  /** Eventos que no tienen este campo completado. */
+  missing: number;
   onChange: (patch: Partial<FieldDraft>) => void;
   onRemove: () => void;
 }
 
-function FieldRow({ field, index, onChange, onRemove }: FieldRowProps) {
+function FieldRow({ field, index, missing, onChange, onRemove }: FieldRowProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   // Lo tipeado se guarda aparte para que la coma final no "salte" mientras se escribe.
   const [optionsText, setOptionsText] = useState(field.options.join(', '));
+  const [blocked, setBlocked] = useState<string | null>(null);
   const isNew = field.id === undefined;
   const hasOptions = field.kind === 'select' || field.kind === 'multi';
 
@@ -132,6 +146,26 @@ function FieldRow({ field, index, onChange, onRemove }: FieldRowProps) {
           }}
         />
       ) : null}
+
+      <View style={styles.row}>
+        <Text style={[styles.requiredLabel, styles.grow]}>
+          {field.required ? 'Obligatorio: hay que completarlo' : 'Opcional'}
+        </Text>
+        <Switch
+          accessibilityLabel={`Campo ${index + 1} obligatorio`}
+          value={field.required}
+          onValueChange={(required) => {
+            if (required && missing > 0) {
+              setBlocked(requiredBlockedMessage(missing));
+              return;
+            }
+            setBlocked(null);
+            onChange({ required });
+          }}
+          trackColor={{ true: colors.primary }}
+        />
+      </View>
+      {blocked ? <Text style={styles.limit}>{blocked}</Text> : null}
     </View>
   );
 }
@@ -157,6 +191,7 @@ const makeStyles = (c: ThemeColors) =>
     chipText: { fontSize: 12, color: c.textMuted },
     chipTextActive: { color: '#fff', fontWeight: '600' },
     hint: { fontSize: 12, color: c.textSubtle },
+    requiredLabel: { fontSize: 12.5, color: c.textMuted },
     addButton: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 4 },
     addText: { color: c.primary, fontWeight: '600', fontSize: 13.5 },
     limit: { fontSize: 12.5, color: c.danger },

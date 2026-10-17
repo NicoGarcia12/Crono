@@ -3,7 +3,14 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-nati
 
 import { CapabilityToggles } from '@/components/capability-toggles';
 import { FieldsEditor } from '@/components/fields-editor';
-import { MAX_TYPE_ITEMS, capabilityProblems, fieldDraftProblem, itemLimitMessage } from '@/constants/event-bases';
+import {
+  MAX_TYPE_ITEMS,
+  capabilityProblems,
+  eventsMissingField,
+  fieldDraftProblem,
+  itemLimitMessage,
+  requiredFieldsProblem,
+} from '@/constants/event-bases';
 import { useAppSelector } from '@/store';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -18,13 +25,22 @@ interface EventBaseFormProps {
 
 /**
  * Editor de una base propia: nombre, repetición y hora obligatoria (solo al
- * crearla), capacidades y campos obligatorios. Todo lo que tenga la base lo
+ * crearla), capacidades y campos (cada uno obligatorio u opcional). Todo lo que tenga la base lo
  * heredan, bloqueado, los tipos que salgan de ella.
  */
 export function EventBaseForm({ initial, onSubmit, onCancel }: EventBaseFormProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const allFields = useAppSelector((state) => state.eventBases.fields);
+  const types = useAppSelector((state) => state.eventTypes.items);
+  const events = useAppSelector((state) => state.events.items);
+  const valuesByEvent = useAppSelector((state) => state.fieldValues.byEvent);
+  // Eventos de todos los tipos que salen de esta base: heredan sus campos.
+  const eventIds = useMemo(() => {
+    if (!initial) return [];
+    const typeKeys = new Set(types.filter((t) => t.baseKey === initial.key).map((t) => t.key));
+    return events.filter((e) => typeKeys.has(e.type)).map((e) => e.id);
+  }, [events, types, initial]);
 
   const [label, setLabel] = useState(initial?.label ?? '');
   const [yearly, setYearly] = useState(initial?.yearly ?? false);
@@ -34,7 +50,7 @@ export function EventBaseForm({ initial, onSubmit, onCancel }: EventBaseFormProp
     initial
       ? allFields
           .filter((f) => f.owner === 'base' && f.ownerId === initial.id)
-          .map(({ id, label: l, kind, options }) => ({ id, label: l, kind, options }))
+          .map(({ id, label: l, kind, options, required }) => ({ id, label: l, kind, options, required }))
       : [],
   );
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +72,11 @@ export function EventBaseForm({ initial, onSubmit, onCancel }: EventBaseFormProp
       setError('Ponele un nombre a la base.');
       return;
     }
-    const problem = fieldDraftProblem(fields) ?? capabilityProblems(capabilities, yearly)[0]?.message ?? null;
+    const problem =
+      fieldDraftProblem(fields) ??
+      requiredFieldsProblem(fields, eventIds, valuesByEvent) ??
+      capabilityProblems(capabilities, yearly)[0]?.message ??
+      null;
     if (problem) {
       setError(problem);
       return;
@@ -111,7 +131,7 @@ export function EventBaseForm({ initial, onSubmit, onCancel }: EventBaseFormProp
       )}
 
       <View style={styles.header}>
-        <Text style={styles.label}>Capacidades</Text>
+        <Text style={styles.label}>Funciones (las tienen todos los tipos de esta base)</Text>
         <Text style={[styles.counter, count >= MAX_TYPE_ITEMS && { color: colors.danger }]}>
           {count} de {MAX_TYPE_ITEMS}
         </Text>
@@ -120,12 +140,20 @@ export function EventBaseForm({ initial, onSubmit, onCancel }: EventBaseFormProp
         locked={[]}
         selected={capabilities}
         yearly={yearly}
+        where="base"
         onChange={setCapabilities}
         limitMessage={limitMessage}
       />
 
-      <Text style={styles.label}>Campos obligatorios</Text>
-      <FieldsEditor value={fields} onChange={setFields} limitMessage={limitMessage} addLabel="Agregar campo obligatorio" />
+      <Text style={styles.label}>Campos</Text>
+      <FieldsEditor
+        value={fields}
+        onChange={setFields}
+        limitMessage={limitMessage}
+        addLabel="Agregar campo"
+        defaultRequired
+        missingCount={(f) => eventsMissingField(eventIds, f.id, valuesByEvent)}
+      />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 

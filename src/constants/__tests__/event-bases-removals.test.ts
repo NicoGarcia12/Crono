@@ -14,7 +14,7 @@ describe('planRemovals', () => {
       { capabilities: [...before.capabilities], fields: before.fields },
       {
         capabilities: ['whatsapp'],
-        fields: [{ id: 2, label: 'Qué llevar', kind: 'multi', options: ['Torta'] }, { label: 'Nuevo', kind: 'texto', options: [] }],
+        fields: [{ id: 2, label: 'Qué llevar', kind: 'multi', options: ['Torta'], required: false }, { label: 'Nuevo', kind: 'texto', options: [], required: false }],
       },
     );
 
@@ -29,7 +29,7 @@ describe('planRemovals', () => {
   it('si no se quita nada, el plan está vacío (agregar no borra nada)', () => {
     const plan = planRemovals(
       { capabilities: ['regalos'], fields: [{ id: 2, options: ['Torta'] }] },
-      { capabilities: ['regalos', 'whatsapp'], fields: [{ id: 2, label: 'X', kind: 'select', options: ['Torta', 'Vino'] }] },
+      { capabilities: ['regalos', 'whatsapp'], fields: [{ id: 2, label: 'X', kind: 'select', options: ['Torta', 'Vino'], required: false }] },
     );
 
     expect(isEmptyPlan(plan)).toBe(true);
@@ -38,15 +38,15 @@ describe('planRemovals', () => {
 
 describe('fieldDraftProblem', () => {
   it('pide nombre, opciones en select/multi y nombres sin repetir', () => {
-    expect(fieldDraftProblem([{ label: ' ', kind: 'texto', options: [] }])).toMatch(/nombre/);
-    expect(fieldDraftProblem([{ label: 'Talle', kind: 'select', options: [] }])).toMatch(/al menos una opción/);
+    expect(fieldDraftProblem([{ label: ' ', kind: 'texto', options: [], required: false }])).toMatch(/nombre/);
+    expect(fieldDraftProblem([{ label: 'Talle', kind: 'select', options: [], required: false }])).toMatch(/al menos una opción/);
     expect(
       fieldDraftProblem([
-        { label: 'Talle', kind: 'texto', options: [] },
-        { label: 'talle ', kind: 'numero', options: [] },
+        { label: 'Talle', kind: 'texto', options: [], required: false },
+        { label: 'talle ', kind: 'numero', options: [], required: false },
       ]),
     ).toMatch(/mismo nombre/);
-    expect(fieldDraftProblem([{ label: 'Talle', kind: 'select', options: ['S', 'M'] }])).toBeNull();
+    expect(fieldDraftProblem([{ label: 'Talle', kind: 'select', options: ['S', 'M'], required: false }])).toBeNull();
   });
 });
 

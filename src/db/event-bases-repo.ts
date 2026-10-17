@@ -115,11 +115,12 @@ interface CustomFieldRow {
   kind: string;
   options: string;
   position: number;
+  required: number;
 }
 
 export async function findAllCustomFields(): Promise<CustomField[]> {
   const rows = await getDb().getAllAsync<CustomFieldRow>(
-    'SELECT id, base_id AS baseId, type_id AS typeId, label, kind, options, position ' +
+    'SELECT id, base_id AS baseId, type_id AS typeId, label, kind, options, position, required ' +
       'FROM custom_fields ORDER BY position ASC, id ASC',
   );
   return rows
@@ -133,5 +134,6 @@ export async function findAllCustomFields(): Promise<CustomField[]> {
       kind: row.kind as FieldKind,
       options: parseOptions(row.options),
       position: row.position,
+      required: row.required === 1,
     }));
 }

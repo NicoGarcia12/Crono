@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { showError } from '@/components/confirm';
 import { CountdownBanner } from '@/components/countdown-banner';
 import { EventForm } from '@/components/event-form';
 import { GreetButton } from '@/components/greet-button';
@@ -54,8 +55,12 @@ export default function EditarEventoScreen() {
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          await dispatch(removeEvent(event)).unwrap();
-          router.back();
+          try {
+            await dispatch(removeEvent(event)).unwrap();
+            router.back();
+          } catch (error: unknown) {
+            showError('No se pudo eliminar', error);
+          }
         },
       },
     ]);

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { errorMessage } from '@/components/confirm';
 import { DateField, TimeField } from '@/components/date-time-field';
 import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
@@ -34,7 +35,8 @@ interface EventFormProps {
   initial?: EventItem;
   submitLabel: string;
   // Recibe el evento y los valores de sus campos personalizados (solo los del tipo elegido).
-  onSubmit: (data: NewEvent, fieldValues: FieldValues) => void;
+  // Si la promesa falla, el error se muestra arriba del botón y se puede reintentar.
+  onSubmit: (data: NewEvent, fieldValues: FieldValues) => Promise<void>;
 }
 
 export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
@@ -67,6 +69,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const savedValues = useAppSelector((state) => (initial ? state.fieldValues.byEvent[initial.id] : undefined));
   const [fieldValues, setFieldValues] = useState<FieldValues>(() => savedValues ?? {});
   const fieldSpecs = useEventFieldSpecs(type);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const isEditing = initial !== undefined;
   const isMine = initial?.isMine === 1;
@@ -109,31 +113,39 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     setAgeText(String(ageThisYear(isoDate)));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     // Solo viajan los valores de los campos del tipo elegido.
     const ids = new Set(fieldSpecs.map((s) => s.id));
     const values: FieldValues = Object.fromEntries(
       Object.entries(fieldValues).filter(([id]) => ids.has(Number(id))),
     );
 
-    onSubmit({
-      title: title.trim(),
-      type: isMine ? 'cumpleanos' : type,
-      date,
-      time,
-      description: description.trim() || null,
-      // Si el evento vino de un contacto, conserva de quién es.
-      contactId: initial?.contactId ?? null,
-      // Sin saludo por WhatsApp en el tipo, no se guarda teléfono.
-      phone: hasPhone ? phone.trim() || null : null,
-      reminders,
-      yearly: yearly ? 1 : 0,
-      // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
-      isMine: initial?.isMine ?? 0,
-      tags,
-      photoUri,
-      yearUnknown: hasAge && yearUnknown ? 1 : 0,
-    }, values);
+    setSaving(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        title: title.trim(),
+        type: isMine ? 'cumpleanos' : type,
+        date,
+        time,
+        description: description.trim() || null,
+        // Si el evento vino de un contacto, conserva de quién es.
+        contactId: initial?.contactId ?? null,
+        // Sin saludo por WhatsApp en el tipo, no se guarda teléfono.
+        phone: hasPhone ? phone.trim() || null : null,
+        reminders,
+        yearly: yearly ? 1 : 0,
+        // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
+        isMine: initial?.isMine ?? 0,
+        tags,
+        photoUri,
+        yearUnknown: hasAge && yearUnknown ? 1 : 0,
+      }, values);
+    } catch (error: unknown) {
+      setSubmitError(`No se pudo guardar: ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -267,11 +279,12 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       </Text>
 
       {fieldsProblem ? <Text style={styles.problem}>{fieldsProblem}</Text> : null}
+      {submitError ? <Text style={styles.problem}>{submitError}</Text> : null}
 
       <Pressable
-        style={[styles.submit, !canSave && styles.submitDisabled]}
-        disabled={!canSave}
-        onPress={handleSubmit}
+        style={[styles.submit, (!canSave || saving) && styles.submitDisabled]}
+        disabled={!canSave || saving}
+        onPress={() => void handleSubmit()}
       >
         <Text style={styles.submitText}>{submitLabel}</Text>
       </Pressable>

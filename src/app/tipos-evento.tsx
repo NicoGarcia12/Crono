@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { confirmDestructive, impactMessage } from '@/components/confirm';
+import { confirmDestructive, impactMessage, showError } from '@/components/confirm';
 import { EventBaseForm } from '@/components/event-base-form';
 import { EventTypeForm } from '@/components/event-type-form';
 import { isEmptyPlan, planRemovals } from '@/constants/event-bases';
@@ -47,11 +47,20 @@ export default function TiposEventoScreen() {
     return confirmDestructive('Se van a borrar datos', impactMessage(impact), 'Borrar y guardar');
   };
 
-  const handleSaveType = async (type: EventTypeMeta | null, data: NewEventType) => {
+  /** Guarda y cierra el editor; si falla, avisa y deja el editor abierto para reintentar. */
+  const save = async (task: () => Promise<boolean>) => {
+    try {
+      if (await task()) setEditing(null);
+    } catch (error: unknown) {
+      showError('No se pudo guardar', error);
+    }
+  };
+
+  /** Devuelve false si se canceló en la confirmación. */
+  const handleSaveType = async (type: EventTypeMeta | null, data: NewEventType): Promise<boolean> => {
     if (!type) {
       await dispatch(createTypeConfig(data)).unwrap();
-      setEditing(null);
-      return;
+      return true;
     }
     const plan = type.isBuiltin
       ? { capabilities: [], fieldIds: [], options: [] }
@@ -59,25 +68,24 @@ export default function TiposEventoScreen() {
           { capabilities: type.extraCapabilities, fields: fields.filter((f) => f.owner === 'type' && f.ownerId === type.id) },
           { capabilities: data.extraCapabilities, fields: data.fields },
         );
-    if (!(await confirmPlan([type.key], plan))) return;
+    if (!(await confirmPlan([type.key], plan))) return false;
     await dispatch(saveTypeConfig({ id: type.id, data, plan })).unwrap();
-    setEditing(null);
+    return true;
   };
 
-  const handleSaveBase = async (base: EventBase | null, data: NewEventBase) => {
+  const handleSaveBase = async (base: EventBase | null, data: NewEventBase): Promise<boolean> => {
     if (!base) {
       await dispatch(createBaseConfig(data)).unwrap();
-      setEditing(null);
-      return;
+      return true;
     }
     const plan = planRemovals(
       { capabilities: base.capabilities, fields: fields.filter((f) => f.owner === 'base' && f.ownerId === base.id) },
       { capabilities: data.capabilities, fields: data.fields },
     );
     const typeKeys = types.filter((t) => t.baseKey === base.key).map((t) => t.key);
-    if (!(await confirmPlan(typeKeys, plan))) return;
+    if (!(await confirmPlan(typeKeys, plan))) return false;
     await dispatch(saveBaseConfig({ id: base.id, data, plan })).unwrap();
-    setEditing(null);
+    return true;
   };
 
   const handleDelete = (type: EventTypeMeta) => {
@@ -91,7 +99,14 @@ export default function TiposEventoScreen() {
     }
     Alert.alert('Borrar tipo', `¿Borrar "${type.label}"? No se puede deshacer.`, [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Borrar', style: 'destructive', onPress: () => void dispatch(removeEventType(type.id)) },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: () =>
+          void dispatch(removeEventType(type.id))
+            .unwrap()
+            .catch((error: unknown) => showError('No se pudo borrar', error)),
+      },
     ]);
   };
 
@@ -105,7 +120,7 @@ export default function TiposEventoScreen() {
           <EventTypeForm
             key={type.id}
             initial={type}
-            onSubmit={(data) => void handleSaveType(type, data)}
+            onSubmit={(data) => void save(() => handleSaveType(type, data))}
             onCancel={() => setEditing(null)}
           />
         ) : (
@@ -135,7 +150,7 @@ export default function TiposEventoScreen() {
         ),
       )}
       {isEditing('type', 'nuevo') ? (
-        <EventTypeForm onSubmit={(data) => void handleSaveType(null, data)} onCancel={() => setEditing(null)} />
+        <EventTypeForm onSubmit={(data) => void save(() => handleSaveType(null, data))} onCancel={() => setEditing(null)} />
       ) : (
         <Pressable
           style={styles.addButton}
@@ -156,7 +171,7 @@ export default function TiposEventoScreen() {
           <EventBaseForm
             key={base.id}
             initial={base}
-            onSubmit={(data) => void handleSaveBase(base, data)}
+            onSubmit={(data) => void save(() => handleSaveBase(base, data))}
             onCancel={() => setEditing(null)}
           />
         ) : (
@@ -183,7 +198,7 @@ export default function TiposEventoScreen() {
         ),
       )}
       {isEditing('base', 'nuevo') ? (
-        <EventBaseForm onSubmit={(data) => void handleSaveBase(null, data)} onCancel={() => setEditing(null)} />
+        <EventBaseForm onSubmit={(data) => void save(() => handleSaveBase(null, data))} onCancel={() => setEditing(null)} />
       ) : (
         <Pressable
           style={styles.addButton}

@@ -20,7 +20,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 13;
+const DATABASE_VERSION = 14;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -334,7 +334,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
             extra_capabilities = '["regalos"]'
         WHERE is_builtin = 0;
 
-        -- Un campo es de una base (obligatorio) o de un tipo (extra opcional), nunca de los dos.
+        -- Un campo es de una base o de un tipo, nunca de los dos.
         CREATE TABLE IF NOT EXISTS custom_fields (
           id INTEGER PRIMARY KEY NOT NULL,
           base_id INTEGER REFERENCES event_bases(id) ON DELETE CASCADE,
@@ -375,6 +375,19 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       await database.execAsync('PRAGMA user_version = 13');
     });
     currentVersion = 13;
+  }
+
+  if (currentVersion === 13) {
+    // v14: la obligatoriedad pasa a ser de cada campo. Los existentes conservan
+    // lo que hacían: los de una base eran obligatorios y los de un tipo, opcionales.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        ALTER TABLE custom_fields ADD COLUMN required INTEGER NOT NULL DEFAULT 0;
+        UPDATE custom_fields SET required = 1 WHERE base_id IS NOT NULL;
+      `);
+      await database.execAsync('PRAGMA user_version = 14');
+    });
+    currentVersion = 14;
   }
 
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

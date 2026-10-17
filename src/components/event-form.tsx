@@ -1,13 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { errorMessage } from '@/components/confirm';
 import { DateField, TimeField } from '@/components/date-time-field';
 import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
 import { TagsField } from '@/components/tags-field';
 import { DEFAULT_TYPE_KEY } from '@/constants/event-bases';
-import { useEventBase, useEventTypeMeta, useEventTypesList, useTypeCapabilities } from '@/constants/use-event-types';
-import type { EventItem, EventType, NewEvent, ReminderInput } from '@/types';
+import { CustomFieldsSection, fieldValuesProblem } from '@/components/custom-fields-section';
+import {
+  useEventBase,
+  useEventFieldSpecs,
+  useEventTypeMeta,
+  useEventTypesList,
+  useTypeCapabilities,
+} from '@/constants/use-event-types';
+import { useAppSelector } from '@/store';
+import type { EventItem, EventType, FieldValues, NewEvent, ReminderInput } from '@/types';
 import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -25,7 +34,9 @@ interface EventFormProps {
   /** Evento existente al editar; undefined al crear. */
   initial?: EventItem;
   submitLabel: string;
-  onSubmit: (data: NewEvent) => void;
+  // Recibe el evento y los valores de sus campos personalizados (solo los del tipo elegido).
+  // Si la promesa falla, el error se muestra arriba del botón y se puede reintentar.
+  onSubmit: (data: NewEvent, fieldValues: FieldValues) => Promise<void>;
 }
 
 export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
@@ -55,6 +66,11 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
   const [yearUnknown, setYearUnknown] = useState(initial?.yearUnknown === 1);
+  const savedValues = useAppSelector((state) => (initial ? state.fieldValues.byEvent[initial.id] : undefined));
+  const [fieldValues, setFieldValues] = useState<FieldValues>(() => savedValues ?? {});
+  const fieldSpecs = useEventFieldSpecs(type);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const isEditing = initial !== undefined;
   const isMine = initial?.isMine === 1;
@@ -70,7 +86,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
    */
   const yearly = isMine || (isEditing ? initial.yearly === 1 : (base?.yearly ?? false));
 
-  const canSave = title.trim().length > 0 && (!requiresTime || time !== null);
+  const fieldsProblem = fieldValuesProblem(fieldSpecs, fieldValues);
+  const canSave = title.trim().length > 0 && (!requiresTime || time !== null) && fieldsProblem === null;
 
   const selectType = (t: EventType) => {
     // Una vez creado, el evento queda atado a su tipo: solo se editan sus campos.
@@ -96,25 +113,39 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     setAgeText(String(ageThisYear(isoDate)));
   };
 
-  const handleSubmit = () => {
-    onSubmit({
-      title: title.trim(),
-      type: isMine ? 'cumpleanos' : type,
-      date,
-      time,
-      description: description.trim() || null,
-      // Si el evento vino de un contacto, conserva de quién es.
-      contactId: initial?.contactId ?? null,
-      // Sin saludo por WhatsApp en el tipo, no se guarda teléfono.
-      phone: hasPhone ? phone.trim() || null : null,
-      reminders,
-      yearly: yearly ? 1 : 0,
-      // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
-      isMine: initial?.isMine ?? 0,
-      tags,
-      photoUri,
-      yearUnknown: hasAge && yearUnknown ? 1 : 0,
-    });
+  const handleSubmit = async () => {
+    // Solo viajan los valores de los campos del tipo elegido.
+    const ids = new Set(fieldSpecs.map((s) => s.id));
+    const values: FieldValues = Object.fromEntries(
+      Object.entries(fieldValues).filter(([id]) => ids.has(Number(id))),
+    );
+
+    setSaving(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        title: title.trim(),
+        type: isMine ? 'cumpleanos' : type,
+        date,
+        time,
+        description: description.trim() || null,
+        // Si el evento vino de un contacto, conserva de quién es.
+        contactId: initial?.contactId ?? null,
+        // Sin saludo por WhatsApp en el tipo, no se guarda teléfono.
+        phone: hasPhone ? phone.trim() || null : null,
+        reminders,
+        yearly: yearly ? 1 : 0,
+        // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
+        isMine: initial?.isMine ?? 0,
+        tags,
+        photoUri,
+        yearUnknown: hasAge && yearUnknown ? 1 : 0,
+      }, values);
+    } catch (error: unknown) {
+      setSubmitError(`No se pudo guardar: ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -223,6 +254,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         </>
       ) : null}
 
+      {/* Campos propios del tipo: los de la base primero (obligatorios), después los extras. */}
+      <CustomFieldsSection specs={fieldSpecs} values={fieldValues} onChange={setFieldValues} />
+
       <Text style={styles.label}>Descripción (opcional)</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
@@ -244,10 +278,13 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         {yearly ? 'Se repite todos los años' : 'Es por única vez'}
       </Text>
 
+      {fieldsProblem ? <Text style={styles.problem}>{fieldsProblem}</Text> : null}
+      {submitError ? <Text style={styles.problem}>{submitError}</Text> : null}
+
       <Pressable
-        style={[styles.submit, !canSave && styles.submitDisabled]}
-        disabled={!canSave}
-        onPress={handleSubmit}
+        style={[styles.submit, (!canSave || saving) && styles.submitDisabled]}
+        disabled={!canSave || saving}
+        onPress={() => void handleSubmit()}
       >
         <Text style={styles.submitText}>{submitLabel}</Text>
       </Pressable>
@@ -293,6 +330,7 @@ const makeStyles = (c: ThemeColors) =>
   switchRow: { justifyContent: 'space-between', marginTop: 12 },
   switchLabel: { fontSize: 15, color: c.text },
   repeatHint: { fontSize: 13, color: c.textSubtle, marginTop: 12 },
+  problem: { fontSize: 13, color: c.danger, marginTop: 12 },
   submit: {
     backgroundColor: c.primary,
     borderRadius: 24,

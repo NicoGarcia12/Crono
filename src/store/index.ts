@@ -4,6 +4,7 @@ import { useDispatch, useSelector, type TypedUseSelectorHook } from 'react-redux
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
+import fieldValuesReducer from '@/store/field-values-slice';
 import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
 import greetingsSentReducer from '@/store/greetings-sent-slice';
@@ -22,6 +23,7 @@ export const store = configureStore({
     events: eventsReducer,
     eventBases: eventBasesReducer,
     eventTypes: eventTypesReducer,
+    fieldValues: fieldValuesReducer,
     giftIdeas: giftIdeasReducer,
     greetings: greetingsReducer,
     greetingsSent: greetingsSentReducer,

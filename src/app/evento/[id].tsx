@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { showError } from '@/components/confirm';
 import { CountdownBanner } from '@/components/countdown-banner';
 import { EventForm } from '@/components/event-form';
 import { GreetButton } from '@/components/greet-button';
@@ -11,7 +12,8 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { editEvent, removeEvent } from '@/store/events-slice';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
-import type { NewEvent } from '@/types';
+import { saveFieldValues } from '@/store/field-values-slice';
+import type { FieldValues, NewEvent } from '@/types';
 
 /**
  * Ruta dinámica /evento/[id] — editar o borrar un evento existente.
@@ -38,8 +40,10 @@ export default function EditarEventoScreen() {
     );
   }
 
-  const handleSubmit = async (data: NewEvent) => {
+  const handleSubmit = async (data: NewEvent, fieldValues: FieldValues) => {
     await dispatch(editEvent({ id: event.id, data, previousReminders: event.reminders })).unwrap();
+    // Se guardan siempre: así también se borran los que se vaciaron.
+    await dispatch(saveFieldValues({ eventId: event.id, values: fieldValues })).unwrap();
     router.back();
   };
 
@@ -51,8 +55,12 @@ export default function EditarEventoScreen() {
         text: 'Eliminar',
         style: 'destructive',
         onPress: async () => {
-          await dispatch(removeEvent(event)).unwrap();
-          router.back();
+          try {
+            await dispatch(removeEvent(event)).unwrap();
+            router.back();
+          } catch (error: unknown) {
+            showError('No se pudo eliminar', error);
+          }
         },
       },
     ]);

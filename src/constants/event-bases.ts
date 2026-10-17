@@ -1,4 +1,4 @@
-import type { Capability, CustomField, EventBase, EventTypeMeta } from '@/types';
+import { CAPABILITIES, type Capability, type CustomField, type EventBase, type EventTypeMeta, type FieldDraft, type RemovalPlan } from '@/types';
 
 /**
  * Catálogo de bases y capacidades de los tipos de evento.
@@ -72,6 +72,51 @@ export function capabilityProblems(capabilities: readonly Capability[], yearly: 
   return problems;
 }
 
+/** Capacidades que solo tienen sentido si el evento se repite todos los años. */
+const YEARLY_ONLY: readonly Capability[] = ['edad', 'anios', 'saludado'];
+
+/** "A", "A y B", "A, B y C". */
+function joinLabels(capabilities: readonly Capability[]): string {
+  const labels = capabilities.map((c) => CAPABILITY_META[c].label);
+  return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} y ${labels[labels.length - 1]}` : labels[0];
+}
+
+/**
+ * Capacidades que no se pueden sumar sobre lo fijo (lo que trae la base y la
+ * repetición): no se muestran, y `hint` explica por qué y qué base conviene.
+ * `where` cambia la recomendación: en un tipo se elige otra base; en una base,
+ * se prende la repetición.
+ */
+export function unavailableCapabilities(
+  locked: readonly Capability[],
+  yearly: boolean,
+  where: 'tipo' | 'base',
+): { hidden: Capability[]; hint: string | null } {
+  const lockedProblems = capabilityProblems(locked, yearly).length;
+  const hidden = CAPABILITIES.filter(
+    (c) => !locked.includes(c) && capabilityProblems([...locked, c], yearly).length > lockedProblems,
+  );
+  const needYearly = hidden.filter((c) => !yearly && YEARLY_ONLY.includes(c));
+  const conflicting = hidden.filter((c) => !needYearly.includes(c));
+
+  const hints: string[] = [];
+  if (needYearly.length > 0) {
+    const verb = needYearly.length === 1 ? 'necesita' : 'necesitan';
+    const onlyAnios = needYearly.every((c) => c === 'anios');
+    const suggestion = onlyAnios ? 'Aniversario' : needYearly.includes('anios') ? 'Cumpleaños o Aniversario' : 'Cumpleaños';
+    hints.push(
+      where === 'tipo'
+        ? `${joinLabels(needYearly)} ${verb} una base que se repita todos los años: probá con ${suggestion}.`
+        : `${joinLabels(needYearly)} ${verb} que la base se repita todos los años.`,
+    );
+  }
+  for (const c of conflicting) {
+    const other: Capability = c === 'edad' ? 'anios' : 'edad';
+    hints.push(`${CAPABILITY_META[c].label} no va junto con ${CAPABILITY_META[other].label}, que ya trae la base.`);
+  }
+  return { hidden, hint: hints.length > 0 ? hints.join(' ') : null };
+}
+
 /** Capacidades efectivas de un tipo: las de su base más sus extras, sin repetir. */
 export function typeCapabilities(
   type: Pick<EventTypeMeta, 'baseKey' | 'extraCapabilities'> | undefined,
@@ -107,6 +152,95 @@ export function countTypeItems(
   return (
     typeCapabilities(type, bases).length + (base?.requiresTime ? 1 : 0) + baseFields + typeFields
   );
+}
+
+/**
+ * Qué se pierde al pasar de `before` a `after`: capacidades quitadas, campos
+ * borrados y opciones sacadas de un select/multi que sigue existiendo.
+ */
+export function planRemovals(
+  before: { capabilities: readonly Capability[]; fields: readonly Pick<CustomField, 'id' | 'options'>[] },
+  after: { capabilities: readonly Capability[]; fields: readonly FieldDraft[] },
+): RemovalPlan {
+  const keptIds = new Set(after.fields.flatMap((f) => (f.id === undefined ? [] : [f.id])));
+  return {
+    capabilities: before.capabilities.filter((c) => !after.capabilities.includes(c)),
+    fieldIds: before.fields.filter((f) => !keptIds.has(f.id)).map((f) => f.id),
+    options: before.fields.flatMap((field) => {
+      const draft = after.fields.find((f) => f.id === field.id);
+      if (!draft) return [];
+      const removed = field.options.filter((o) => !draft.options.includes(o));
+      return removed.length > 0 ? [{ fieldId: field.id, removed }] : [];
+    }),
+  };
+}
+
+export function isEmptyPlan(plan: RemovalPlan): boolean {
+  return plan.capabilities.length === 0 && plan.fieldIds.length === 0 && plan.options.length === 0;
+}
+
+/** Primer problema de los campos en edición (para mostrar), o null si están bien. */
+export function fieldDraftProblem(fields: readonly FieldDraft[]): string | null {
+  for (const field of fields) {
+    if (field.label.trim().length === 0) return 'Todos los campos necesitan un nombre.';
+    if ((field.kind === 'select' || field.kind === 'multi') && field.options.length === 0) {
+      return `"${field.label.trim()}" necesita al menos una opción.`;
+    }
+  }
+  const labels = fields.map((f) => f.label.trim().toLowerCase());
+  if (new Set(labels).size !== labels.length) return 'Hay dos campos con el mismo nombre.';
+  return null;
+}
+
+/**
+ * Cuántos de esos eventos no tienen el campo completado. Un campo nuevo (sin
+ * id) no lo tiene ninguno. Los valores vacíos no se guardan, así que alcanza
+ * con que no haya valor.
+ */
+export function eventsMissingField(
+  eventIds: readonly number[],
+  fieldId: number | undefined,
+  valuesByEvent: Readonly<Record<number, Readonly<Record<number, string>>>>,
+): number {
+  if (fieldId === undefined) return eventIds.length;
+  return eventIds.filter((id) => !valuesByEvent[id]?.[fieldId]).length;
+}
+
+/** Por qué no se puede volver obligatorio un campo que les falta a `missing` eventos. */
+export function requiredBlockedMessage(missing: number): string {
+  const events = missing === 1 ? '1 evento no lo tiene completado' : `${missing} eventos no lo tienen completado`;
+  const those = missing === 1 ? 'ese evento' : 'esos eventos';
+  return `${events}. Dejalo opcional, o completalo en ${those} y después pasalo a obligatorio.`;
+}
+
+/** Primer campo obligatorio que les falta a algunos de esos eventos (para no dejar guardar), o null. */
+export function requiredFieldsProblem(
+  fields: readonly FieldDraft[],
+  eventIds: readonly number[],
+  valuesByEvent: Readonly<Record<number, Readonly<Record<number, string>>>>,
+): string | null {
+  for (const field of fields) {
+    if (!field.required) continue;
+    const missing = eventsMissingField(eventIds, field.id, valuesByEvent);
+    if (missing > 0) return `"${field.label.trim()}" no puede ser obligatorio: ${requiredBlockedMessage(missing)}`;
+  }
+  return null;
+}
+
+/** Valor guardado de un campo 'multi' → lista de opciones tildadas (tolera datos corruptos). */
+export function parseMultiValue(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Opciones escritas separadas por coma → lista limpia, sin repetir. */
+export function parseOptionsText(text: string): string[] {
+  return [...new Set(text.split(',').map((o) => o.trim()).filter((o) => o.length > 0))];
 }
 
 /** Mensaje si agregar `adding` cosas más supera el límite; null si entra. */

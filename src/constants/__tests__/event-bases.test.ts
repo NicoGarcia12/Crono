@@ -4,6 +4,7 @@ import {
   capabilityProblems,
   countTypeItems,
   itemLimitMessage,
+  requiredFieldsProblem,
   typeCapabilities,
 } from '@/constants/event-bases';
 import type { CustomField, EventBase } from '@/types';
@@ -23,6 +24,7 @@ const field = (id: number, owner: CustomField['owner'], ownerId: number): Custom
   kind: 'texto',
   options: [],
   position: id,
+  required: owner === 'base',
 });
 
 describe('bases de fábrica', () => {
@@ -83,5 +85,28 @@ describe('límite de cosas por tipo', () => {
     expect(itemLimitMessage(MAX_TYPE_ITEMS - 1)).toBeNull();
     expect(itemLimitMessage(MAX_TYPE_ITEMS)).toMatch(/hasta 15/);
     expect(itemLimitMessage(10, 6)).not.toBeNull();
+  });
+});
+
+describe('requiredFieldsProblem', () => {
+  const values = { 1: { 3: 'Club Norte' } };
+
+  it('frena un campo obligatorio que les falta a algunos eventos, y dice cuántos', () => {
+    expect(
+      requiredFieldsProblem([{ id: 3, label: 'Cancha', kind: 'texto', options: [], required: true }], [1, 2], values),
+    ).toBe('"Cancha" no puede ser obligatorio: 1 evento no lo tiene completado. Dejalo opcional, o completalo en ese evento y después pasalo a obligatorio.');
+  });
+
+  it('un campo nuevo obligatorio les falta a todos los eventos que ya existen', () => {
+    expect(
+      requiredFieldsProblem([{ label: 'Árbitro', kind: 'texto', options: [], required: true }], [1, 2], values),
+    ).toMatch(/^"Árbitro" no puede ser obligatorio: 2 eventos/);
+  });
+
+  it('deja guardar si es opcional, si todos lo tienen o si todavía no hay eventos', () => {
+    const draft = { id: 3, label: 'Cancha', kind: 'texto' as const, options: [] };
+    expect(requiredFieldsProblem([{ ...draft, required: false }], [1, 2], values)).toBeNull();
+    expect(requiredFieldsProblem([{ ...draft, required: true }], [1], values)).toBeNull();
+    expect(requiredFieldsProblem([{ label: 'Nuevo', kind: 'texto', options: [], required: true }], [], {})).toBeNull();
   });
 });

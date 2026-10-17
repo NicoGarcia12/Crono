@@ -81,13 +81,13 @@ describe('createEventType', () => {
         label: 'Día del Padre',
         baseKey: 'festivo',
         extraCapabilities: ['regalos'],
-        fields: [{ label: 'Qué llevar', kind: 'multi', options: ['Asado', 'Vino'] }],
+        fields: [{ label: 'Qué llevar', kind: 'multi', options: ['Asado', 'Vino'], required: false }],
       }),
     );
 
     expect(result).toMatchObject({ baseKey: 'festivo', extraCapabilities: ['regalos'], defaultYearly: true });
     const field = db.statements.find((s) => s.sql.startsWith('INSERT INTO custom_fields (type_id'));
-    expect(field?.params).toEqual([10, 'Qué llevar', 'multi', '["Asado","Vino"]', 0]);
+    expect(field?.params).toEqual([10, 'Qué llevar', 'multi', '["Asado","Vino"]', 0, 0]);
   });
 });
 
@@ -96,7 +96,7 @@ describe('updateEventType', () => {
     const db = fakeDb();
     jest.mocked(getDb).mockReturnValue(db as never);
 
-    await updateEventType(1, data({ label: 'Cumple', extraCapabilities: ['regalos'], fields: [{ label: 'X', kind: 'texto', options: [] }] }), emptyPlan);
+    await updateEventType(1, data({ label: 'Cumple', extraCapabilities: ['regalos'], fields: [{ label: 'X', kind: 'texto', options: [], required: false }] }), emptyPlan);
 
     expect(db.statements).toHaveLength(1);
     expect(db.statements[0].sql).toMatch(/^UPDATE event_types SET label = \?, icon = \?, color = \? WHERE id = \?$/);

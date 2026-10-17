@@ -36,7 +36,7 @@ describe('initDatabase', () => {
 
     expect({ columns: [...columns].sort(), userVersion }).toEqual({
       columns: ['contact_id', 'phone'],
-      userVersion: 14,
+      userVersion: 15,
     });
   });
 });

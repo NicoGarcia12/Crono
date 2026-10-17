@@ -20,7 +20,7 @@ const event = (id: number, title: string): EventItem => ({
   id, title, type: 'torneo', date: '2026-11-11', time: null, description: null, contactId: null,
   phone: null, reminders: [], yearly: 0, isMine: 0, tags: [], photoUri: null, yearUnknown: 0,
 });
-const cancha: CustomField = { id: 9, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 0 };
+const cancha: CustomField = { id: 9, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 0, required: false };
 
 async function renderPanel(onDone = jest.fn()) {
   const store = configureStore({

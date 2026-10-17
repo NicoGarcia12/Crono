@@ -7,6 +7,7 @@ import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
+import fieldValuesReducer from '@/store/field-values-slice';
 import settingsReducer from '@/store/settings-slice';
 import type { EventItem, EventTypeMeta } from '@/types';
 
@@ -39,7 +40,7 @@ const event = (id: number, typeKey: string): EventItem => ({
 
 function renderPanel(target: EventTypeMeta, types: EventTypeMeta[]) {
   const store = configureStore({
-    reducer: { events: eventsReducer, eventBases: eventBasesReducer, eventTypes: eventTypesReducer, settings: settingsReducer },
+    reducer: { events: eventsReducer, eventBases: eventBasesReducer, eventTypes: eventTypesReducer, fieldValues: fieldValuesReducer, settings: settingsReducer },
     preloadedState: {
       events: { items: [event(1, target.key), event(2, target.key), event(3, 'otro')], status: 'ready' as const },
       eventBases: {

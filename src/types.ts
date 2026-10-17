@@ -61,7 +61,7 @@ export interface NewEventType {
   color: string;
   baseKey: string;
   extraCapabilities: Capability[];
-  /** Campos extra (siempre opcionales). Los que traen `id` ya existían. */
+  /** Campos propios del tipo. Los que traen `id` ya existían. */
   fields: FieldDraft[];
 }
 
@@ -71,7 +71,7 @@ export interface NewEventBase {
   yearly: boolean;
   requiresTime: boolean;
   capabilities: Capability[];
-  /** Campos obligatorios de la base. */
+  /** Campos de la base: los heredan todos los tipos que salen de ella. */
   fields: FieldDraft[];
 }
 
@@ -81,6 +81,8 @@ export interface FieldDraft {
   label: string;
   kind: FieldKind;
   options: string[];
+  /** Si hay que completarlo sí o sí al guardar el evento. */
+  required: boolean;
 }
 
 /**
@@ -142,6 +144,8 @@ export interface CustomField {
   /** Opciones de `select`/`multi`; vacío en los demás. */
   options: string[];
   position: number;
+  /** Si hay que completarlo sí o sí al guardar el evento (se elige por campo). */
+  required: boolean;
 }
 
 /** Unidades en las que se puede expresar la anticipación de un aviso. */

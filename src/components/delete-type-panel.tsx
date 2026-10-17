@@ -126,7 +126,7 @@ export function DeleteTypePanel({ type, onDone, onCancel }: DeleteTypePanelProps
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Borrar "{type.label}"</Text>
+      <Text style={styles.title}>{`Borrar "${type.label}"`}</Text>
       <Text style={styles.text}>Tiene {count}. ¿Querés {one ? 'moverlo' : 'moverlos'} a otro tipo?</Text>
 
       {mode === 'preguntar' ? (

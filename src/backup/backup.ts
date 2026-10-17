@@ -34,6 +34,7 @@ export interface BackupField {
   label: string;
   kind: FieldKind;
   options: string[];
+  required: boolean;
 }
 
 export interface BackupBase {
@@ -97,7 +98,7 @@ const toBackupFields = (fields: CustomField[], owner: CustomField['owner'], owne
   fields
     .filter((f) => f.owner === owner && f.ownerId === ownerId)
     .sort((a, b) => a.position - b.position)
-    .map(({ label, kind, options }) => ({ label, kind, options }));
+    .map(({ label, kind, options, required }) => ({ label, kind, options, required }));
 
 /** Arma el contenido del backup a partir de lo que hay en la app. */
 export function buildBackup(
@@ -224,12 +225,21 @@ const isStringList = (value: unknown): value is string[] =>
 const toCapabilities = (value: unknown): Capability[] =>
   isStringList(value) ? value.filter((c): c is Capability => (CAPABILITIES as readonly string[]).includes(c)) : [];
 
-function toFields(value: unknown): BackupField[] {
+/**
+ * Los backups anteriores a la obligatoriedad por campo no la traen: se toma lo
+ * que hacían antes (los de una base, obligatorios; los de un tipo, opcionales).
+ */
+function toFields(value: unknown, requiredByDefault: boolean): BackupField[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((f): BackupField[] => {
     if (!isRecord(f) || typeof f.label !== 'string' || f.label.trim().length === 0) return [];
     if (typeof f.kind !== 'string' || !(FIELD_KINDS as readonly string[]).includes(f.kind)) return [];
-    return [{ label: f.label.trim(), kind: f.kind as FieldKind, options: isStringList(f.options) ? f.options : [] }];
+    return [{
+      label: f.label.trim(),
+      kind: f.kind as FieldKind,
+      options: isStringList(f.options) ? f.options : [],
+      required: typeof f.required === 'boolean' ? f.required : requiredByDefault,
+    }];
   });
 }
 
@@ -245,7 +255,7 @@ function toTypeConfig(value: unknown): BackupTypeConfig | undefined {
     if (!key || !label) return [];
     return [{
       key, label, yearly: b.yearly === true, requiresTime: b.requiresTime === true,
-      capabilities: toCapabilities(b.capabilities), fields: toFields(b.fields),
+      capabilities: toCapabilities(b.capabilities), fields: toFields(b.fields, true),
     }];
   });
   const types = (Array.isArray(value.types) ? value.types : []).flatMap((t): BackupType[] => {
@@ -259,7 +269,7 @@ function toTypeConfig(value: unknown): BackupTypeConfig | undefined {
       icon: text(t.icon) ?? 'calendar',
       color: text(t.color) ?? '#208AEF',
       extraCapabilities: toCapabilities(t.extraCapabilities),
-      fields: toFields(t.fields),
+      fields: toFields(t.fields, false),
     }];
   });
   return bases.length > 0 || types.length > 0 ? { bases, types } : undefined;

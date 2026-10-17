@@ -35,23 +35,25 @@ describe('findAllEventBases', () => {
 });
 
 describe('findAllCustomFields', () => {
-  it('distingue campos de una base (obligatorios) de los de un tipo (extras)', async () => {
+  it('distingue campos de una base de los de un tipo, cada uno con su obligatoriedad', async () => {
     jest.mocked(getDb).mockReturnValue(
       fakeDb([
-        { id: 1, baseId: 5, typeId: null, label: 'Obra social', kind: 'texto', options: '[]', position: 0 },
-        { id: 2, baseId: null, typeId: 8, label: 'Qué llevar', kind: 'multi', options: '["Torta","Bebida"]', position: 1 },
+        { id: 1, baseId: 5, typeId: null, label: 'Obra social', kind: 'texto', options: '[]', position: 0, required: 1 },
+        { id: 2, baseId: null, typeId: 8, label: 'Qué llevar', kind: 'multi', options: '["Torta","Bebida"]', position: 1, required: 0 },
+        { id: 3, baseId: null, typeId: 8, label: 'Cancha', kind: 'numero', options: '[]', position: 2, required: 1 },
       ]) as never,
     );
 
     expect(await findAllCustomFields()).toEqual([
-      { id: 1, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0 },
-      { id: 2, owner: 'type', ownerId: 8, label: 'Qué llevar', kind: 'multi', options: ['Torta', 'Bebida'], position: 1 },
+      { id: 1, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0, required: true },
+      { id: 2, owner: 'type', ownerId: 8, label: 'Qué llevar', kind: 'multi', options: ['Torta', 'Bebida'], position: 1, required: false },
+      { id: 3, owner: 'type', ownerId: 8, label: 'Cancha', kind: 'numero', options: [], position: 2, required: true },
     ]);
   });
 
   it('omite campos de una clase desconocida', async () => {
     jest.mocked(getDb).mockReturnValue(
-      fakeDb([{ id: 1, baseId: 5, typeId: null, label: 'X', kind: 'fecha', options: '[]', position: 0 }]) as never,
+      fakeDb([{ id: 1, baseId: 5, typeId: null, label: 'X', kind: 'fecha', options: '[]', position: 0, required: 1 }]) as never,
     );
 
     expect(await findAllCustomFields()).toEqual([]);

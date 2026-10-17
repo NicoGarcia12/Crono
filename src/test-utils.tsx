@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
 import { DEFAULT_EVENT_BASES, capabilityLookup, typeCapabilities } from '@/constants/event-bases';
-import type { CustomField, EventTypeMeta, FieldValues } from '@/types';
+import type { CustomField, EventItem, EventTypeMeta, FieldValues } from '@/types';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
@@ -53,7 +53,12 @@ export const capabilitiesOf = (typeKey: string) => typeCapabilities(
  */
 export function renderWithStore(
   ui: ReactElement,
-  extra: { fields?: CustomField[]; types?: EventTypeMeta[]; fieldValues?: Record<number, FieldValues> } = {},
+  extra: {
+    fields?: CustomField[];
+    types?: EventTypeMeta[];
+    fieldValues?: Record<number, FieldValues>;
+    events?: EventItem[];
+  } = {},
 ) {
   const store = configureStore({
     reducer: {
@@ -71,6 +76,7 @@ export function renderWithStore(
       eventBases: { bases: defaultEventBases, fields: extra.fields ?? [], status: 'ready' as const },
       eventTypes: { items: [...defaultEventTypes, ...(extra.types ?? [])], status: 'ready' as const },
       fieldValues: { byEvent: extra.fieldValues ?? {}, status: 'ready' as const },
+      events: { items: extra.events ?? [], status: 'ready' as const },
     },
   });
 

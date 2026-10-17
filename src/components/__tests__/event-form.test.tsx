@@ -126,11 +126,23 @@ describe('<EventForm />', () => {
     expect(screen.queryByLabelText('Este es mi cumpleaños')).toBeNull();
   });
 
+  it('al editar, el tipo queda fijo: no ofrece cambiarlo a otro', async () => {
+    const onSubmit = jest.fn();
+    const asado: EventItem = { ...miCumple, id: 10, title: 'Asado', type: 'evento', isMine: 0, yearly: 0 };
+    await renderWithStore(<EventForm initial={asado} submitLabel="Guardar" onSubmit={onSubmit} />);
+
+    expect(screen.getByText('Evento')).toBeTruthy();
+    expect(screen.queryByText('Cumpleaños')).toBeNull();
+    expect(screen.queryByText('Cita médica')).toBeNull();
+
+    await fireEvent.press(screen.getByText('Guardar'));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'evento' }), {});
+  });
+
   it('mi cumpleaños conserva su propio tipo aunque se toque otro', async () => {
     const onSubmit = jest.fn();
     await renderWithStore(<EventForm initial={miCumple} submitLabel="Guardar" onSubmit={onSubmit} />);
 
-    await fireEvent.press(screen.getByText('Evento'));
     await fireEvent.press(screen.getByText('Guardar'));
 
     expect(onSubmit.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ type: 'mi_cumpleanos' }));
@@ -186,7 +198,7 @@ describe('<EventForm />', () => {
     expect(screen.queryByLabelText('Edad que cumple este año')).toBeNull();
   });
 
-  it('un evento viejo conserva su repetición mientras no le cambien el tipo', async () => {
+  it('al editar, un evento viejo conserva su repetición guardada', async () => {
     const onSubmit = jest.fn();
     const viejo: EventItem = { ...miCumple, id: 9, title: 'Aniversario de casados', type: 'evento', isMine: 0 };
     await renderWithStore(<EventForm initial={viejo} submitLabel="Guardar" onSubmit={onSubmit} />);
@@ -213,9 +225,9 @@ describe('<EventForm />', () => {
       defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [], hidden: false,
     };
     const fields: CustomField[] = [
-      { id: 1, owner: 'type', ownerId: 20, label: 'Qué llevar', kind: 'multi', options: ['Pelota', 'Agua'], position: 0 },
-      { id: 2, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0 },
-      { id: 3, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 1 },
+      { id: 1, owner: 'type', ownerId: 20, label: 'Qué llevar', kind: 'multi', options: ['Pelota', 'Agua'], position: 0, required: false },
+      { id: 2, owner: 'base', ownerId: 5, label: 'Obra social', kind: 'texto', options: [], position: 0, required: true },
+      { id: 3, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero', options: [], position: 1, required: false },
     ];
 
     const renderWithFields = async (initial?: EventItem, fieldValues = {}) => {
@@ -249,6 +261,22 @@ describe('<EventForm />', () => {
 
       expect(onSubmit).not.toHaveBeenCalled();
       expect(screen.getByText('Completá "Obra social".')).toBeTruthy();
+    });
+
+    it('un campo del tipo marcado como obligatorio tampoco deja guardar vacío', async () => {
+      const onSubmit = jest.fn();
+      await renderWithStore(<EventForm submitLabel="Guardar" onSubmit={onSubmit} />, {
+        fields: [{ ...fields[2], required: true }],
+        types: [torneo],
+      });
+
+      await fireEvent.changeText(screen.getByPlaceholderText('Ej: Cumpleaños de mamá'), 'Final');
+      await fireEvent.press(screen.getByText('Torneo'));
+      expect(screen.getByText('Cancha')).toBeTruthy();
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(screen.getByText('Completá "Cancha".')).toBeTruthy();
     });
 
     it('un campo numérico rechaza texto', async () => {

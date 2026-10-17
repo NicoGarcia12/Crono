@@ -82,8 +82,8 @@ describe('backup de tipos propios y campos', () => {
       },
     ],
     fields: [
-      { id: 3, owner: 'base' as const, ownerId: 6, label: 'Especie', kind: 'select' as const, options: ['Perro', 'Gato'], position: 0 },
-      { id: 4, owner: 'type' as const, ownerId: 20, label: 'Juguetes', kind: 'multi' as const, options: ['Pelota', 'Hueso'], position: 0 },
+      { id: 3, owner: 'base' as const, ownerId: 6, label: 'Especie', kind: 'select' as const, options: ['Perro', 'Gato'], position: 0, required: false },
+      { id: 4, owner: 'type' as const, ownerId: 20, label: 'Juguetes', kind: 'multi' as const, options: ['Pelota', 'Hueso'], position: 0, required: true },
     ],
     values: { 7: { 3: 'Perro', 4: '["Pelota"]' } },
   };
@@ -95,11 +95,11 @@ describe('backup de tipos propios y campos', () => {
     expect(backup.typeConfig).toEqual({
       bases: [{
         key: 'base_mascota', label: 'Mascota', yearly: true, requiresTime: false, capabilities: ['edad'],
-        fields: [{ label: 'Especie', kind: 'select', options: ['Perro', 'Gato'] }],
+        fields: [{ label: 'Especie', kind: 'select', options: ['Perro', 'Gato'], required: false }],
       }],
       types: [{
         key: 'firulais', label: 'Mascota', icon: 'paw', color: '#795548', baseKey: 'base_mascota',
-        extraCapabilities: ['regalos'], fields: [{ label: 'Juguetes', kind: 'multi', options: ['Pelota', 'Hueso'] }],
+        extraCapabilities: ['regalos'], fields: [{ label: 'Juguetes', kind: 'multi', options: ['Pelota', 'Hueso'], required: true }],
       }],
     });
     expect(backup.events[0].fieldValues).toEqual({ 'base:Especie': 'Perro', 'type:Juguetes': '["Pelota"]' });
@@ -119,6 +119,21 @@ describe('backup de tipos propios y campos', () => {
 
     expect(parsed.ok).toBe(true);
     expect(parsed.ok && parsed.backup.typeConfig).toBeUndefined();
+  });
+
+  it('un backup sin obligatoriedad por campo: los de una base quedan obligatorios y los de un tipo, no', () => {
+    const raw = JSON.stringify({
+      app: 'crono', formatVersion: 1, displayName: null, notes: [],
+      events: [{ title: 'X', type: 'evento', date: '2026-01-01', yearly: 0 }],
+      typeConfig: {
+        bases: [{ key: 'base_x', label: 'X', fields: [{ label: 'A', kind: 'texto' }] }],
+        types: [{ key: 'tipo_x', label: 'Y', icon: 'star', color: '#000', baseKey: 'base_x', fields: [{ label: 'B', kind: 'texto' }] }],
+      },
+    });
+    const parsed = parseBackup(raw);
+
+    expect(parsed.ok && parsed.backup.typeConfig?.bases[0].fields[0].required).toBe(true);
+    expect(parsed.ok && parsed.backup.typeConfig?.types[0].fields[0].required).toBe(false);
   });
 
   it('descarta campos y capacidades inválidos del archivo', () => {

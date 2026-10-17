@@ -6,10 +6,8 @@ import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 import type { CustomField, FieldValues } from '@/types';
 
-/** Un campo a completar en el evento: los de la base son obligatorios, los del tipo opcionales. */
-export interface EventFieldSpec extends CustomField {
-  required: boolean;
-}
+/** Un campo a completar en el evento (los de la base y los del tipo, cada uno con su obligatoriedad). */
+export type EventFieldSpec = CustomField;
 
 const NUMBER_PATTERN = /^-?\d+([.,]\d+)?$/;
 

@@ -40,6 +40,23 @@ export function notify(title: string, message: string): void {
   Alert.alert(title, message);
 }
 
+/**
+ * Texto legible de un error. Los thunks rechazados (`.unwrap()`) no tiran un
+ * `Error` sino un objeto plano con `message`, así que se contemplan los dos.
+ */
+export function errorMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return 'Ocurrió un error inesperado.';
+}
+
+/** Avisa que algo falló, igual en el celular y en web. */
+export function showError(title: string, error: unknown): void {
+  notify(title, errorMessage(error));
+}
+
 /** "Afecta a 3 eventos: 3 ideas de regalo y 2 valores de «Obra social»." */
 export function impactMessage(impact: { events: number; items: { label: string; count: number }[] }): string {
   const parts = impact.items.map((item) => `${item.count} ${item.label}`);

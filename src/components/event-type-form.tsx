@@ -4,12 +4,15 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CapabilityToggles } from '@/components/capability-toggles';
 import { FIELD_KIND_LABELS, FieldsEditor } from '@/components/fields-editor';
+import { TagPill } from '@/components/tag-pill';
 import {
   CAPABILITY_META,
   DEFAULT_TYPE_KEY,
   MAX_TYPE_ITEMS,
   capabilityProblems,
+  eventsMissingField,
   fieldDraftProblem,
+  requiredFieldsProblem,
   itemLimitMessage,
 } from '@/constants/event-bases';
 import { useAppSelector } from '@/store';
@@ -49,6 +52,13 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
 
   const bases = useAppSelector((state) => state.eventBases.bases);
   const allFields = useAppSelector((state) => state.eventBases.fields);
+  const events = useAppSelector((state) => state.events.items);
+  const valuesByEvent = useAppSelector((state) => state.fieldValues.byEvent);
+  // Eventos que ya usan este tipo: un campo no pasa a obligatorio si a alguno le falta.
+  const eventIds = useMemo(
+    () => (initial ? events.filter((e) => e.type === initial.key).map((e) => e.id) : []),
+    [events, initial],
+  );
 
   const [label, setLabel] = useState(initial?.label ?? '');
   const [icon, setIcon] = useState<keyof typeof Ionicons.glyphMap>(
@@ -61,7 +71,7 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
     initial
       ? allFields
           .filter((f) => f.owner === 'type' && f.ownerId === initial.id)
-          .map(({ id, label: l, kind, options }) => ({ id, label: l, kind, options }))
+          .map(({ id, label: l, kind, options, required }) => ({ id, label: l, kind, options, required }))
       : [],
   );
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +104,7 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
     }
     const problem =
       fieldDraftProblem(fields) ??
+      requiredFieldsProblem(fields, eventIds, valuesByEvent) ??
       capabilityProblems([...baseCapabilities, ...extras], yearly)[0]?.message ??
       (count > MAX_TYPE_ITEMS ? itemLimitMessage(count - 1) : null);
     if (problem) {
@@ -182,22 +193,21 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
         </View>
       )}
 
-      {/* Lo que trae la base: bloqueado, nunca se puede quitar. */}
+      {/* Lo que trae la base: una cosa por renglón, bloqueado, nunca se puede quitar. */}
       <View style={styles.baseSummary}>
-        <Text style={styles.summaryLine}>
-          <Ionicons name="lock-closed" size={12} color={colors.textSubtle} /> Nombre y fecha
-          {base?.requiresTime ? ' · hora obligatoria' : ''}
-          {yearly ? ' · se repite todos los años' : ' · por única vez'}
-        </Text>
-        {baseCapabilities.length > 0 ? (
-          <Text style={styles.summaryLine}>
-            {baseCapabilities.map((c) => CAPABILITY_META[c].label).join(' · ')}
-          </Text>
-        ) : null}
+        <Text style={styles.summaryTitle}>Incluido siempre (viene de la base)</Text>
+        <SummaryRow text="Nombre y fecha" />
+        <SummaryRow text={yearly ? 'Se repite todos los años' : 'Por única vez'} />
+        {base?.requiresTime ? <SummaryRow text="Hora" tag="Obligatoria" /> : null}
+        {baseCapabilities.map((c) => (
+          <SummaryRow key={c} text={CAPABILITY_META[c].label} tag="Función incluida" />
+        ))}
         {baseFields.map((f) => (
-          <Text key={f.id} style={styles.summaryLine}>
-            {f.label} ({FIELD_KIND_LABELS[f.kind].toLowerCase()}, obligatorio)
-          </Text>
+          <SummaryRow
+            key={f.id}
+            text={`${f.label} (${FIELD_KIND_LABELS[f.kind].toLowerCase()})`}
+            tag={f.required ? 'Obligatorio' : 'Opcional'}
+          />
         ))}
       </View>
 
@@ -206,7 +216,7 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
       ) : (
         <>
           <View style={styles.extrasHeader}>
-            <Text style={styles.label}>Extras</Text>
+            <Text style={styles.label}>Funciones que podés sumar</Text>
             <Text style={[styles.counter, count >= MAX_TYPE_ITEMS && { color: colors.danger }]}>
               {count} de {MAX_TYPE_ITEMS}
             </Text>
@@ -215,11 +225,19 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
             locked={baseCapabilities}
             selected={extras}
             yearly={yearly}
+            where="tipo"
             onChange={setExtras}
             limitMessage={limitMessage}
           />
-          <Text style={styles.label}>Campos extra (siempre opcionales)</Text>
-          <FieldsEditor value={fields} onChange={setFields} limitMessage={limitMessage} addLabel="Agregar campo" />
+          <Text style={styles.label}>Campos extra</Text>
+          <FieldsEditor
+            value={fields}
+            onChange={setFields}
+            limitMessage={limitMessage}
+            addLabel="Agregar campo"
+            defaultRequired={false}
+            missingCount={(f) => eventsMissingField(eventIds, f.id, valuesByEvent)}
+          />
         </>
       )}
 
@@ -233,6 +251,19 @@ export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: Ev
           <Text style={styles.saveText}>Guardar</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+/** Un renglón de lo que trae la base, con candado y su etiqueta si la tiene. */
+function SummaryRow({ text, tag }: { text: string; tag?: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.summaryRow}>
+      <Ionicons name="lock-closed" size={12} color={colors.textSubtle} />
+      <Text style={styles.summaryLine}>{text}</Text>
+      {tag ? <TagPill label={tag} tone="fuerte" /> : null}
     </View>
   );
 }
@@ -274,8 +305,10 @@ const makeStyles = (c: ThemeColors) =>
     baseChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
     baseChipText: { fontSize: 13, color: c.textMuted },
     baseChipTextActive: { color: '#fff', fontWeight: '600' },
-    baseSummary: { gap: 2, backgroundColor: c.surface, borderRadius: 10, padding: 10 },
-    summaryLine: { fontSize: 12.5, color: c.textMuted },
+    baseSummary: { gap: 6, backgroundColor: c.surface, borderRadius: 10, padding: 10 },
+    summaryTitle: { fontSize: 12, fontWeight: '600', color: c.textSubtle },
+    summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    summaryLine: { flex: 1, fontSize: 13, color: c.textMuted },
     extrasHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     counter: { fontSize: 12.5, fontWeight: '600', color: c.textMuted },
     error: { fontSize: 13, color: c.danger },

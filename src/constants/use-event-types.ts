@@ -44,10 +44,8 @@ export function useEventFieldSpecs(type: EventType): EventFieldSpec[] {
     const byPosition = (a: { position: number }, b: { position: number }) => a.position - b.position;
     const baseFields = base ? fields.filter((f) => f.owner === 'base' && f.ownerId === base.id).sort(byPosition) : [];
     const typeFields = fields.filter((f) => f.owner === 'type' && f.ownerId === meta.id && meta.id !== 0).sort(byPosition);
-    return [
-      ...baseFields.map((f) => ({ ...f, required: true })),
-      ...typeFields.map((f) => ({ ...f, required: false })),
-    ];
+    // Los de la base primero; cada campo trae su propia obligatoriedad.
+    return [...baseFields, ...typeFields];
   }, [base, fields, meta.id]);
 }
 

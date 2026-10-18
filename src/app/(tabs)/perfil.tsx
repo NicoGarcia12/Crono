@@ -103,7 +103,15 @@ export default function PerfilScreen() {
       const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
       Alert.alert('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
     } catch (error) {
-      Alert.alert('No se pudo restaurar', typeof error === 'string' ? error : 'El archivo no es válido.');
+      // Un string es un rechazo de parseBackup (archivo inválido). Cualquier otra
+      // cosa es una falla al restaurar: se muestra su mensaje en vez de culpar al archivo.
+      if (typeof error === 'string') {
+        Alert.alert('No se pudo restaurar', error);
+        return;
+      }
+      console.error('Falló la restauración del backup', error);
+      const detail = (error as { message?: string } | null)?.message;
+      Alert.alert('No se pudo restaurar', detail ? `Error al restaurar: ${detail}` : 'Error inesperado al restaurar.');
     }
   };
 

@@ -40,10 +40,11 @@ export function DateField({ value, onChange, style }: DateFieldProps) {
           value={toLocalDate(value)}
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_event, selected) => {
+          onValueChange={(_event, selected) => {
             setOpen(false); // en Android el diálogo se cierra solo; esto lo refleja en el estado
-            if (selected) onChange(dateToIso(selected));
+            onChange(dateToIso(selected));
           }}
+          onDismiss={() => setOpen(false)}
         />
       ) : null}
     </>
@@ -51,7 +52,7 @@ export function DateField({ value, onChange, style }: DateFieldProps) {
 }
 
 export interface TimeFieldProps {
-  /** Hora en formato 'HH:mm', o null para "todo el día". */
+  /** Hora en formato 'HH:mm', o null si no tiene (el evento es de todo el día). */
   value: string | null;
   onChange: (time: string | null) => void;
   style?: StyleProp<ViewStyle>;
@@ -66,17 +67,19 @@ export function TimeField({ value, onChange, style }: TimeFieldProps) {
   return (
     <>
       <Pressable accessibilityLabel="Hora" style={[styles.input, style]} onPress={() => setOpen(true)}>
-        <Text style={styles.inputText}>{value ?? 'Todo el día'}</Text>
+        {/* Sin hora el campo se ve vacío, como un placeholder: así queda claro que falta cargarla. */}
+        <Text style={value ? styles.inputText : styles.placeholderText}>{value ?? 'Elegir hora'}</Text>
       </Pressable>
       {open ? (
         <DateTimePicker
           value={toLocalDate(todayIso(), value)}
           mode="time"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(_event, selected) => {
+          onValueChange={(_event, selected) => {
             setOpen(false);
-            if (selected) onChange(dateToTime(selected));
+            onChange(dateToTime(selected));
           }}
+          onDismiss={() => setOpen(false)}
         />
       ) : null}
     </>
@@ -93,4 +96,5 @@ const makeStyles = (c: ThemeColors) =>
     padding: 13,
   },
   inputText: { fontSize: 16, color: c.text },
+  placeholderText: { fontSize: 16, color: c.textSubtle },
 });

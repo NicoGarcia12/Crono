@@ -1,10 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { CapabilityToggles } from '@/components/capability-toggles';
+import { FIELD_KIND_LABELS, FieldsEditor } from '@/components/fields-editor';
+import { TagPill } from '@/components/tag-pill';
+import {
+  CAPABILITY_META,
+  DEFAULT_TYPE_KEY,
+  MAX_TYPE_ITEMS,
+  capabilityProblems,
+  eventsMissingField,
+  fieldDraftProblem,
+  requiredFieldsProblem,
+  itemLimitMessage,
+} from '@/constants/event-bases';
+import { useAppSelector } from '@/store';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
-import type { EventTypeMeta, NewEventType } from '@/types';
+import type { Capability, EventTypeMeta, FieldDraft, NewEventType } from '@/types';
 
 /** Íconos y colores curados para no exponer un selector infinito. */
 const ICON_OPTIONS: (keyof typeof Ionicons.glyphMap)[] = [
@@ -21,26 +35,90 @@ const COLOR_OPTIONS = [
 interface EventTypeFormProps {
   /** Tipo existente al editar; undefined al crear uno nuevo. */
   initial?: EventTypeMeta;
+  /** Al crear: base fija, sin poder elegir otra (ej. "crear tipo y mover los eventos"). */
+  lockedBaseKey?: string;
   onSubmit: (data: NewEventType) => void;
   onCancel: () => void;
 }
 
-export function EventTypeForm({ initial, onSubmit, onCancel }: EventTypeFormProps) {
+/**
+ * Editor de un tipo de evento. Al crearlo: nombre, ícono, color, base y
+ * extras. Al editarlo: solo el nombre y los extras (en los de fábrica, solo
+ * el nombre). Lo de la base se muestra bloqueado.
+ */
+export function EventTypeForm({ initial, lockedBaseKey, onSubmit, onCancel }: EventTypeFormProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const bases = useAppSelector((state) => state.eventBases.bases);
+  const allFields = useAppSelector((state) => state.eventBases.fields);
+  const events = useAppSelector((state) => state.events.items);
+  const valuesByEvent = useAppSelector((state) => state.fieldValues.byEvent);
+  // Eventos que ya usan este tipo: un campo no pasa a obligatorio si a alguno le falta.
+  const eventIds = useMemo(
+    () => (initial ? events.filter((e) => e.type === initial.key).map((e) => e.id) : []),
+    [events, initial],
+  );
 
   const [label, setLabel] = useState(initial?.label ?? '');
   const [icon, setIcon] = useState<keyof typeof Ionicons.glyphMap>(
     (initial?.icon as keyof typeof Ionicons.glyphMap) ?? ICON_OPTIONS[0],
   );
   const [color, setColor] = useState(initial?.color ?? COLOR_OPTIONS[0]);
-  const [defaultYearly, setDefaultYearly] = useState(initial?.defaultYearly ?? false);
+  const [baseKey, setBaseKey] = useState(initial?.baseKey ?? lockedBaseKey ?? DEFAULT_TYPE_KEY);
+  const [extras, setExtras] = useState<Capability[]>(initial?.extraCapabilities ?? []);
+  const [fields, setFields] = useState<FieldDraft[]>(() =>
+    initial
+      ? allFields
+          .filter((f) => f.owner === 'type' && f.ownerId === initial.id)
+          .map(({ id, label: l, kind, options, required }) => ({ id, label: l, kind, options, required }))
+      : [],
+  );
+  const [error, setError] = useState<string | null>(null);
 
-  const canSave = label.trim().length > 0;
+  const isBuiltin = initial?.isBuiltin ?? false;
+  const base = bases.find((b) => b.key === baseKey);
+  const baseCapabilities = base?.capabilities ?? [];
+  const baseFields = base ? allFields.filter((f) => f.owner === 'base' && f.ownerId === base.id) : [];
+  const yearly = base?.yearly ?? false;
+
+  const count =
+    new Set([...baseCapabilities, ...extras]).size + (base?.requiresTime ? 1 : 0) + baseFields.length + fields.length;
+  const limitMessage = itemLimitMessage(count);
+
+  /** Cambiar la base (solo al crear) descarta los extras que la base ya trae o que dejan de ser válidos. */
+  const selectBase = (key: string) => {
+    const next = bases.find((b) => b.key === key);
+    setBaseKey(key);
+    setExtras((current) => {
+      const kept = current.filter((c) => !next?.capabilities.includes(c));
+      const invalid = new Set(capabilityProblems([...(next?.capabilities ?? []), ...kept], next?.yearly ?? false).map((p) => p.capability));
+      return kept.filter((c) => !invalid.has(c));
+    });
+  };
 
   const submit = () => {
-    if (!canSave) return;
-    onSubmit({ label: label.trim(), icon, color, defaultYearly });
+    if (label.trim().length === 0) {
+      setError('Ponele un nombre al tipo.');
+      return;
+    }
+    const problem =
+      fieldDraftProblem(fields) ??
+      requiredFieldsProblem(fields, eventIds, valuesByEvent) ??
+      capabilityProblems([...baseCapabilities, ...extras], yearly)[0]?.message ??
+      (count > MAX_TYPE_ITEMS ? itemLimitMessage(count - 1) : null);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    onSubmit({
+      label: label.trim(),
+      icon,
+      color,
+      baseKey,
+      extraCapabilities: extras.filter((c) => !baseCapabilities.includes(c)),
+      fields: fields.map((f) => ({ ...f, label: f.label.trim() })),
+    });
   };
 
   return (
@@ -48,63 +126,144 @@ export function EventTypeForm({ initial, onSubmit, onCancel }: EventTypeFormProp
       <TextInput
         style={styles.input}
         accessibilityLabel="Nombre del tipo"
-        placeholder="Ej: Cumpleaños, Torneo, Mudanza…"
+        placeholder="Ej: Cumple de oficina, Torneo, Mudanza…"
         placeholderTextColor={colors.textSubtle}
         value={label}
         onChangeText={setLabel}
       />
 
-      <Text style={styles.label}>Ícono</Text>
-      <View style={styles.chipRow}>
-        {ICON_OPTIONS.map((option) => {
-          const active = option === icon;
-          return (
-            <Pressable
-              key={option}
-              accessibilityLabel={`Ícono ${option}`}
-              accessibilityState={{ selected: active }}
-              style={[styles.iconChip, active && { backgroundColor: color, borderColor: color }]}
-              onPress={() => setIcon(option)}
-            >
-              <Ionicons name={option} size={18} color={active ? '#fff' : colors.textMuted} />
-            </Pressable>
-          );
-        })}
+      {/* Ícono y color se eligen al crear el tipo; después solo cambian el nombre y los extras. */}
+      {!initial ? (
+        <>
+          <Text style={styles.label}>Ícono</Text>
+          <View style={styles.chipRow}>
+            {ICON_OPTIONS.map((option) => {
+              const active = option === icon;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityLabel={`Ícono ${option}`}
+                  accessibilityState={{ selected: active }}
+                  style={[styles.iconChip, active && { backgroundColor: color, borderColor: color }]}
+                  onPress={() => setIcon(option)}
+                >
+                  <Ionicons name={option} size={18} color={active ? '#fff' : colors.textMuted} />
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Text style={styles.label}>Color</Text>
+          <View style={styles.chipRow}>
+            {COLOR_OPTIONS.map((option) => {
+              const active = option === color;
+              return (
+                <Pressable
+                  key={option}
+                  accessibilityLabel={`Color ${option}`}
+                  accessibilityState={{ selected: active }}
+                  style={[styles.colorChip, { backgroundColor: option }, active && styles.colorChipActive]}
+                  onPress={() => setColor(option)}
+                />
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
+      <Text style={styles.label}>Base</Text>
+      {initial || lockedBaseKey ? (
+        <Text style={styles.hint}>{base?.label ?? 'Sin base'} · la base no cambia después de crear el tipo</Text>
+      ) : (
+        <View style={styles.chipRow}>
+          {bases.map((b) => {
+            const active = b.key === baseKey;
+            return (
+              <Pressable
+                key={b.key}
+                accessibilityLabel={`Base ${b.label}`}
+                accessibilityState={{ selected: active }}
+                style={[styles.baseChip, active && styles.baseChipActive]}
+                onPress={() => selectBase(b.key)}
+              >
+                <Text style={[styles.baseChipText, active && styles.baseChipTextActive]}>{b.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Lo que trae la base: una cosa por renglón, bloqueado, nunca se puede quitar. */}
+      <View style={styles.baseSummary}>
+        <Text style={styles.summaryTitle}>Incluido siempre (viene de la base)</Text>
+        <SummaryRow text="Nombre y fecha" />
+        <SummaryRow text={yearly ? 'Se repite todos los años' : 'Por única vez'} />
+        {base?.requiresTime ? <SummaryRow text="Hora" tag="Obligatoria" /> : null}
+        {baseCapabilities.map((c) => (
+          <SummaryRow key={c} text={CAPABILITY_META[c].label} tag="Función incluida" />
+        ))}
+        {baseFields.map((f) => (
+          <SummaryRow
+            key={f.id}
+            text={`${f.label} (${FIELD_KIND_LABELS[f.kind].toLowerCase()})`}
+            tag={f.required ? 'Obligatorio' : 'Opcional'}
+          />
+        ))}
       </View>
 
-      <Text style={styles.label}>Color</Text>
-      <View style={styles.chipRow}>
-        {COLOR_OPTIONS.map((option) => {
-          const active = option === color;
-          return (
-            <Pressable
-              key={option}
-              accessibilityLabel={`Color ${option}`}
-              accessibilityState={{ selected: active }}
-              style={[styles.colorChip, { backgroundColor: option }, active && styles.colorChipActive]}
-              onPress={() => setColor(option)}
-            />
-          );
-        })}
-      </View>
+      {isBuiltin ? (
+        <Text style={styles.hint}>De un tipo de fábrica solo se cambia el nombre: para sumarle cosas, creá uno nuevo a partir de esta base.</Text>
+      ) : (
+        <>
+          <View style={styles.extrasHeader}>
+            <Text style={styles.label}>Funciones que podés sumar</Text>
+            <Text style={[styles.counter, count >= MAX_TYPE_ITEMS && { color: colors.danger }]}>
+              {count} de {MAX_TYPE_ITEMS}
+            </Text>
+          </View>
+          <CapabilityToggles
+            locked={baseCapabilities}
+            selected={extras}
+            yearly={yearly}
+            where="tipo"
+            onChange={setExtras}
+            limitMessage={limitMessage}
+          />
+          <Text style={styles.label}>Campos extra</Text>
+          <FieldsEditor
+            value={fields}
+            onChange={setFields}
+            limitMessage={limitMessage}
+            addLabel="Agregar campo"
+            defaultRequired={false}
+            missingCount={(f) => eventsMissingField(eventIds, f.id, valuesByEvent)}
+          />
+        </>
+      )}
 
-      <View style={styles.switchRow}>
-        <Text style={styles.switchLabel}>Se repite todos los años por defecto</Text>
-        <Switch value={defaultYearly} onValueChange={setDefaultYearly} trackColor={{ true: colors.primary }} />
-      </View>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <View style={styles.actions}>
         <Pressable style={styles.cancelButton} onPress={onCancel}>
           <Text style={styles.cancelText}>Cancelar</Text>
         </Pressable>
-        <Pressable
-          style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
-          disabled={!canSave}
-          onPress={submit}
-        >
+        <Pressable style={styles.saveButton} onPress={submit}>
           <Text style={styles.saveText}>Guardar</Text>
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+/** Un renglón de lo que trae la base, con candado y su etiqueta si la tiene. */
+function SummaryRow({ text, tag }: { text: string; tag?: string }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  return (
+    <View style={styles.summaryRow}>
+      <Ionicons name="lock-closed" size={12} color={colors.textSubtle} />
+      <Text style={styles.summaryLine}>{text}</Text>
+      {tag ? <TagPill label={tag} tone="fuerte" /> : null}
     </View>
   );
 }
@@ -122,6 +281,7 @@ const makeStyles = (c: ThemeColors) =>
       color: c.text,
     },
     label: { fontSize: 12.5, fontWeight: '600', color: c.textMuted },
+    hint: { fontSize: 12.5, color: c.textSubtle },
     chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     iconChip: {
       width: 36,
@@ -141,12 +301,20 @@ const makeStyles = (c: ThemeColors) =>
       borderColor: 'transparent',
     },
     colorChipActive: { borderColor: c.text },
-    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-    switchLabel: { flex: 1, fontSize: 13.5, color: c.text, marginRight: 8 },
+    baseChip: { borderWidth: 1, borderColor: c.border, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: c.surface },
+    baseChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
+    baseChipText: { fontSize: 13, color: c.textMuted },
+    baseChipTextActive: { color: '#fff', fontWeight: '600' },
+    baseSummary: { gap: 6, backgroundColor: c.surface, borderRadius: 10, padding: 10 },
+    summaryTitle: { fontSize: 12, fontWeight: '600', color: c.textSubtle },
+    summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    summaryLine: { flex: 1, fontSize: 13, color: c.textMuted },
+    extrasHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    counter: { fontSize: 12.5, fontWeight: '600', color: c.textMuted },
+    error: { fontSize: 13, color: c.danger },
     actions: { flexDirection: 'row', gap: 8, marginTop: 4 },
     cancelButton: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 20, borderWidth: 1, borderColor: c.border },
     cancelText: { color: c.textMuted, fontWeight: '600' },
     saveButton: { flex: 1, alignItems: 'center', paddingVertical: 11, borderRadius: 20, backgroundColor: c.primary },
-    saveButtonDisabled: { opacity: 0.4 },
     saveText: { color: '#fff', fontWeight: '700' },
   });

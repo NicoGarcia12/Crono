@@ -1,7 +1,9 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
-import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
+import { DEFAULT_EVENT_TYPES, MY_BIRTHDAY_TYPE } from '@/constants/event-types';
+import { MY_BIRTHDAY_TYPE_KEY, type Capability } from '@/types';
 
 /**
  * Capa de base de datos local (SQLite).
@@ -18,7 +20,7 @@ let db: SQLite.SQLiteDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 11;
+const DATABASE_VERSION = 15;
 
 export function initDatabase(): Promise<void> {
   if (db) return Promise.resolve(); // ya inicializada
@@ -291,7 +293,152 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 11;
   }
 
+  if (currentVersion === 11) {
+    // v12: tipos componibles. Cada tipo pasa a salir de una BASE (repetición,
+    // capacidades y campos obligatorios, bloqueados) y puede sumar extras
+    // opcionales. Los 5 tipos de fábrica apuntan a la base de su misma clave.
+    // Es una sola transacción: si algo falla, el próximo arranque reintenta
+    // desde v11 sin un esquema a medio crear.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS event_bases (
+          id INTEGER PRIMARY KEY NOT NULL,
+          key TEXT NOT NULL UNIQUE,
+          label TEXT NOT NULL,
+          yearly INTEGER NOT NULL DEFAULT 0,
+          requires_time INTEGER NOT NULL DEFAULT 0,
+          -- Lista JSON de capacidades (ver CAPABILITIES en src/types.ts).
+          capabilities TEXT NOT NULL DEFAULT '[]',
+          is_builtin INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+      for (const [key, base] of Object.entries(DEFAULT_EVENT_BASES)) {
+        await database.execAsync(`
+          INSERT INTO event_bases (key, label, yearly, requires_time, capabilities, is_builtin)
+          SELECT '${key}', '${sqlEscape(base.label)}', ${base.yearly ? 1 : 0}, ${base.requiresTime ? 1 : 0},
+                 '${JSON.stringify(base.capabilities)}', 1
+          WHERE NOT EXISTS (SELECT 1 FROM event_bases WHERE key = '${key}');
+        `);
+      }
+      await database.execAsync(`
+        ALTER TABLE event_types ADD COLUMN base_key TEXT NOT NULL DEFAULT 'evento';
+        ALTER TABLE event_types ADD COLUMN extra_capabilities TEXT NOT NULL DEFAULT '[]';
+
+        -- Los de fábrica salen de la base homónima.
+        UPDATE event_types SET base_key = key WHERE is_builtin = 1;
+
+        -- Los tipos que el usuario ya había creado conservan lo que hacían:
+        -- repetición según su default y las ideas de regalo, que antes tenían todos.
+        UPDATE event_types
+        SET base_key = CASE WHEN default_yearly = 1 THEN 'festivo' ELSE 'evento' END,
+            extra_capabilities = '["regalos"]'
+        WHERE is_builtin = 0;
+
+        -- Un campo es de una base o de un tipo, nunca de los dos.
+        CREATE TABLE IF NOT EXISTS custom_fields (
+          id INTEGER PRIMARY KEY NOT NULL,
+          base_id INTEGER REFERENCES event_bases(id) ON DELETE CASCADE,
+          type_id INTEGER REFERENCES event_types(id) ON DELETE CASCADE,
+          label TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          -- Lista JSON de opciones para 'select' y 'multi'.
+          options TEXT NOT NULL DEFAULT '[]',
+          position INTEGER NOT NULL DEFAULT 0,
+          CHECK ((base_id IS NULL) <> (type_id IS NULL))
+        );
+
+        -- Valor de cada campo en cada evento ('multi' guarda una lista JSON).
+        CREATE TABLE IF NOT EXISTS event_field_values (
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          field_id INTEGER NOT NULL REFERENCES custom_fields(id) ON DELETE CASCADE,
+          value TEXT NOT NULL,
+          PRIMARY KEY (event_id, field_id)
+        );
+      `);
+      await database.execAsync('PRAGMA user_version = 12');
+    });
+    currentVersion = 12;
+  }
+
+  if (currentVersion === 12) {
+    // v13: la lógica pasa a depender de las capacidades del tipo. Los datos de
+    // una capacidad que el tipo ya no tiene se borran (ej. el teléfono y los
+    // "ya lo saludé" de los aniversarios, que ahora son conmemoraciones, o las
+    // ideas de regalo del tipo Evento). También se agrega "año desconocido".
+    await database.withTransactionAsync(async () => {
+      await addColumnIfMissing(database, 'year_unknown', 'INTEGER NOT NULL DEFAULT 0');
+      await database.execAsync(`
+        DELETE FROM gift_ideas WHERE event_id IN (${eventsWithoutCapability('regalos')});
+        DELETE FROM greetings_sent WHERE event_id IN (${eventsWithoutCapability('saludado')});
+        UPDATE events SET phone = NULL WHERE id IN (${eventsWithoutCapability('whatsapp')});
+      `);
+      await database.execAsync('PRAGMA user_version = 13');
+    });
+    currentVersion = 13;
+  }
+
+  if (currentVersion === 13) {
+    // v14: la obligatoriedad pasa a ser de cada campo. Los existentes conservan
+    // lo que hacían: los de una base eran obligatorios y los de un tipo, opcionales.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        ALTER TABLE custom_fields ADD COLUMN required INTEGER NOT NULL DEFAULT 0;
+        UPDATE custom_fields SET required = 1 WHERE base_id IS NOT NULL;
+      `);
+      await database.execAsync('PRAGMA user_version = 14');
+    });
+    currentVersion = 14;
+  }
+
+  if (currentVersion === 14) {
+    // v15: mi cumpleaños sale del tipo "Cumpleaños" a un tipo propio, oculto
+    // y fijo (tiene cosas que los demás no, como "¿Quién me saludó?"). Así
+    // "Cumpleaños" se puede borrar sin arrastrar mi cumpleaños.
+    await database.withTransactionAsync(async () => {
+      await addTypeColumnIfMissing(database, 'hidden', 'INTEGER NOT NULL DEFAULT 0');
+      await database.execAsync(`
+        INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities, hidden)
+        SELECT '${MY_BIRTHDAY_TYPE_KEY}', '${sqlEscape(MY_BIRTHDAY_TYPE.label)}', '${MY_BIRTHDAY_TYPE.icon}',
+               '${MY_BIRTHDAY_TYPE.color}', 1, 1, 'cumpleanos', '[]', 1
+        WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${MY_BIRTHDAY_TYPE_KEY}');
+
+        UPDATE events SET type = '${MY_BIRTHDAY_TYPE_KEY}' WHERE is_mine = 1;
+      `);
+      await database.execAsync('PRAGMA user_version = 15');
+    });
+    currentVersion = 15;
+  }
+
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/**
+ * Subconsulta con los ids de eventos cuyo tipo NO tiene la capacidad, ni por
+ * su base ni como extra. Las capacidades se guardan como lista JSON, así que
+ * alcanza con buscar la clave entre comillas.
+ */
+function eventsWithoutCapability(capability: Capability): string {
+  const needle = `'"${capability}"'`;
+  return `
+    SELECT e.id FROM events e
+    JOIN event_types t ON t.key = e.type
+    JOIN event_bases b ON b.key = t.base_key
+    WHERE instr(b.capabilities, ${needle}) = 0 AND instr(t.extra_capabilities, ${needle}) = 0
+  `;
+}
+
+/** Igual que addColumnIfMissing, para `event_types` (reanudable si se cortó a mitad). */
+async function addTypeColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  columnName: 'hidden',
+  definition: 'INTEGER NOT NULL DEFAULT 0',
+): Promise<void> {
+  try {
+    await database.execAsync(`ALTER TABLE event_types ADD COLUMN ${columnName} ${definition}`);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) return;
+    throw error;
+  }
 }
 
 /** Escapa comillas simples para embeber texto en SQL crudo (sql = ''valor''). */
@@ -301,8 +448,8 @@ function sqlEscape(value: string): string {
 
 async function addColumnIfMissing(
   database: SQLite.SQLiteDatabase,
-  columnName: 'contact_id' | 'phone' | 'photo_uri',
-  definition: 'TEXT',
+  columnName: 'contact_id' | 'phone' | 'photo_uri' | 'year_unknown',
+  definition: 'TEXT' | 'INTEGER NOT NULL DEFAULT 0',
 ): Promise<void> {
   try {
     await database.execAsync(`ALTER TABLE events ADD COLUMN ${columnName} ${definition}`);

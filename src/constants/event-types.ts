@@ -17,6 +17,9 @@ export const DEFAULT_EVENT_TYPES: Record<
   cita_medica: { label: 'Cita médica', icon: 'medkit', color: '#4CAF50', defaultYearly: false },
 };
 
+/** Tipo oculto de mi cumpleaños (lo siembra la migración v14). */
+export const MY_BIRTHDAY_TYPE = { label: 'Mi cumpleaños', icon: 'gift', color: '#E91E63' };
+
 /** Se usa si un evento quedó con una clave de tipo que ya no existe (no debería pasar, pero no debe romper la UI). */
 export const FALLBACK_EVENT_TYPE_META: EventTypeMeta = {
   id: 0,
@@ -26,6 +29,9 @@ export const FALLBACK_EVENT_TYPE_META: EventTypeMeta = {
   color: '#999999',
   defaultYearly: false,
   isBuiltin: false,
+  baseKey: 'evento',
+  extraCapabilities: [],
+  hidden: false,
 };
 
 /**

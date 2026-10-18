@@ -132,12 +132,17 @@ export function buildCandidates(
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
 
-/** Convierte un contacto + la fecha elegida en el evento que se guarda en la agenda. */
+/**
+ * Convierte un contacto + la fecha elegida en el evento que se guarda en la agenda.
+ * Si se usa la fecha sugerida y el contacto no traía año, queda marcado como
+ * "año desconocido" (el año de la fecha es solo de relleno).
+ */
 export function candidateToEvent(
   candidate: ContactCandidate,
   date: string,
   name: string = candidate.name,
 ): NewEvent {
+  const yearUnknown = date === candidate.suggestedDate && !candidate.suggestedHasYear ? 1 : 0;
   return {
     title: name,
     type: 'cumpleanos',
@@ -151,6 +156,7 @@ export function candidateToEvent(
     isMine: 0, // el cumpleaños propio se carga aparte desde Perfil
     tags: [],
     photoUri: null,
+    yearUnknown,
   };
 }
 

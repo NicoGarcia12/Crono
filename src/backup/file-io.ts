@@ -1,4 +1,3 @@
-import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
@@ -27,15 +26,17 @@ export async function saveAndShare(fileName: string, content: string): Promise<v
   }
 }
 
-/** Abre el explorador de archivos y devuelve el texto del archivo elegido (null si canceló). */
+/**
+ * Abre el explorador de archivos y devuelve el texto del archivo elegido (null si canceló).
+ *
+ * Se usa el selector de expo-file-system y no expo-document-picker: en Android
+ * (sobre todo en Expo Go) la copia que hace DocumentPicker queda fuera de las
+ * carpetas que File puede leer y `text()` falla con "Missing 'READ' permission".
+ * Este selector devuelve un File que sí se puede leer (content:// en Android).
+ */
 export async function pickTextFile(): Promise<string | null> {
-  const result = await DocumentPicker.getDocumentAsync({
-    type: 'application/json',
-    copyToCacheDirectory: true,
-  });
+  const picked = await File.pickFileAsync({ mimeTypes: 'application/json' });
+  if (picked.canceled) return null;
 
-  const asset = result.assets?.[0];
-  if (result.canceled || !asset) return null;
-
-  return new File(asset.uri).text();
+  return picked.result.text();
 }

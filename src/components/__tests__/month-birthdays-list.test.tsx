@@ -16,6 +16,7 @@ const evento = (over: Partial<EventItem> & { id: number; title: string }): Event
   isMine: 0,
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
   ...over,
 });
 

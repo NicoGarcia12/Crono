@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
+import * as eventTypesRepo from '@/db/event-types-repo';
 import * as eventsRepo from '@/db/events-repo';
+import { loadEventTypes } from '@/store/event-types-slice';
 import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
 import { enforceMineBirthday, type EventItem, type EventReminder, type NewEvent } from '@/types';
 
@@ -24,8 +26,26 @@ export const loadEvents = createAsyncThunk('events/load', async () => {
   return eventsRepo.findAllEvents();
 });
 
-export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) => {
+/**
+ * "Cumpleaños" se puede borrar, pero mi cumpleaños, los saludos y la
+ * importación de contactos lo necesitan: si falta, se vuelve a crear.
+ * Solo se consulta la BD cuando el tipo no está en el estado.
+ */
+async function ensureBirthdayType(
+  entries: readonly NewEvent[],
+  getState: () => unknown,
+  dispatch: (action: unknown) => unknown,
+): Promise<void> {
+  if (!entries.some((e) => e.type === 'cumpleanos')) return;
+  // Sin los tipos cargados no se puede saber si falta; la app los carga al arrancar.
+  const eventTypes = (getState() as { eventTypes?: { items: { key: string }[]; status: string } }).eventTypes;
+  if (eventTypes?.status !== 'ready' || eventTypes.items.some((t) => t.key === 'cumpleanos')) return;
+  if (await eventTypesRepo.ensureBuiltinType('cumpleanos')) await dispatch(loadEventTypes());
+}
+
+export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { getState, dispatch }) => {
   const normalized = enforceMineBirthday(data);
+  await ensureBirthdayType([normalized], getState, dispatch);
   // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
   const reminders = await scheduleEventReminders(normalized);
   try {
@@ -46,7 +66,8 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent) =>
  */
 export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEvent[]>(
   'events/addContactBirthdays',
-  async (entries: readonly NewEvent[]) => {
+  async (entries: readonly NewEvent[], { getState, dispatch }) => {
+    await ensureBirthdayType(entries, getState, dispatch);
     const scheduledReminders: EventReminder[][] = [];
     try {
       for (const entry of entries) {

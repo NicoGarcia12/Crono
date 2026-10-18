@@ -3,6 +3,7 @@ import { useEffect, useMemo } from 'react';
 import { Alert, ScrollView, StyleSheet } from 'react-native';
 
 import { GreetingsList } from '@/components/greetings-list';
+import { useCapabilityLookup } from '@/constants/use-event-types';
 import { buildGreetingRows, type GreetingRow } from '@/greetings/greetings';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { addEvent } from '@/store/events-slice';
@@ -20,7 +21,7 @@ import { todayIso } from '@/utils/dates';
 
 /**
  * Ruta /saludos — quién me saludó en mi cumpleaños, año por año.
- * Se llega desde el detalle del evento marcado como "mi cumpleaños".
+ * Se llega desde Perfil (tarjeta "Mi cumpleaños"): es algo solo mío.
  */
 export default function SaludosScreen() {
   const colors = useThemeColors();
@@ -38,7 +39,11 @@ export default function SaludosScreen() {
     void dispatch(loadGreetings(year));
   }, [dispatch, year]);
 
-  const rows = useMemo(() => buildGreetingRows(events, greetings), [events, greetings]);
+  const hasCapability = useCapabilityLookup();
+  const rows = useMemo(
+    () => buildGreetingRows(events, greetings, hasCapability),
+    [events, greetings, hasCapability],
+  );
 
   const handleToggle = (row: GreetingRow) => {
     if (row.isGuest && row.greetingId !== null) {
@@ -84,6 +89,8 @@ export default function SaludosScreen() {
                 isMine: 0,
                 tags: [],
                 photoUri: null,
+                // La fecha es provisoria (hoy): el año de nacimiento no se sabe todavía.
+                yearUnknown: 1,
               }),
             ).unwrap();
 

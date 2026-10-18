@@ -1,4 +1,4 @@
-import type { EventItem } from '@/types';
+import type { Capability, EventItem } from '@/types';
 import { dateToIso, toLocalDate } from '@/utils/dates';
 
 /**
@@ -119,16 +119,21 @@ export function eventsByDay(events: EventItem[], days: Date[]): Map<string, Even
 }
 
 /**
- * Cumpleaños y aniversarios AJENOS (no `isMine`) que caen en el mes de
- * `anchor`. Los anuales se repiten todos los años (se compara solo el mes);
- * los puntuales, además, tienen que ser de ese año. Ordenados por día.
+ * Eventos AJENOS (no `isMine`) con "¿ya lo saludé?" que caen en el mes de
+ * `anchor` (en la práctica, los cumpleaños de otras personas). Los anuales
+ * se repiten todos los años (se compara solo el mes); los puntuales, además,
+ * tienen que ser de ese año. Ordenados por día.
  */
-export function birthdaysAndAnniversariesInMonth(events: EventItem[], anchor: Date): EventItem[] {
+export function greetableInMonth(
+  events: EventItem[],
+  anchor: Date,
+  hasCapability: (typeKey: string, capability: Capability) => boolean,
+): EventItem[] {
   const month = anchor.getMonth();
   const year = anchor.getFullYear();
 
   return events
-    .filter((event) => event.type === 'cumpleanos' || event.type === 'aniversario')
+    .filter((event) => hasCapability(event.type, 'saludado'))
     .filter((event) => event.isMine !== 1)
     .filter((event) => {
       const base = toLocalDate(event.date);

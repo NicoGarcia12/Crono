@@ -21,6 +21,7 @@ const miCumple: EventItem = {
   isMine: 1,
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
 };
 
 describe('<MyBirthdayCard />', () => {

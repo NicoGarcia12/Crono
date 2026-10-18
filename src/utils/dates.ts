@@ -1,4 +1,4 @@
-import type { EventItem } from '@/types';
+import type { Capability, EventItem } from '@/types';
 
 /**
  * Utilidades de fechas.
@@ -48,7 +48,10 @@ export function nextOccurrence(event: Pick<EventItem, 'date' | 'time' | 'yearly'
   if (!event.yearly) return base;
 
   const candidate = new Date(from.getFullYear(), base.getMonth(), base.getDate(), base.getHours(), base.getMinutes());
-  if (candidate.getTime() < from.getTime()) {
+  // Sin hora es de día completo: el día de hoy sigue vigente hasta medianoche
+  // (si no, un cumpleaños de hoy figuraba recién para el año que viene).
+  const limit = event.time ? from : new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  if (candidate.getTime() < limit.getTime()) {
     candidate.setFullYear(candidate.getFullYear() + 1);
   }
   return candidate;
@@ -119,6 +122,23 @@ export function capitalize(text: string): string {
 export function yearsSince(originalIso: string, occurrence: Date): number {
   const original = toLocalDate(originalIso);
   return occurrence.getFullYear() - original.getFullYear();
+}
+
+/**
+ * Años a mostrar en la ocurrencia, según las capacidades del tipo: edad
+ * (cumpleaños) o años transcurridos (aniversario). Null si el tipo no muestra
+ * años, si no se sabe el año o si todavía no se cumplió ninguno.
+ */
+export function yearsToShow(
+  event: Pick<EventItem, 'date' | 'yearUnknown'>,
+  capabilities: readonly Capability[],
+  occurrence: Date,
+): { years: number; kind: 'edad' | 'anios' } | null {
+  if (event.yearUnknown === 1) return null;
+  const kind = capabilities.includes('edad') ? 'edad' : capabilities.includes('anios') ? 'anios' : null;
+  if (!kind) return null;
+  const years = yearsSince(event.date, occurrence);
+  return years > 0 ? { years, kind } : null;
 }
 
 /**

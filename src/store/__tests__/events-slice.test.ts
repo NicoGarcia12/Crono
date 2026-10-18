@@ -38,6 +38,7 @@ const nuevoEvento: NewEvent = {
   isMine: 0,
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
 };
 
 const avisosProgramados = [
@@ -59,6 +60,7 @@ const eventoGuardado: EventItem = {
   reminders: avisosProgramados,
   tags: [],
   photoUri: null,
+  yearUnknown: 0,
 };
 
 beforeEach(() => {

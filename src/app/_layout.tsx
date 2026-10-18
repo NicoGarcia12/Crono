@@ -5,13 +5,16 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
+import { errorMessage } from '@/components/confirm';
 import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { requestNotificationPermission } from '@/notifications/notifications';
 import { store, useAppSelector } from '@/store';
+import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
+import { loadFieldValues } from '@/store/field-values-slice';
 import { loadNotes } from '@/store/notes-slice';
 import { loadSettings } from '@/store/settings-slice';
 import { useTheme } from '@/theme/use-theme';
@@ -58,18 +61,21 @@ export default function RootLayout() {
     async function bootstrap() {
       await initDatabase();
       // Cargar todo lo persistido a Redux antes de renderizar pantallas.
+      // unwrap(): sin él, un thunk que falla no lanza y la app arrancaba vacía sin avisar.
       await Promise.all([
-        store.dispatch(loadSettings()),
-        store.dispatch(loadEventTypes()),
-        store.dispatch(loadEvents()),
-        store.dispatch(loadNotes()),
+        store.dispatch(loadSettings()).unwrap(),
+        store.dispatch(loadEventBases()).unwrap(),
+        store.dispatch(loadEventTypes()).unwrap(),
+        store.dispatch(loadEvents()).unwrap(),
+        store.dispatch(loadFieldValues()).unwrap(),
+        store.dispatch(loadNotes()).unwrap(),
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
       await requestNotificationPermission();
     }
 
     bootstrap()
-      .catch((error: unknown) => setInitError(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setInitError(errorMessage(error)))
       .finally(() => {
         setReady(true);
         SplashScreen.hideAsync();

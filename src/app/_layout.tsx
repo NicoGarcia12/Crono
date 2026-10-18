@@ -6,6 +6,7 @@ import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
 import { errorMessage } from '@/components/confirm';
+import { DialogHost } from '@/components/dialog-host';
 import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
@@ -128,11 +129,13 @@ function Gates() {
   // La barra de estado (hora, batería) necesita íconos claros sobre fondo oscuro.
   const statusBar = <StatusBar style={themeName === 'oscuro' ? 'light' : 'dark'} />;
 
+  // Los diálogos propios (confirm.ts) se muestran desde acá en cualquier etapa.
   if (!unlocked) {
     return (
       <>
         {statusBar}
         <LockScreen onUnlock={() => setUnlocked(true)} />
+        <DialogHost />
       </>
     );
   }
@@ -142,6 +145,7 @@ function Gates() {
       <>
         {statusBar}
         <NameSetup />
+        <DialogHost />
       </>
     );
   }
@@ -169,6 +173,7 @@ function Gates() {
         <Stack.Screen name="regalos/[eventId]" options={{ title: 'Ideas de regalo' }} />
         <Stack.Screen name="tipos-evento" options={{ title: 'Tipos de evento' }} />
       </Stack>
+      <DialogHost />
     </>
   );
 }

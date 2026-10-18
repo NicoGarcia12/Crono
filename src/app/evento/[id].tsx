@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { showError } from '@/components/confirm';
+import { confirmDestructive, showError } from '@/components/confirm';
 import { CountdownBanner } from '@/components/countdown-banner';
 import { EventForm } from '@/components/event-form';
 import { GreetButton } from '@/components/greet-button';
@@ -47,23 +47,17 @@ export default function EditarEventoScreen() {
     router.back();
   };
 
-  const confirmDelete = () => {
-    // Alert nativo con confirmación — borrar es destructivo, siempre se pregunta.
-    Alert.alert('Eliminar evento', `¿Seguro que querés eliminar "${event.title}"?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await dispatch(removeEvent(event)).unwrap();
-            router.back();
-          } catch (error: unknown) {
-            showError('No se pudo eliminar', error);
-          }
-        },
-      },
-    ]);
+  const confirmDelete = async () => {
+    // Borrar es destructivo: siempre se pregunta.
+    if (!(await confirmDestructive('Eliminar evento', `¿Seguro que querés eliminar "${event.title}"?`, 'Eliminar'))) {
+      return;
+    }
+    try {
+      await dispatch(removeEvent(event)).unwrap();
+      router.back();
+    } catch (error: unknown) {
+      showError('No se pudo eliminar', error);
+    }
   };
 
   return (
@@ -72,7 +66,7 @@ export default function EditarEventoScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={confirmDelete} hitSlop={12}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Borrar evento" onPress={() => void confirmDelete()} hitSlop={12}>
               <Ionicons name="trash" size={22} color={colors.danger} />
             </Pressable>
           ),

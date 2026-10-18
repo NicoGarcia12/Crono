@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text } from 'react-native';
+import { notify } from '@/components/confirm';
 import { useTypeCapabilities } from '@/constants/use-event-types';
 import type { EventItem } from '@/types';
 import { canGreet, whatsappUrl } from '@/utils/whatsapp';
@@ -30,7 +31,7 @@ export function GreetButton({ event }: { event: EventItem }) {
     try {
       await Linking.openURL(url);
     } catch {
-      Alert.alert(
+      notify(
         'No se pudo abrir WhatsApp',
         'Revisá que el número esté bien escrito (con código de país) o que tengas WhatsApp instalado.',
       );

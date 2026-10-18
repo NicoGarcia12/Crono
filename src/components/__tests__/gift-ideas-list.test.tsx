@@ -1,6 +1,6 @@
-import { Alert } from 'react-native';
 import { fireEvent, screen } from '@testing-library/react-native';
 
+import { DialogHost } from '@/components/dialog-host';
 import { GiftIdeasList } from '@/components/gift-ideas-list';
 import { renderWithStore } from '@/test-utils';
 import type { GiftIdea } from '@/types';
@@ -61,22 +61,22 @@ describe('<GiftIdeasList />', () => {
   });
 
   it('marca una idea como regalada tras confirmar', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation((_title, _msg, buttons) => {
-      buttons?.find((b) => b.text === 'Ya se lo di')?.onPress?.();
-    });
-    await renderWithStore(<GiftIdeasList {...props} />);
+    await renderWithStore(<><GiftIdeasList {...props} /><DialogHost /></>);
 
     await fireEvent.press(screen.getByLabelText('Marcar "Campera" como regalado'));
+    expect(await screen.findByText('¿Ya se lo diste?')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Ya se lo di' }));
 
     expect(props.onGiven).toHaveBeenCalledWith(items[0]);
   });
 
   it('no saca la idea si se cancela la confirmación', async () => {
-    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
-    await renderWithStore(<GiftIdeasList {...props} />);
+    await renderWithStore(<><GiftIdeasList {...props} /><DialogHost /></>);
 
     await fireEvent.press(screen.getByLabelText('Marcar "Campera" como regalado'));
+    await fireEvent.press(await screen.findByRole('button', { name: 'Cancelar' }));
 
     expect(props.onGiven).not.toHaveBeenCalled();
+    expect(screen.queryByText('¿Ya se lo diste?')).toBeNull();
   });
 });

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { notify } from '@/components/confirm';
 import { MyBirthdayCard } from '@/components/my-birthday-card';
 import { PhotoPicker } from '@/components/photo-picker';
 import { remindersAvailable } from '@/notifications/notifications';
@@ -87,7 +88,7 @@ export default function PerfilScreen() {
     try {
       await dispatch(exportBackup()).unwrap();
     } catch {
-      Alert.alert('No se pudo exportar', 'Intentá de nuevo en un momento.');
+      notify('No se pudo exportar', 'Intentá de nuevo en un momento.');
     }
   };
 
@@ -101,17 +102,17 @@ export default function PerfilScreen() {
         `${summary.notes} ${summary.notes === 1 ? 'nota' : 'notas'}`,
       ];
       const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
-      Alert.alert('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
+      notify('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
     } catch (error) {
       // Un string es un rechazo de parseBackup (archivo inválido). Cualquier otra
       // cosa es una falla al restaurar: se muestra su mensaje en vez de culpar al archivo.
       if (typeof error === 'string') {
-        Alert.alert('No se pudo restaurar', error);
+        notify('No se pudo restaurar', error);
         return;
       }
       console.error('Falló la restauración del backup', error);
       const detail = (error as { message?: string } | null)?.message;
-      Alert.alert('No se pudo restaurar', detail ? `Error al restaurar: ${detail}` : 'Error inesperado al restaurar.');
+      notify('No se pudo restaurar', detail ? `Error al restaurar: ${detail}` : 'Error inesperado al restaurar.');
     }
   };
 

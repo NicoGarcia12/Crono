@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { confirmDestructive } from '@/components/confirm';
 import { NoteForm } from '@/components/note-form';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { editNote, removeNote } from '@/store/notes-slice';
@@ -28,18 +29,12 @@ export default function EditarNotaScreen() {
     router.back();
   };
 
-  const confirmDelete = () => {
-    Alert.alert('Eliminar nota', `¿Seguro que querés eliminar "${note.title}"?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: async () => {
-          await dispatch(removeNote(note.id)).unwrap();
-          router.back();
-        },
-      },
-    ]);
+  const confirmDelete = async () => {
+    if (!(await confirmDestructive('Eliminar nota', `¿Seguro que querés eliminar "${note.title}"?`, 'Eliminar'))) {
+      return;
+    }
+    await dispatch(removeNote(note.id)).unwrap();
+    router.back();
   };
 
   return (
@@ -47,7 +42,7 @@ export default function EditarNotaScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={confirmDelete} hitSlop={12}>
+            <Pressable onPress={() => void confirmDelete()} hitSlop={12}>
               <Ionicons name="trash" size={22} color="#E91E63" />
             </Pressable>
           ),

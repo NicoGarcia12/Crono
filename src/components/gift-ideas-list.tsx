@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { confirmAction } from '@/components/confirm';
 import type { GiftIdea } from '@/types';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -48,11 +49,10 @@ export function GiftIdeasList({ items, onAdd, onEdit, onGiven }: GiftIdeasListPr
     setEditingId(null);
   };
 
-  const confirmGiven = (item: GiftIdea) => {
-    Alert.alert('¿Ya se lo diste?', `"${item.text}" se va a sacar de la lista.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Ya se lo di', onPress: () => onGiven(item) },
-    ]);
+  const confirmGiven = async (item: GiftIdea) => {
+    if (await confirmAction('¿Ya se lo diste?', `"${item.text}" se va a sacar de la lista.`, 'Ya se lo di', 'Cancelar')) {
+      onGiven(item);
+    }
   };
 
   return (
@@ -90,7 +90,7 @@ export function GiftIdeasList({ items, onAdd, onEdit, onGiven }: GiftIdeasListPr
                 <Pressable
                   accessibilityLabel={`Marcar "${item.text}" como regalado`}
                   hitSlop={8}
-                  onPress={() => confirmGiven(item)}
+                  onPress={() => void confirmGiven(item)}
                 >
                   <Ionicons name="gift-outline" size={20} color={colors.primary} />
                 </Pressable>

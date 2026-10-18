@@ -13,9 +13,10 @@ export function useEventTypeMeta(type: EventType): EventTypeMeta {
   );
 }
 
-/** Todos los tipos disponibles, para chips de selección/filtro. */
+/** Los tipos que se pueden elegir (chips de selección/filtro): sin los ocultos, como "Mi cumpleaños". */
 export function useEventTypesList(): EventTypeMeta[] {
-  return useAppSelector((state) => state.eventTypes.items);
+  const items = useAppSelector((state) => state.eventTypes.items);
+  return useMemo(() => items.filter((t) => !t.hidden), [items]);
 }
 
 /** Base del tipo (repetición, hora obligatoria, capacidades), o undefined si no se encuentra. */

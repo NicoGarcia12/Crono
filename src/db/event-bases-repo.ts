@@ -107,6 +107,16 @@ export async function updateEventBase(id: number, data: NewEventBase, plan: Remo
   });
 }
 
+/** Borra una base propia sin tipos (sus campos y valores caen con ella). La UI ya validó que no se use. */
+export async function deleteEventBase(id: number): Promise<void> {
+  const db = getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM event_field_values WHERE field_id IN (SELECT id FROM custom_fields WHERE base_id = ?)', id);
+    await db.runAsync('DELETE FROM custom_fields WHERE base_id = ?', id);
+    await db.runAsync('DELETE FROM event_bases WHERE id = ? AND is_builtin = 0', id);
+  });
+}
+
 interface CustomFieldRow {
   id: number;
   baseId: number | null;

@@ -11,6 +11,7 @@ import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { addEvent, editEvent } from '@/store/events-slice';
 import { saveDisplayName, savePhotoUri, saveThemePreference } from '@/store/settings-slice';
 import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
+import { MY_BIRTHDAY_TYPE_KEY } from '@/types';
 import { useThemeColors } from '@/theme/use-theme';
 
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
@@ -66,7 +67,7 @@ export default function PerfilScreen() {
     await dispatch(
       addEvent({
         title,
-        type: 'cumpleanos',
+        type: MY_BIRTHDAY_TYPE_KEY,
         date: isoDate,
         time: null,
         description: null,
@@ -102,7 +103,15 @@ export default function PerfilScreen() {
       const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
       Alert.alert('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
     } catch (error) {
-      Alert.alert('No se pudo restaurar', typeof error === 'string' ? error : 'El archivo no es válido.');
+      // Un string es un rechazo de parseBackup (archivo inválido). Cualquier otra
+      // cosa es una falla al restaurar: se muestra su mensaje en vez de culpar al archivo.
+      if (typeof error === 'string') {
+        Alert.alert('No se pudo restaurar', error);
+        return;
+      }
+      console.error('Falló la restauración del backup', error);
+      const detail = (error as { message?: string } | null)?.message;
+      Alert.alert('No se pudo restaurar', detail ? `Error al restaurar: ${detail}` : 'Error inesperado al restaurar.');
     }
   };
 

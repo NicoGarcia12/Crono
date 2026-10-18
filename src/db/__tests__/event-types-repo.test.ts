@@ -1,5 +1,11 @@
 import { getDb } from '@/db/database';
-import { createEventType, updateEventType } from '@/db/event-types-repo';
+import {
+  createEventType,
+  deleteEventTypeMovingEvents,
+  deleteEventTypeWithEvents,
+  ensureBuiltinType,
+  updateEventType,
+} from '@/db/event-types-repo';
 import type { NewEventType, RemovalPlan } from '@/types';
 
 jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
@@ -108,5 +114,45 @@ describe('updateEventType', () => {
     expect(sqls).toContainEqual('DELETE FROM custom_fields WHERE id IN (?)');
     const giftDelete = db.statements.find((s) => s.sql.startsWith('DELETE FROM gift_ideas'));
     expect(giftDelete?.params).toEqual(['torneo']);
+  });
+});
+
+describe('borrar un tipo', () => {
+  it('moviendo: primero limpia lo que el destino no admite, después mueve y recién ahí borra', async () => {
+    const db = fakeDb();
+    jest.mocked(getDb).mockReturnValue(db as never);
+
+    await deleteEventTypeMovingEvents(7, 'torneo', 'evento', { capabilities: ['regalos'], fieldIds: [], options: [] });
+
+    const sqls = db.statements.map((s) => s.sql);
+    const gift = sqls.findIndex((s) => s.startsWith('DELETE FROM gift_ideas'));
+    const move = sqls.indexOf('UPDATE events SET type = ? WHERE type = ?');
+    const remove = sqls.indexOf('DELETE FROM event_types WHERE id = ?');
+    expect(gift).toBeGreaterThanOrEqual(0);
+    expect(gift).toBeLessThan(move);
+    expect(move).toBeLessThan(remove);
+    expect(db.statements[move].params).toEqual(['evento', 'torneo']);
+  });
+
+  it('sin mover: borra los eventos del tipo y el tipo', async () => {
+    const db = fakeDb();
+    jest.mocked(getDb).mockReturnValue(db as never);
+
+    await deleteEventTypeWithEvents(7, 'torneo');
+
+    expect(db.statements[0]).toEqual({ sql: 'DELETE FROM events WHERE type = ?', params: ['torneo'] });
+    expect(db.statements.at(-1)).toEqual({ sql: 'DELETE FROM event_types WHERE id = ?', params: [7] });
+  });
+
+  it('un tipo de fábrica borrado se vuelve a crear con su base cuando hace falta', async () => {
+    const db = fakeDb();
+    db.keys.delete('cumpleanos');
+    jest.mocked(getDb).mockReturnValue(db as never);
+
+    expect(await ensureBuiltinType('cumpleanos')).toBe(true);
+    expect(db.statements[0].params).toEqual(['cumpleanos', 'Cumpleaños', 'gift', '#E91E63', 1, 'cumpleanos']);
+
+    db.keys.add('cumpleanos');
+    expect(await ensureBuiltinType('cumpleanos')).toBe(false);
   });
 });

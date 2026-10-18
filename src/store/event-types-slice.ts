@@ -5,8 +5,8 @@ import type { EventTypeMeta } from '@/types';
 
 /**
  * Tipos de evento (los 5 de fábrica + los que cree el usuario). Se cargan una
- * vez al arrancar. Crear y editar viven en store/type-config-thunks.ts, porque
- * además recargan bases, campos y eventos.
+ * vez al arrancar. Crear, editar y borrar viven en store/type-config-thunks.ts,
+ * porque además recargan bases, campos y eventos.
  */
 
 interface EventTypesState {
@@ -18,11 +18,6 @@ const initialState: EventTypesState = { items: [], status: 'idle' };
 
 export const loadEventTypes = createAsyncThunk('eventTypes/load', async () => {
   return eventTypesRepo.findAllEventTypes();
-});
-
-export const removeEventType = createAsyncThunk('eventTypes/remove', async (id: number) => {
-  await eventTypesRepo.deleteEventType(id);
-  return id;
 });
 
 const eventTypesSlice = createSlice({
@@ -40,9 +35,6 @@ const eventTypesSlice = createSlice({
       })
       .addCase(loadEventTypes.rejected, (state) => {
         state.status = 'error';
-      })
-      .addCase(removeEventType.fulfilled, (state, action) => {
-        state.items = state.items.filter((t) => t.id !== action.payload);
       });
   },
 });

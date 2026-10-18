@@ -35,8 +35,8 @@ describe('migración de recordatorios v1 a v2', () => {
     const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
     await initDatabase();
 
-    // v1→v2, v11→v12, v12→v13 y v13→v14 son las migraciones transaccionales.
-    expect(database.withTransactionAsync).toHaveBeenCalledTimes(4);
+    // v1→v2, v11→v12, v12→v13, v13→v14 y v14→v15 son las migraciones transaccionales.
+    expect(database.withTransactionAsync).toHaveBeenCalledTimes(5);
     expect(database.execAsync).toHaveBeenCalledWith('PRAGMA user_version = 2');
   });
 
@@ -72,8 +72,8 @@ describe('migración de recordatorios v1 a v2', () => {
 
     await initDatabase();
 
-    // 1 intento fallido de v2 + reintento de v2 + v12 + v13 + v14.
-    expect(database.withTransactionAsync).toHaveBeenCalledTimes(5);
+    // 1 intento fallido de v2 + reintento de v2 + v12 + v13 + v14 + v15.
+    expect(database.withTransactionAsync).toHaveBeenCalledTimes(6);
     expect(appliedMigrationStatements).toContain('PRAGMA user_version = 2');
   });
 });
@@ -151,6 +151,18 @@ describe('migración de tipos componibles v11 a v12', () => {
     expect(sql).toContain('ALTER TABLE custom_fields ADD COLUMN required INTEGER NOT NULL DEFAULT 0');
     expect(sql).toContain('UPDATE custom_fields SET required = 1 WHERE base_id IS NOT NULL');
     expect(database.applied()).toContain('PRAGMA user_version = 14');
+  });
+
+  it('v15 pasa mi cumpleaños a su propio tipo oculto', async () => {
+    const database = v11Database();
+    const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
+    await initDatabase();
+
+    const sql = database.applied().join('\n');
+    expect(sql).toContain('ALTER TABLE event_types ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+    expect(sql).toMatch(/SELECT 'mi_cumpleanos', 'Mi cumpleaños'[\s\S]*'cumpleanos', '\[\]', 1/);
+    expect(sql).toContain("UPDATE events SET type = 'mi_cumpleanos' WHERE is_mine = 1");
+    expect(database.applied()).toContain('PRAGMA user_version = 15');
   });
 
   it('si falla a mitad de camino no deja nada aplicado y se puede reintentar', async () => {

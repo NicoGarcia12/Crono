@@ -3,10 +3,46 @@ import { render } from '@testing-library/react-native';
 import type { ReactElement, ReactNode } from 'react';
 import { Provider } from 'react-redux';
 
+import { DEFAULT_EVENT_BASES, capabilityLookup, typeCapabilities } from '@/constants/event-bases';
+import type { CustomField, EventItem, EventTypeMeta, FieldValues } from '@/types';
+import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+import eventBasesReducer from '@/store/event-bases-slice';
+import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
+import fieldValuesReducer from '@/store/field-values-slice';
+import giftIdeasReducer from '@/store/gift-ideas-slice';
 import greetingsReducer from '@/store/greetings-slice';
+import greetingsSentReducer from '@/store/greetings-sent-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
+
+/** Mismos 5 tipos que siembra la migración — para que los componentes vean los mismos label/ícono/color que en la app real. */
+const defaultEventTypes: EventTypeMeta[] = Object.entries(DEFAULT_EVENT_TYPES).map(([key, meta], index) => ({
+  id: index + 1,
+  key,
+  ...meta,
+  isBuiltin: true,
+  baseKey: key,
+  extraCapabilities: [],
+  hidden: false,
+}));
+
+/** Mismas 5 bases que siembra la migración v12. */
+const defaultEventBases = Object.entries(DEFAULT_EVENT_BASES).map(([key, base], index) => ({
+  id: index + 1,
+  key,
+  ...base,
+  isBuiltin: true,
+}));
+
+/** "¿El tipo X tiene la capacidad Y?" con los tipos y bases de fábrica, para tests de funciones puras. */
+export const defaultHasCapability = capabilityLookup(defaultEventTypes, defaultEventBases);
+
+/** Capacidades de un tipo de fábrica (ej. 'cumpleanos' → edad, saludado, whatsapp, regalos). */
+export const capabilitiesOf = (typeKey: string) => typeCapabilities(
+  defaultEventTypes.find((t) => t.key === typeKey),
+  defaultEventBases,
+);
 
 /**
  * Helper para tests de componentes.
@@ -15,13 +51,32 @@ import settingsReducer from '@/store/settings-slice';
  * Redux), cualquier componente con estilos necesita el <Provider> para
  * renderizar. Este helper evita repetir ese armado en cada test.
  */
-export function renderWithStore(ui: ReactElement) {
+export function renderWithStore(
+  ui: ReactElement,
+  extra: {
+    fields?: CustomField[];
+    types?: EventTypeMeta[];
+    fieldValues?: Record<number, FieldValues>;
+    events?: EventItem[];
+  } = {},
+) {
   const store = configureStore({
     reducer: {
       events: eventsReducer,
+      eventBases: eventBasesReducer,
+      eventTypes: eventTypesReducer,
+      fieldValues: fieldValuesReducer,
+      giftIdeas: giftIdeasReducer,
       greetings: greetingsReducer,
+      greetingsSent: greetingsSentReducer,
       notes: notesReducer,
       settings: settingsReducer,
+    },
+    preloadedState: {
+      eventBases: { bases: defaultEventBases, fields: extra.fields ?? [], status: 'ready' as const },
+      eventTypes: { items: [...defaultEventTypes, ...(extra.types ?? [])], status: 'ready' as const },
+      fieldValues: { byEvent: extra.fieldValues ?? {}, status: 'ready' as const },
+      events: { items: extra.events ?? [], status: 'ready' as const },
     },
   });
 

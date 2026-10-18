@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { useEventTypeMeta, useTypeCapabilities } from '@/constants/use-event-types';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 import type { EventItem } from '@/types';
-import { formatRelative, nextOccurrence, yearsSince } from '@/utils/dates';
+import { formatRelative, nextOccurrence, yearsToShow } from '@/utils/dates';
 
 /**
  * Tarjeta de un evento en la lista de la agenda.
- * Componente "tonto"/presentacional: recibe todo por props, no toca Redux.
+ * Presentacional en cuanto a props (todo lo del evento llega de afuera); solo
+ * lee de Redux los metadatos del TIPO (label/ícono/color), que son globales.
  */
 interface EventCardProps {
   event: EventItem;
@@ -22,27 +23,37 @@ export function EventCard({ event, occurrence }: EventCardProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const meta = EVENT_TYPE_META[event.type];
+  const meta = useEventTypeMeta(event.type);
+  const capabilities = useTypeCapabilities(event.type);
   const next = occurrence ?? nextOccurrence(event);
-  const years = event.yearly ? yearsSince(event.date, next) : 0;
+  const shown = yearsToShow(event, capabilities, next);
   // El modelo usa 1/0; este texto es una decisión de presentación local a la tarjeta.
   const title = event.isMine === 1 ? 'Mi cumpleaños' : event.title;
 
   return (
     <View style={styles.card}>
-      <View style={[styles.iconCircle, { backgroundColor: `${meta.color}22` }]}>
-        {/* Ionicons tipa `name` con una unión enorme de strings; casteamos desde nuestro meta. */}
-        <Ionicons name={meta.icon as keyof typeof Ionicons.glyphMap} size={22} color={meta.color} />
-      </View>
+      {event.photoUri ? (
+        <Image source={{ uri: event.photoUri }} style={styles.iconCircle} />
+      ) : (
+        <View style={[styles.iconCircle, { backgroundColor: `${meta.color}22` }]}>
+          {/* Ionicons tipa `name` con una unión enorme de strings; casteamos desde nuestro meta. */}
+          <Ionicons name={meta.icon as keyof typeof Ionicons.glyphMap} size={22} color={meta.color} />
+        </View>
+      )}
       <View style={styles.body}>
         <Text style={styles.title} numberOfLines={1}>
           {title}
         </Text>
         <Text style={styles.subtitle} numberOfLines={1}>
           {meta.label}
-          {event.yearly && years > 0 ? ` · ${years} años` : ''}
+          {shown ? ` · ${shown.years} años` : ''}
           {event.time ? ` · ${event.time} h` : ''}
         </Text>
+        {event.tags.length > 0 ? (
+          <Text style={styles.tags} numberOfLines={1}>
+            {event.tags.map((tag) => tag.name).join(' · ')}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.right}>
         <Text style={[styles.when, { color: meta.color }]}>{formatRelative(next)}</Text>
@@ -82,6 +93,7 @@ const makeStyles = (c: ThemeColors) =>
     body: { flex: 1, gap: 2 },
     title: { fontSize: 16, fontWeight: '600', color: c.text },
     subtitle: { fontSize: 13, color: c.textMuted },
+    tags: { fontSize: 11.5, color: c.primary },
     right: { alignItems: 'flex-end', gap: 4 },
     when: { fontSize: 13, fontWeight: '600' },
   });

@@ -8,9 +8,11 @@ import {
   daysUntil,
   formatLongDate,
   formatRelative,
+  isUpcoming,
   nextOccurrence,
   toLocalDate,
   yearsSince,
+  yearsToShow,
 } from '@/utils/dates';
 
 /**
@@ -69,6 +71,19 @@ describe('nextOccurrence', () => {
   it('evento anual de HOY con hora futura: cae hoy', () => {
     const next = nextOccurrence({ date: '1990-07-11', time: '20:00', yearly: 1 }, from);
     expect(dateToIso(next)).toBe('2026-07-11');
+  });
+
+  it('evento anual de HOY sin hora: cae hoy todo el día, no el año que viene', () => {
+    const next = nextOccurrence({ date: '1990-07-11', time: null, yearly: 1 }, from);
+    expect(dateToIso(next)).toBe('2026-07-11');
+    // Hasta el último minuto del día.
+    const late = nextOccurrence({ date: '1990-07-11', time: null, yearly: 1 }, new Date(2026, 6, 11, 23, 59));
+    expect(dateToIso(late)).toBe('2026-07-11');
+  });
+
+  it('evento anual de HOY con hora que ya pasó: rota al año siguiente', () => {
+    const next = nextOccurrence({ date: '1990-07-11', time: '09:00', yearly: 1 }, from);
+    expect(dateToIso(next)).toBe('2027-07-11');
   });
 });
 
@@ -143,6 +158,53 @@ describe('capitalize', () => {
     // El textTransform: 'capitalize' de CSS haría 'Domingo 20 De Diciembre De 2026'.
     expect(capitalize('domingo 20 de diciembre de 2026')).toBe('Domingo 20 de diciembre de 2026');
     expect(capitalize('julio 2026')).toBe('Julio 2026');
+  });
+});
+
+describe('isUpcoming', () => {
+  const from = new Date(2026, 6, 14, 15, 0); // 14 jul 2026 15:00
+
+  it('oculta un evento puntual de un día anterior', () => {
+    expect(isUpcoming({ date: '2026-07-13', time: null, yearly: 0 }, from)).toBe(false);
+  });
+
+  it('conserva un evento puntual sin hora del mismo día, todo el día', () => {
+    expect(isUpcoming({ date: '2026-07-14', time: null, yearly: 0 }, from)).toBe(true);
+  });
+
+  it('oculta un evento puntual de hoy cuya hora ya pasó', () => {
+    expect(isUpcoming({ date: '2026-07-14', time: '14:59', yearly: 0 }, from)).toBe(false);
+  });
+
+  it('conserva un evento puntual de hoy a la hora exacta o más tarde', () => {
+    expect(isUpcoming({ date: '2026-07-14', time: '15:00', yearly: 0 }, from)).toBe(true);
+    expect(isUpcoming({ date: '2026-07-14', time: '18:30', yearly: 0 }, from)).toBe(true);
+  });
+
+  it('conserva eventos puntuales futuros', () => {
+    expect(isUpcoming({ date: '2026-07-15', time: null, yearly: 0 }, from)).toBe(true);
+  });
+
+  it('conserva siempre los eventos anuales, aunque su fecha original sea pasada', () => {
+    expect(isUpcoming({ date: '1996-03-02', time: null, yearly: 1 }, from)).toBe(true);
+  });
+});
+
+describe('yearsToShow', () => {
+  const julio2026 = new Date(2026, 6, 14);
+
+  it('muestra la edad si el tipo tiene edad', () => {
+    expect(yearsToShow({ date: '1996-07-14', yearUnknown: 0 }, ['edad'], julio2026)).toEqual({ years: 30, kind: 'edad' });
+  });
+
+  it('muestra los años transcurridos en una conmemoración', () => {
+    expect(yearsToShow({ date: '1905-04-03', yearUnknown: 0 }, ['anios'], julio2026)).toEqual({ years: 121, kind: 'anios' });
+  });
+
+  it('no muestra nada si no se sabe el año, si el tipo no muestra años o si todavía no pasó ninguno', () => {
+    expect(yearsToShow({ date: '2026-07-14', yearUnknown: 1 }, ['edad'], julio2026)).toBeNull();
+    expect(yearsToShow({ date: '1996-07-14', yearUnknown: 0 }, ['regalos'], julio2026)).toBeNull();
+    expect(yearsToShow({ date: '2026-07-14', yearUnknown: 0 }, ['anios'], julio2026)).toBeNull();
   });
 });
 

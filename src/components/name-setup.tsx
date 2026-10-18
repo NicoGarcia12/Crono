@@ -1,6 +1,5 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput } from 'react-native';
 
 import { useAppDispatch } from '@/store';
 import { saveDisplayName } from '@/store/settings-slice';
@@ -26,7 +25,16 @@ export function NameSetup() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Ionicons name="time" size={64} color={colors.primary} />
+      {/* Logotipo con la palabra "Crono" en vez del ícono de reloj: refuerza la marca ya
+          desde la primera pantalla que ve un usuario nuevo. PNG con canal alfa real (ver
+          docs/identidad-visual.md), así que se apoya sobre el fondo del tema sin recorte. */}
+      <Image
+        source={require('../../assets/images/branding/crono-logotipo.png')}
+        style={styles.logo}
+        resizeMode="contain"
+        accessibilityRole="image"
+        accessibilityLabel="Crono"
+      />
       <Text style={styles.title}>¡Bienvenido a Crono!</Text>
       <Text style={styles.subtitle}>
         Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado
@@ -63,6 +71,7 @@ const makeStyles = (c: ThemeColors) =>
     padding: 32,
     backgroundColor: c.surface,
   },
+  logo: { width: 220, height: 88 },
   title: { fontSize: 26, fontWeight: '700', color: c.text },
   subtitle: { fontSize: 15, color: c.textMuted, textAlign: 'center', lineHeight: 22 },
   input: {

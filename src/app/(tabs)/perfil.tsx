@@ -1,14 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { notify } from '@/components/confirm';
 import { MyBirthdayCard } from '@/components/my-birthday-card';
+import { PhotoPicker } from '@/components/photo-picker';
+import { remindersAvailable } from '@/notifications/notifications';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { addEvent, editEvent } from '@/store/events-slice';
-import { saveDisplayName, saveThemePreference } from '@/store/settings-slice';
+import { saveDisplayName, savePhotoUri, saveThemePreference } from '@/store/settings-slice';
 import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
+import { MY_BIRTHDAY_TYPE_KEY } from '@/types';
 import { useThemeColors } from '@/theme/use-theme';
 
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
@@ -20,6 +24,7 @@ export default function PerfilScreen() {
   const router = useRouter();
   const displayName = useAppSelector((state) => state.settings.displayName);
   const themePreference = useAppSelector((state) => state.settings.themePreference);
+  const photoUri = useAppSelector((state) => state.settings.photoUri);
   const events = useAppSelector((state) => state.events.items);
   const eventCount = events.length;
   const noteCount = useAppSelector((state) => state.notes.items.length);
@@ -47,7 +52,13 @@ export default function PerfilScreen() {
       await dispatch(
         editEvent({
           id: myBirthday.id,
-          data: { ...myBirthday, title, date: isoDate, reminders: myBirthday.reminders },
+          data: {
+            ...myBirthday,
+            title,
+            date: isoDate,
+            reminders: myBirthday.reminders,
+            tags: myBirthday.tags.map((tag) => tag.name),
+          },
           previousReminders: myBirthday.reminders,
         }),
       ).unwrap();
@@ -57,7 +68,7 @@ export default function PerfilScreen() {
     await dispatch(
       addEvent({
         title,
-        type: 'cumpleanos',
+        type: MY_BIRTHDAY_TYPE_KEY,
         date: isoDate,
         time: null,
         description: null,
@@ -66,6 +77,9 @@ export default function PerfilScreen() {
         reminders: [{ amount: 1, unit: 'dias' }],
         yearly: 1,
         isMine: 1,
+        tags: [],
+        photoUri: null,
+        yearUnknown: 0,
       }),
     ).unwrap();
   };
@@ -74,7 +88,7 @@ export default function PerfilScreen() {
     try {
       await dispatch(exportBackup()).unwrap();
     } catch {
-      Alert.alert('No se pudo exportar', 'Intentá de nuevo en un momento.');
+      notify('No se pudo exportar', 'Intentá de nuevo en un momento.');
     }
   };
 
@@ -88,17 +102,29 @@ export default function PerfilScreen() {
         `${summary.notes} ${summary.notes === 1 ? 'nota' : 'notas'}`,
       ];
       const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
-      Alert.alert('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
+      notify('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
     } catch (error) {
-      Alert.alert('No se pudo restaurar', typeof error === 'string' ? error : 'El archivo no es válido.');
+      // Un string es un rechazo de parseBackup (archivo inválido). Cualquier otra
+      // cosa es una falla al restaurar: se muestra su mensaje en vez de culpar al archivo.
+      if (typeof error === 'string') {
+        notify('No se pudo restaurar', error);
+        return;
+      }
+      console.error('Falló la restauración del backup', error);
+      const detail = (error as { message?: string } | null)?.message;
+      notify('No se pudo restaurar', detail ? `Error al restaurar: ${detail}` : 'Error inesperado al restaurar.');
     }
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.avatar}>
-        <Ionicons name="person" size={44} color={colors.primary} />
-      </View>
+      <PhotoPicker
+        uri={photoUri}
+        onChange={(uri) => void dispatch(savePhotoUri(uri))}
+        filePrefix="perfil"
+        accessibilityLabel="Elegir foto de perfil"
+        size={88}
+      />
 
       {editing ? (
         <View style={styles.editRow}>
@@ -156,6 +182,14 @@ export default function PerfilScreen() {
       </Pressable>
 
       <ActionCard
+        icon="pricetags"
+        color={colors.primary}
+        title="Tipos de evento"
+        subtitle="Creá tipos y bases propios, con capacidades y campos extra"
+        onPress={() => router.push('/tipos-evento')}
+      />
+
+      <ActionCard
         icon="cloud-upload"
         color={colors.primary}
         title="Exportar copia de seguridad"
@@ -200,6 +234,13 @@ export default function PerfilScreen() {
         <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
         <InfoRow icon="phone-portrait" text="Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor." />
         <InfoRow icon="notifications" text="Los recordatorios son notificaciones locales: funcionan sin internet, incluso con la app cerrada." />
+        {!remindersAvailable ? (
+          <InfoRow
+            icon="warning"
+            danger
+            text="Estás en Expo Go: los recordatorios no se disparan acá. Instalá la app (APK) para recibirlos completos."
+          />
+        ) : null}
       </View>
     </ScrollView>
   );
@@ -232,14 +273,22 @@ function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) 
   );
 }
 
-function InfoRow({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
+function InfoRow({
+  icon,
+  text,
+  danger,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  danger?: boolean;
+}) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <View style={styles.infoRow}>
-      <Ionicons name={icon} size={20} color={colors.primary} />
-      <Text style={styles.infoText}>{text}</Text>
+      <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.primary} />
+      <Text style={[styles.infoText, danger && { color: colors.danger }]}>{text}</Text>
     </View>
   );
 }
@@ -248,14 +297,6 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { alignItems: 'center', padding: 24, gap: 16 },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: '#208AEF22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { fontSize: 24, fontWeight: '700', color: c.text },
   editRow: { flexDirection: 'row', gap: 8, alignItems: 'center', alignSelf: 'stretch' },

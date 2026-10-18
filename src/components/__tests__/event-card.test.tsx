@@ -16,6 +16,9 @@ const miCumple: EventItem = {
   reminders: [],
   yearly: 1,
   isMine: 1,
+  tags: [],
+  photoUri: null,
+  yearUnknown: 0,
 };
 
 describe('<EventCard />', () => {

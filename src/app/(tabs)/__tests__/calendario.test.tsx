@@ -1,24 +1,48 @@
 import { render, screen } from '@testing-library/react-native';
 
 import CalendarioScreen from '@/app/(tabs)/calendario';
-import type { EventItem } from '@/types';
+import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+import type { EventItem, EventTypeMeta } from '@/types';
 import { todayIso } from '@/utils/dates';
 
 let mockEvents: EventItem[] = [];
+
+// Mismos 5 tipos que siembra la migración, para que CalendarGrid/MonthBirthdaysList resuelvan label/ícono/color.
+const mockEventTypes: EventTypeMeta[] = Object.entries(DEFAULT_EVENT_TYPES).map(([key, meta], index) => ({
+  id: index + 1,
+  key,
+  ...meta,
+  isBuiltin: true,
+  baseKey: key,
+  extraCapabilities: [],
+  hidden: false,
+}));
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn() }),
 }));
 
 // El store se mockea completo: la pantalla lee los eventos y, vía useTheme, el
-// tema elegido — por eso el estado falso incluye las dos ramas.
+// tema elegido — por eso el estado falso incluye esas ramas (+ greetingsSent,
+// que usa la lista de "cumplen este mes", y eventTypes, que usa CalendarGrid).
 jest.mock('@/store', () => ({
   useAppSelector: <T,>(
     selector: (state: {
       events: { items: EventItem[] };
+      eventBases: { bases: never[] };
+      eventTypes: { items: EventTypeMeta[] };
+      greetingsSent: { year: number; items: never[]; status: 'ready' };
       settings: { themePreference: 'sistema' };
     }) => T,
-  ) => selector({ events: { items: mockEvents }, settings: { themePreference: 'sistema' } }),
+  ) =>
+    selector({
+      events: { items: mockEvents },
+      eventBases: { bases: [] },
+      eventTypes: { items: mockEventTypes },
+      greetingsSent: { year: new Date().getFullYear(), items: [], status: 'ready' },
+      settings: { themePreference: 'sistema' },
+    }),
+  useAppDispatch: () => jest.fn(),
 }));
 
 jest.mock('@/components/event-card', () => ({
@@ -35,6 +59,9 @@ const event = (id: number): EventItem => ({
   contactId: null,
   phone: null,
   reminders: [],
+  tags: [],
+  photoUri: null,
+  yearUnknown: 0,
   yearly: 0,
   isMine: 0,
 });

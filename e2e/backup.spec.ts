@@ -44,6 +44,10 @@ test('exporta la agenda y la restaura en un celular vacío', async ({ page, cont
   const fileChooser = await fileChooserPromise;
   await fileChooser.setFiles(rutaBackup);
 
+  // Aviso de Crono con el resumen de lo restaurado; hay que cerrarlo para seguir.
+  await expect(otro.getByText('Se restauraron 1 evento y 0 notas.')).toBeVisible({ timeout: 15000 });
+  await otro.getByRole('button', { name: 'Entendido' }).click();
+
   // El evento vuelve a estar en la agenda (la palabra "agenda" aparece en varios
   // textos de la pantalla, así que apuntamos a la pestaña por su rol).
   await otro.getByRole('tab', { name: /Agenda/ }).click();

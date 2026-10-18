@@ -7,10 +7,146 @@
  * usa estos tipos.
  */
 
-/** Los tipos de ítem que pediste: eventos, cumpleaños, aniversarios, festivos y citas médicas. */
+/**
+ * Claves de los 5 tipos originales (evento, cumpleaños, aniversario, festivo,
+ * cita médica). Siguen existiendo como tipos "de fábrica" (no se pueden
+ * borrar ni renombrar la clave) porque hay lógica de negocio que depende de
+ * ellas: el cumpleaños propio siempre es 'cumpleanos', las ideas de regalo
+ * no aplican a 'festivo'/'cita_medica', etc.
+ */
 export const EVENT_TYPES = ['evento', 'cumpleanos', 'aniversario', 'festivo', 'cita_medica'] as const;
 
-export type EventType = (typeof EVENT_TYPES)[number];
+export type BuiltinEventType = (typeof EVENT_TYPES)[number];
+
+/** Ya no es un enum cerrado: el usuario puede crear sus propios tipos (ver EventTypeMeta). */
+export type EventType = string;
+
+/**
+ * Metadatos de presentación de un tipo de evento (tabla `event_types`).
+ * Los 5 de fábrica vienen sembrados desde la migración; el resto los crea
+ * el usuario desde Perfil.
+ */
+export interface EventTypeMeta {
+  id: number;
+  key: string;
+  label: string;
+  /** Nombre de ícono de Ionicons (https://icons.expo.fyi). */
+  icon: string;
+  color: string;
+  /** Si por defecto se repite cada año al crear un evento de este tipo. */
+  defaultYearly: boolean;
+  /** true en los 5 tipos originales: se puede editar label/icon/color, no la clave ni borrarlo. */
+  isBuiltin: boolean;
+  /** Base de la que sale el tipo (tabla `event_bases`): define repetición, capacidades y campos obligatorios. */
+  baseKey: string;
+  /** Capacidades que el tipo suma a las de su base (siempre vacío en los de fábrica). */
+  extraCapabilities: Capability[];
+  /** Tipo interno que no se ofrece para elegir ni se edita (ej. "Mi cumpleaños"). */
+  hidden: boolean;
+}
+
+/**
+ * Mi cumpleaños no es del tipo "Cumpleaños": tiene cosas que los demás no
+ * (¿Quién me saludó?), así que vive en un tipo propio, oculto y fijo.
+ */
+export const MY_BIRTHDAY_TYPE_KEY = 'mi_cumpleanos';
+
+/**
+ * Lo que se completa en el editor de tipos. En los de fábrica solo se usan
+ * label/ícono/color: su base, extras y campos no se tocan.
+ */
+export interface NewEventType {
+  label: string;
+  icon: string;
+  color: string;
+  baseKey: string;
+  extraCapabilities: Capability[];
+  /** Campos propios del tipo. Los que traen `id` ya existían. */
+  fields: FieldDraft[];
+}
+
+/** Lo que se completa al crear o editar una base propia. */
+export interface NewEventBase {
+  label: string;
+  yearly: boolean;
+  requiresTime: boolean;
+  capabilities: Capability[];
+  /** Campos de la base: los heredan todos los tipos que salen de ella. */
+  fields: FieldDraft[];
+}
+
+/** Un campo en edición: sin `id` si es nuevo. La clase no cambia una vez creado. */
+export interface FieldDraft {
+  id?: number;
+  label: string;
+  kind: FieldKind;
+  options: string[];
+  /** Si hay que completarlo sí o sí al guardar el evento. */
+  required: boolean;
+}
+
+/**
+ * Qué se saca al guardar un tipo o una base, para avisar cuántos datos se
+ * pierden antes de confirmar.
+ */
+export interface RemovalPlan {
+  capabilities: Capability[];
+  fieldIds: number[];
+  /** Opciones quitadas de un select/multi que sigue existiendo. */
+  options: { fieldId: number; removed: string[] }[];
+}
+
+/** Valores de campos personalizados de un evento: id de campo → valor ('multi' guarda una lista JSON). */
+export type FieldValues = Record<number, string>;
+
+/**
+ * Comportamientos que un tipo puede tener. El catálogo es cerrado: son
+ * exactamente los que ya existían atados a tipos de fábrica (ver
+ * constants/event-bases.ts para sus reglas de compatibilidad).
+ */
+export const CAPABILITIES = ['edad', 'anios', 'saludado', 'whatsapp', 'regalos'] as const;
+
+export type Capability = (typeof CAPABILITIES)[number];
+
+/**
+ * Base de un tipo de evento: lo que viene bloqueado. Un tipo hereda todo lo
+ * de su base y solo puede sumarle extras opcionales.
+ */
+export interface EventBase {
+  id: number;
+  key: string;
+  label: string;
+  /** Si los eventos de esta base se repiten todos los años. */
+  yearly: boolean;
+  /** Si la hora es obligatoria (ej. una cita médica). */
+  requiresTime: boolean;
+  capabilities: Capability[];
+  /** true en las 5 bases de fábrica: no se editan ni se borran. */
+  isBuiltin: boolean;
+}
+
+/** Clases de campo personalizado. `multi` = varias opciones tildables. */
+export const FIELD_KINDS = ['texto', 'numero', 'select', 'multi'] as const;
+
+export type FieldKind = (typeof FIELD_KINDS)[number];
+
+/**
+ * Campo personalizado. Si pertenece a una base es obligatorio y bloqueado;
+ * si pertenece a un tipo es un extra y siempre opcional.
+ */
+export interface CustomField {
+  id: number;
+  owner: 'base' | 'type';
+  /** Id de la base o del tipo dueño, según `owner`. */
+  ownerId: number;
+  label: string;
+  kind: FieldKind;
+  /** Opciones de `select`/`multi`; vacío en los demás. */
+  options: string[];
+  position: number;
+  /** Si hay que completarlo sí o sí al guardar el evento (se elige por campo). */
+  required: boolean;
+}
 
 /** Unidades en las que se puede expresar la anticipación de un aviso. */
 export const REMINDER_UNITS = ['minutos', 'horas', 'dias', 'semanas', 'meses'] as const;
@@ -52,6 +188,18 @@ export interface EventItem {
   yearly: 0 | 1;
   /** 1 = este es MI cumpleaños (habilita la lista de quién me saludó). Solo uno puede serlo. */
   isMine: 0 | 1;
+  /** Etiquetas libres (familia, amigos, trabajo...). Un evento puede tener varias. */
+  tags: Tag[];
+  /** Ruta a la foto del evento ya copiada al sandbox de la app (ver src/media/photos.ts). */
+  photoUri: string | null;
+  /** 1 = no se sabe el año (ej. un cumpleaños sin año de nacimiento): no se muestra la edad. */
+  yearUnknown: 0 | 1;
+}
+
+/** Etiqueta libre, reutilizable entre eventos (relación muchos a muchos). */
+export interface Tag {
+  id: number;
+  name: string;
 }
 
 /**
@@ -70,15 +218,22 @@ export interface Greeting {
   greeted: 0 | 1;
 }
 
-/** Datos que completa el usuario al crear un evento: elige las anticipaciones; los ids de notificación los pone la app. */
-export type NewEvent = Omit<EventItem, 'id' | 'reminders'> & { reminders: ReminderInput[] };
+/**
+ * Datos que completa el usuario al crear un evento: elige las anticipaciones
+ * (los ids de notificación los pone la app) y las etiquetas por nombre (se
+ * resuelven o crean en la base al guardar, no hace falta conocer sus ids).
+ */
+export type NewEvent = Omit<EventItem, 'id' | 'reminders' | 'tags'> & {
+  reminders: ReminderInput[];
+  tags: string[];
+};
 
 /**
  * Regla de dominio: el cumpleaños de la persona dueña de la agenda siempre
- * es de tipo cumpleaños y se repite anualmente, incluso fuera del formulario.
+ * es del tipo "Mi cumpleaños" y se repite anualmente, incluso fuera del formulario.
  */
 export function enforceMineBirthday(event: NewEvent): NewEvent {
-  return event.isMine === 1 ? { ...event, type: 'cumpleanos', yearly: 1 } : event;
+  return event.isMine === 1 ? { ...event, type: MY_BIRTHDAY_TYPE_KEY, yearly: 1 } : event;
 }
 
 export interface Note {
@@ -91,3 +246,28 @@ export interface Note {
 }
 
 export type NewNote = Pick<Note, 'title' | 'content'>;
+
+/**
+ * Una idea de regalo anotada para la persona de un evento. Lista libre, sin
+ * checklist: cuando se le da el regalo, la idea se saca (no queda historial).
+ */
+export interface GiftIdea {
+  id: number;
+  eventId: number;
+  text: string;
+  createdAt: string;
+}
+
+export type NewGiftIdea = Pick<GiftIdea, 'eventId' | 'text'>;
+
+/**
+ * Marca de "ya lo saludé" para un cumpleaños/aniversario ajeno, año por año
+ * (mismo patrón no destructivo que `Greeting`: al pasar de año se crea una
+ * fila nueva, nunca se borran las anteriores).
+ */
+export interface GreetingSent {
+  id: number;
+  year: number;
+  eventId: number;
+  greeted: 0 | 1;
+}

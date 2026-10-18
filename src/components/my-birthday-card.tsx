@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DateField } from '@/components/date-time-field';
 import type { ThemeColors } from '@/theme/theme';
@@ -32,12 +32,14 @@ export function MyBirthdayCard({ event, onSave, onOpenGreetings }: MyBirthdayCar
   const [editing, setEditing] = useState(false);
   const [date, setDate] = useState(event?.date ?? todayIso());
 
-  useEffect(() => {
-    // Si el padre persiste el cumpleaños y luego re-renderiza con el evento
-    // definitivo, sincronizamos la fecha local para que el próximo "Editar"
-    // abra con el valor guardado y no con uno viejo en memoria.
-    if (event?.date) setDate(event.date);
-  }, [event?.date]);
+  // Si el padre persiste el cumpleaños y luego re-renderiza con el evento
+  // definitivo, sincronizamos la fecha local (ajuste en render, no en efecto:
+  // así el próximo "Editar" abre con el valor guardado y no uno viejo).
+  const [syncedDate, setSyncedDate] = useState(event?.date);
+  if (event?.date && event.date !== syncedDate) {
+    setSyncedDate(event.date);
+    setDate(event.date);
+  }
 
   const save = async () => {
     await onSave(date);
@@ -49,9 +51,13 @@ export function MyBirthdayCard({ event, onSave, onOpenGreetings }: MyBirthdayCar
   return (
     <View style={styles.card}>
       <View style={styles.header}>
-        <View style={styles.icon}>
-          <Ionicons name="gift" size={20} color={colors.danger} />
-        </View>
+        {event?.photoUri ? (
+          <Image source={{ uri: event.photoUri }} style={styles.icon} />
+        ) : (
+          <View style={styles.icon}>
+            <Ionicons name="gift" size={20} color={colors.danger} />
+          </View>
+        )}
         <View style={styles.headerBody}>
           <Text style={styles.title}>Mi cumpleaños</Text>
           <Text style={styles.subtitle}>

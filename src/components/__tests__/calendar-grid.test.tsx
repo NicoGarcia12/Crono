@@ -16,6 +16,9 @@ const event = (overrides: Partial<EventItem> & { id: number }): EventItem => ({
   reminders: [],
   yearly: 0,
   isMine: 0,
+  tags: [],
+  photoUri: null,
+  yearUnknown: 0,
   ...overrides,
 });
 

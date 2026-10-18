@@ -2,11 +2,13 @@ import {
   buildMonthGrid,
   buildWeek,
   eventsByDay,
+  greetableInMonth,
   periodLabel,
   shiftMonth,
   shiftWeek,
   startOfWeek,
 } from '@/utils/calendar';
+import { defaultHasCapability } from '@/test-utils';
 import { dateToIso } from '@/utils/dates';
 import type { EventItem } from '@/types';
 
@@ -21,6 +23,9 @@ const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
   reminders: [],
   yearly: 0,
   isMine: 0,
+  tags: [],
+  photoUri: null,
+  yearUnknown: 0,
   ...over,
 });
 
@@ -138,6 +143,43 @@ describe('eventsByDay', () => {
     const dos = evento({ id: 6, type: 'cita_medica', date: '2026-07-20' });
 
     expect(eventsByDay([uno, dos], days).get('2026-07-20')).toEqual([uno, dos]);
+  });
+});
+
+describe('greetableInMonth', () => {
+  const julio2026 = new Date(2026, 6, 1);
+
+  it('incluye un cumpleaños anual que cae en el mes, sin importar el año guardado', () => {
+    const mama = evento({ id: 1, type: 'cumpleanos', date: '1965-07-20', yearly: 1 });
+
+    expect(greetableInMonth([mama], julio2026, defaultHasCapability)).toEqual([mama]);
+  });
+
+  it('excluye mi propio cumpleaños (isMine)', () => {
+    const mio = evento({ id: 2, type: 'cumpleanos', date: '1990-07-05', yearly: 1, isMine: 1 });
+
+    expect(greetableInMonth([mio], julio2026, defaultHasCapability)).toEqual([]);
+  });
+
+  it('excluye los tipos sin "¿ya lo saludé?", incluidos los aniversarios (son conmemoraciones)', () => {
+    const cita = evento({ id: 3, type: 'cita_medica', date: '2026-07-10' });
+    const boca = evento({ id: 8, type: 'aniversario', date: '1905-07-03', yearly: 1 });
+
+    expect(greetableInMonth([cita, boca], julio2026, defaultHasCapability)).toEqual([]);
+  });
+
+  it('un evento viejo que quedó puntual solo aparece en el año exacto', () => {
+    const cumple2026 = evento({ id: 4, type: 'cumpleanos', date: '2026-07-08', yearly: 0 });
+    const cumple2025 = evento({ id: 5, type: 'cumpleanos', date: '2025-07-08', yearly: 0 });
+
+    expect(greetableInMonth([cumple2026, cumple2025], julio2026, defaultHasCapability)).toEqual([cumple2026]);
+  });
+
+  it('ordena por día del mes', () => {
+    const dia20 = evento({ id: 6, type: 'cumpleanos', date: '1980-07-20', yearly: 1 });
+    const dia5 = evento({ id: 7, type: 'cumpleanos', date: '1980-07-05', yearly: 1 });
+
+    expect(greetableInMonth([dia20, dia5], julio2026, defaultHasCapability)).toEqual([dia5, dia20]);
   });
 });
 

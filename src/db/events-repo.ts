@@ -1,4 +1,5 @@
 import { getDb } from '@/db/database';
+import * as tagsRepo from '@/db/tags-repo';
 import type * as SQLite from 'expo-sqlite';
 import type {
   EventItem,
@@ -7,6 +8,7 @@ import type {
   NewEvent,
   ReminderInput,
   ReminderUnit,
+  Tag,
 } from '@/types';
 import { enforceMineBirthday } from '@/types';
 
@@ -23,6 +25,8 @@ interface EventRow {
   phone: string | null;
   yearly: 0 | 1;
   isMine: 0 | 1;
+  photoUri: string | null;
+  yearUnknown: 0 | 1;
 }
 
 interface ReminderRow {
@@ -33,7 +37,7 @@ interface ReminderRow {
 }
 
 /** Une los eventos con sus recordatorios (pura, testeable sin BD). */
-export function attachReminders(events: EventRow[], reminders: ReminderRow[]): EventItem[] {
+export function attachReminders(events: EventRow[], reminders: ReminderRow[]): (EventRow & { reminders: EventReminder[] })[] {
   const byEvent = new Map<number, EventReminder[]>();
   for (const reminder of reminders) {
     const list = byEvent.get(reminder.eventId) ?? [];
@@ -43,17 +47,38 @@ export function attachReminders(events: EventRow[], reminders: ReminderRow[]): E
   return events.map((event) => ({ ...event, reminders: byEvent.get(event.id) ?? [] }));
 }
 
+interface EventTagRow {
+  eventId: number;
+  id: number;
+  name: string;
+}
+
+/** Une los eventos con sus etiquetas (pura, testeable sin BD). */
+export function attachTags<T extends { id: number }>(events: T[], tagRows: EventTagRow[]): (T & { tags: Tag[] })[] {
+  const byEvent = new Map<number, Tag[]>();
+  for (const row of tagRows) {
+    const list = byEvent.get(row.eventId) ?? [];
+    list.push({ id: row.id, name: row.name });
+    byEvent.set(row.eventId, list);
+  }
+  return events.map((event) => ({ ...event, tags: byEvent.get(event.id) ?? [] }));
+}
+
 export async function findAllEvents(): Promise<EventItem[]> {
   const db = getDb();
   const events = await db.getAllAsync<EventRow>(
     `SELECT id, title, type, date, time, description, yearly,
-            contact_id AS contactId, phone, is_mine AS isMine
+            contact_id AS contactId, phone, is_mine AS isMine, photo_uri AS photoUri,
+            year_unknown AS yearUnknown
      FROM events ORDER BY date ASC`,
   );
   const reminders = await db.getAllAsync<ReminderRow>(
     'SELECT event_id AS eventId, amount, unit, notification_id AS notificationId FROM reminders',
   );
-  return attachReminders(events, reminders);
+  const tagRows = await db.getAllAsync<EventTagRow>(
+    `SELECT et.event_id AS eventId, t.id, t.name FROM event_tags et JOIN tags t ON t.id = et.tag_id`,
+  );
+  return attachTags(attachReminders(events, reminders), tagRows);
 }
 
 export async function insertEvent(data: NewEvent, reminders: EventReminder[]): Promise<EventItem> {
@@ -103,8 +128,8 @@ export async function insertContactBirthdays(
       if (existing) continue;
 
       const result = await transaction.runAsync(
-        `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, year_unknown)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         event.title,
         event.type,
         event.date,
@@ -113,6 +138,7 @@ export async function insertContactBirthdays(
         event.yearly,
         event.contactId,
         event.phone,
+        event.yearUnknown,
       );
       // Antes de persistir, un reminder elegido en UI se completa con `null`:
       // después el scheduler puede guardar un id nativo, pero web no tiene uno.
@@ -122,29 +148,34 @@ export async function insertContactBirthdays(
       }));
       await insertRemindersWithExecutor(transaction, result.lastInsertRowId, reminders);
 
-      const { reminders: _chosen, ...eventWithoutReminders } = event;
-      inserted.push({ ...eventWithoutReminders, id: result.lastInsertRowId, reminders });
+      // Los cumpleaños importados no traen etiquetas: se agregan después, a mano.
+      const { reminders: _chosen, tags: _chosenTags, ...eventWithoutReminders } = event;
+      inserted.push({ ...eventWithoutReminders, id: result.lastInsertRowId, reminders, tags: [] });
     }
   });
 
   return inserted;
 }
 
-export async function updateEvent(event: EventItem): Promise<void> {
+/**
+ * Igual que `insertEvent`, pero para un evento existente: `data` son los
+ * campos del formulario (etiquetas por nombre) y `reminders` los avisos ya
+ * reprogramados en el SO. Devuelve el evento persistido, con las etiquetas
+ * resueltas a sus filas reales — el llamador no arma el resultado a mano.
+ */
+export async function updateEvent(
+  id: number,
+  data: NewEvent,
+  reminders: EventReminder[],
+): Promise<EventItem> {
   const db = getDb();
-  // El helper acepta la forma de creación; al editar preservamos los campos
-  // propios de persistencia (id y notificationId de cada recordatorio).
-  const enforced = enforceMineBirthday(event);
-  const normalized: EventItem = { ...event, type: enforced.type, yearly: enforced.yearly };
-  if (normalized.isMine === 0) {
-    await writeEvent(db, normalized, normalized.reminders, normalized.id);
-    return;
-  }
+  const enforced = enforceMineBirthday(data);
+  if (enforced.isMine === 0) return writeEvent(db, enforced, reminders, id);
 
-  await clearMine(db, normalized.id);
-  await serializeMineWrite(async () => {
-    await clearMine(db, normalized.id);
-    await writeEvent(db, normalized, normalized.reminders, normalized.id);
+  await clearMine(db, id);
+  return serializeMineWrite(async () => {
+    await clearMine(db, id);
+    return writeEvent(db, enforced, reminders, id);
   });
 }
 
@@ -169,25 +200,27 @@ async function writeEvent(
     await db.runAsync(
       `UPDATE events
        SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
-           contact_id = ?, phone = ?, is_mine = ?
+           contact_id = ?, phone = ?, is_mine = ?, photo_uri = ?, year_unknown = ?
        WHERE id = ?`,
       data.title, data.type, data.date, data.time, data.description, data.yearly,
-      data.contactId, data.phone, data.isMine, existingId,
+      data.contactId, data.phone, data.isMine, data.photoUri, data.yearUnknown, existingId,
     );
     await db.runAsync('DELETE FROM reminders WHERE event_id = ?', existingId);
     await insertReminders(db, existingId, reminders);
-    return { ...data, id: existingId, reminders };
+    const tags = await tagsRepo.setEventTags(db, existingId, data.tags);
+    return { ...data, id: existingId, reminders, tags };
   }
 
   const result: SQLite.SQLiteRunResult = await db.runAsync(
-    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, is_mine, photo_uri, year_unknown)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     data.title, data.type, data.date, data.time, data.description, data.yearly,
-    data.contactId, data.phone, data.isMine,
+    data.contactId, data.phone, data.isMine, data.photoUri, data.yearUnknown,
   );
   await insertReminders(db, result.lastInsertRowId, reminders);
-  const { reminders: _chosen, ...event } = data;
-  return { ...event, id: result.lastInsertRowId, reminders };
+  const tags = await tagsRepo.setEventTags(db, result.lastInsertRowId, data.tags);
+  const { reminders: _chosen, tags: _chosenTags, ...event } = data;
+  return { ...event, id: result.lastInsertRowId, reminders, tags };
 }
 
 export async function deleteEvent(id: number): Promise<void> {

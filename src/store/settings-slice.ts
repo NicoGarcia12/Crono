@@ -8,6 +8,8 @@ import { THEME_PREFERENCES, type ThemePreference } from '@/theme/theme';
 interface SettingsState {
   displayName: string | null;
   themePreference: ThemePreference;
+  /** Foto de perfil del usuario, ya copiada al sandbox de la app (o null si no cargó ninguna). */
+  photoUri: string | null;
   /** true cuando ya se leyó la BD (para saber si mostrar la pantalla de bienvenida). */
   loaded: boolean;
 }
@@ -15,13 +17,15 @@ interface SettingsState {
 const initialState: SettingsState = {
   displayName: null,
   themePreference: 'sistema',
+  photoUri: null,
   loaded: false,
 };
 
 export const loadSettings = createAsyncThunk('settings/load', async () => {
-  const [displayName, theme] = await Promise.all([
+  const [displayName, theme, photoUri] = await Promise.all([
     settingsRepo.getSetting('displayName'),
     settingsRepo.getSetting('themePreference'),
+    settingsRepo.getSetting('photoUri'),
   ]);
 
   // El valor guardado puede ser cualquier cosa (BD vieja, backup raro): se valida.
@@ -29,7 +33,12 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
     ? (theme as ThemePreference)
     : 'sistema';
 
-  return { displayName, themePreference };
+  return { displayName, themePreference, photoUri: photoUri || null };
+});
+
+export const savePhotoUri = createAsyncThunk('settings/savePhotoUri', async (uri: string | null) => {
+  await settingsRepo.setSetting('photoUri', uri ?? '');
+  return uri;
 });
 
 export const saveThemePreference = createAsyncThunk(
@@ -55,6 +64,7 @@ const settingsSlice = createSlice({
       .addCase(loadSettings.fulfilled, (state, action) => {
         state.displayName = action.payload.displayName;
         state.themePreference = action.payload.themePreference;
+        state.photoUri = action.payload.photoUri;
         state.loaded = true;
       })
       .addCase(saveDisplayName.fulfilled, (state, action) => {
@@ -62,6 +72,9 @@ const settingsSlice = createSlice({
       })
       .addCase(saveThemePreference.fulfilled, (state, action) => {
         state.themePreference = action.payload;
+      })
+      .addCase(savePhotoUri.fulfilled, (state, action) => {
+        state.photoUri = action.payload;
       });
   },
 });

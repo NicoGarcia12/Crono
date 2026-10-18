@@ -1,6 +1,10 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
 
+import { DEFAULT_EVENT_BASES } from '@/constants/event-bases';
+import { DEFAULT_EVENT_TYPES, MY_BIRTHDAY_TYPE } from '@/constants/event-types';
+import { MY_BIRTHDAY_TYPE_KEY, type Capability } from '@/types';
+
 /**
  * Capa de base de datos local (SQLite).
  *
@@ -13,26 +17,37 @@ import { Platform } from 'react-native';
  */
 
 let db: SQLite.SQLiteDatabase | null = null;
+let initPromise: Promise<void> | null = null;
 
 /** Versión actual del esquema. Al agregar tablas/columnas, subir el número y agregar una migración. */
-const DATABASE_VERSION = 6;
+const DATABASE_VERSION = 15;
 
-export async function initDatabase(): Promise<void> {
-  if (db) return; // ya inicializada
-  try {
-    const database = await SQLite.openDatabaseAsync('crono.db');
-    // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
-    // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
-    await database.execAsync('PRAGMA foreign_keys = ON');
-    await migrate(database);
-    // El singleton se publica únicamente después de una migración confirmada.
-    db = database;
-  } catch (error) {
-    // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
-    // siguiente initDatabase() retorna temprano en vez de reintentar.
-    db = null;
-    throw error;
+export function initDatabase(): Promise<void> {
+  if (db) return Promise.resolve(); // ya inicializada
+  // React StrictMode (y el doble-mount del root layout en web) puede llamar
+  // initDatabase() dos veces en paralelo; sin esta memoización ambas abren
+  // 'crono.db' a la vez y la segunda falla (OPFS solo permite un writer).
+  if (!initPromise) {
+    initPromise = (async () => {
+      try {
+        const database = await SQLite.openDatabaseAsync('crono.db');
+        // SQLite trae las foreign keys APAGADAS por compatibilidad histórica;
+        // se activan por conexión para que funcione el ON DELETE CASCADE de reminders.
+        await database.execAsync('PRAGMA foreign_keys = ON');
+        await migrate(database);
+        // El singleton se publica únicamente después de una migración confirmada.
+        db = database;
+      } catch (error) {
+        // Sin este reset, un fallo deja una conexión a medio migrar cacheada y el
+        // siguiente initDatabase() retorna temprano en vez de reintentar.
+        db = null;
+        throw error;
+      } finally {
+        initPromise = null;
+      }
+    })();
   }
+  return initPromise;
 }
 
 /** Acceso a la conexión. Falla rápido si alguien la usa antes de initDatabase(). */
@@ -189,13 +204,252 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 6;
   }
 
+  if (currentVersion === 6) {
+    // v7: ideas de regalo por persona. Lista libre de texto ligada al evento
+    // que representa a esa persona (cumpleaños, aniversario, etc.); al
+    // regalarse algo la fila se borra, no se archiva.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS gift_ideas (
+        id INTEGER PRIMARY KEY NOT NULL,
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+    currentVersion = 7;
+  }
+
+  if (currentVersion === 7) {
+    // v8: marca de "ya lo saludé" para cumpleaños/aniversarios ajenos, año
+    // por año — mismo patrón no destructivo que `greetings` (clave año +
+    // evento), pero en tabla propia porque es la dirección opuesta: acá
+    // registro que YO saludé, no que me saludaron a mí.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS greetings_sent (
+        id INTEGER PRIMARY KEY NOT NULL,
+        year INTEGER NOT NULL,
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        greeted INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(year, event_id)
+      );
+    `);
+    currentVersion = 8;
+  }
+
+  if (currentVersion === 8) {
+    // v9: etiquetas libres (familia, amigos, trabajo...), muchos a muchos con
+    // eventos. `tags.name` es única para no duplicar "familia"/"Familia" con
+    // mayúsculas distintas por typo; se normaliza antes de insertar.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL UNIQUE
+      );
+
+      CREATE TABLE IF NOT EXISTS event_tags (
+        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+        tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (event_id, tag_id)
+      );
+    `);
+    currentVersion = 9;
+  }
+
+  if (currentVersion === 9) {
+    // v10: foto opcional por evento (sobre todo cumpleaños/aniversarios). Se
+    // guarda la ruta ya copiada al sandbox de la app (ver src/media/photos.ts),
+    // nunca la URI temporal que devuelve el selector de imágenes.
+    await addColumnIfMissing(database, 'photo_uri', 'TEXT');
+    currentVersion = 10;
+  }
+
+  if (currentVersion === 10) {
+    // v11: tipos de evento personalizables. Los 5 originales pasan de un enum
+    // fijo a filas sembradas acá (is_builtin = 1): se puede editar su label/
+    // ícono/color desde Perfil, pero no borrarlos ni cambiar su `key`, porque
+    // hay lógica de negocio atada a esas claves literales (cumpleanos propio,
+    // ideas de regalo, etc.). `events.type` sigue siendo TEXT: ahora referencia
+    // `event_types.key` en vez de un valor de un enum cerrado.
+    await database.execAsync(`
+      CREATE TABLE IF NOT EXISTS event_types (
+        id INTEGER PRIMARY KEY NOT NULL,
+        key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        color TEXT NOT NULL,
+        default_yearly INTEGER NOT NULL DEFAULT 0,
+        is_builtin INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+    for (const [key, meta] of Object.entries(DEFAULT_EVENT_TYPES)) {
+      // Todos los valores son constantes propias (no hay input de usuario acá),
+      // así que van embebidos como el resto de las migraciones de este archivo.
+      await database.execAsync(`
+        INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin)
+        SELECT '${key}', '${sqlEscape(meta.label)}', '${meta.icon}', '${meta.color}', ${meta.defaultYearly ? 1 : 0}, 1
+        WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${key}');
+      `);
+    }
+    currentVersion = 11;
+  }
+
+  if (currentVersion === 11) {
+    // v12: tipos componibles. Cada tipo pasa a salir de una BASE (repetición,
+    // capacidades y campos obligatorios, bloqueados) y puede sumar extras
+    // opcionales. Los 5 tipos de fábrica apuntan a la base de su misma clave.
+    // Es una sola transacción: si algo falla, el próximo arranque reintenta
+    // desde v11 sin un esquema a medio crear.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        CREATE TABLE IF NOT EXISTS event_bases (
+          id INTEGER PRIMARY KEY NOT NULL,
+          key TEXT NOT NULL UNIQUE,
+          label TEXT NOT NULL,
+          yearly INTEGER NOT NULL DEFAULT 0,
+          requires_time INTEGER NOT NULL DEFAULT 0,
+          -- Lista JSON de capacidades (ver CAPABILITIES en src/types.ts).
+          capabilities TEXT NOT NULL DEFAULT '[]',
+          is_builtin INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+      for (const [key, base] of Object.entries(DEFAULT_EVENT_BASES)) {
+        await database.execAsync(`
+          INSERT INTO event_bases (key, label, yearly, requires_time, capabilities, is_builtin)
+          SELECT '${key}', '${sqlEscape(base.label)}', ${base.yearly ? 1 : 0}, ${base.requiresTime ? 1 : 0},
+                 '${JSON.stringify(base.capabilities)}', 1
+          WHERE NOT EXISTS (SELECT 1 FROM event_bases WHERE key = '${key}');
+        `);
+      }
+      await database.execAsync(`
+        ALTER TABLE event_types ADD COLUMN base_key TEXT NOT NULL DEFAULT 'evento';
+        ALTER TABLE event_types ADD COLUMN extra_capabilities TEXT NOT NULL DEFAULT '[]';
+
+        -- Los de fábrica salen de la base homónima.
+        UPDATE event_types SET base_key = key WHERE is_builtin = 1;
+
+        -- Los tipos que el usuario ya había creado conservan lo que hacían:
+        -- repetición según su default y las ideas de regalo, que antes tenían todos.
+        UPDATE event_types
+        SET base_key = CASE WHEN default_yearly = 1 THEN 'festivo' ELSE 'evento' END,
+            extra_capabilities = '["regalos"]'
+        WHERE is_builtin = 0;
+
+        -- Un campo es de una base o de un tipo, nunca de los dos.
+        CREATE TABLE IF NOT EXISTS custom_fields (
+          id INTEGER PRIMARY KEY NOT NULL,
+          base_id INTEGER REFERENCES event_bases(id) ON DELETE CASCADE,
+          type_id INTEGER REFERENCES event_types(id) ON DELETE CASCADE,
+          label TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          -- Lista JSON de opciones para 'select' y 'multi'.
+          options TEXT NOT NULL DEFAULT '[]',
+          position INTEGER NOT NULL DEFAULT 0,
+          CHECK ((base_id IS NULL) <> (type_id IS NULL))
+        );
+
+        -- Valor de cada campo en cada evento ('multi' guarda una lista JSON).
+        CREATE TABLE IF NOT EXISTS event_field_values (
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          field_id INTEGER NOT NULL REFERENCES custom_fields(id) ON DELETE CASCADE,
+          value TEXT NOT NULL,
+          PRIMARY KEY (event_id, field_id)
+        );
+      `);
+      await database.execAsync('PRAGMA user_version = 12');
+    });
+    currentVersion = 12;
+  }
+
+  if (currentVersion === 12) {
+    // v13: la lógica pasa a depender de las capacidades del tipo. Los datos de
+    // una capacidad que el tipo ya no tiene se borran (ej. el teléfono y los
+    // "ya lo saludé" de los aniversarios, que ahora son conmemoraciones, o las
+    // ideas de regalo del tipo Evento). También se agrega "año desconocido".
+    await database.withTransactionAsync(async () => {
+      await addColumnIfMissing(database, 'year_unknown', 'INTEGER NOT NULL DEFAULT 0');
+      await database.execAsync(`
+        DELETE FROM gift_ideas WHERE event_id IN (${eventsWithoutCapability('regalos')});
+        DELETE FROM greetings_sent WHERE event_id IN (${eventsWithoutCapability('saludado')});
+        UPDATE events SET phone = NULL WHERE id IN (${eventsWithoutCapability('whatsapp')});
+      `);
+      await database.execAsync('PRAGMA user_version = 13');
+    });
+    currentVersion = 13;
+  }
+
+  if (currentVersion === 13) {
+    // v14: la obligatoriedad pasa a ser de cada campo. Los existentes conservan
+    // lo que hacían: los de una base eran obligatorios y los de un tipo, opcionales.
+    await database.withTransactionAsync(async () => {
+      await database.execAsync(`
+        ALTER TABLE custom_fields ADD COLUMN required INTEGER NOT NULL DEFAULT 0;
+        UPDATE custom_fields SET required = 1 WHERE base_id IS NOT NULL;
+      `);
+      await database.execAsync('PRAGMA user_version = 14');
+    });
+    currentVersion = 14;
+  }
+
+  if (currentVersion === 14) {
+    // v15: mi cumpleaños sale del tipo "Cumpleaños" a un tipo propio, oculto
+    // y fijo (tiene cosas que los demás no, como "¿Quién me saludó?"). Así
+    // "Cumpleaños" se puede borrar sin arrastrar mi cumpleaños.
+    await database.withTransactionAsync(async () => {
+      await addTypeColumnIfMissing(database, 'hidden', 'INTEGER NOT NULL DEFAULT 0');
+      await database.execAsync(`
+        INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities, hidden)
+        SELECT '${MY_BIRTHDAY_TYPE_KEY}', '${sqlEscape(MY_BIRTHDAY_TYPE.label)}', '${MY_BIRTHDAY_TYPE.icon}',
+               '${MY_BIRTHDAY_TYPE.color}', 1, 1, 'cumpleanos', '[]', 1
+        WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${MY_BIRTHDAY_TYPE_KEY}');
+
+        UPDATE events SET type = '${MY_BIRTHDAY_TYPE_KEY}' WHERE is_mine = 1;
+      `);
+      await database.execAsync('PRAGMA user_version = 15');
+    });
+    currentVersion = 15;
+  }
+
   await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/**
+ * Subconsulta con los ids de eventos cuyo tipo NO tiene la capacidad, ni por
+ * su base ni como extra. Las capacidades se guardan como lista JSON, así que
+ * alcanza con buscar la clave entre comillas.
+ */
+function eventsWithoutCapability(capability: Capability): string {
+  const needle = `'"${capability}"'`;
+  return `
+    SELECT e.id FROM events e
+    JOIN event_types t ON t.key = e.type
+    JOIN event_bases b ON b.key = t.base_key
+    WHERE instr(b.capabilities, ${needle}) = 0 AND instr(t.extra_capabilities, ${needle}) = 0
+  `;
+}
+
+/** Igual que addColumnIfMissing, para `event_types` (reanudable si se cortó a mitad). */
+async function addTypeColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  columnName: 'hidden',
+  definition: 'INTEGER NOT NULL DEFAULT 0',
+): Promise<void> {
+  try {
+    await database.execAsync(`ALTER TABLE event_types ADD COLUMN ${columnName} ${definition}`);
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) return;
+    throw error;
+  }
+}
+
+/** Escapa comillas simples para embeber texto en SQL crudo (sql = ''valor''). */
+function sqlEscape(value: string): string {
+  return value.replace(/'/g, "''");
 }
 
 async function addColumnIfMissing(
   database: SQLite.SQLiteDatabase,
-  columnName: 'contact_id' | 'phone',
-  definition: 'TEXT',
+  columnName: 'contact_id' | 'phone' | 'photo_uri' | 'year_unknown',
+  definition: 'TEXT' | 'INTEGER NOT NULL DEFAULT 0',
 ): Promise<void> {
   try {
     await database.execAsync(`ALTER TABLE events ADD COLUMN ${columnName} ${definition}`);

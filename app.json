@@ -8,12 +8,12 @@
     "scheme": "crono",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/ios-icon.png"
     },
     "android": {
       "package": "com.nicogarcia12.crono",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#050816",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -28,7 +28,7 @@
       ]
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -36,9 +36,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#F7FAFE",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 140,
+          "dark": {
+            "backgroundColor": "#050816",
+            "image": "./assets/images/splash-icon-dark.png"
+          }
         }
       ],
       "expo-sqlite",
@@ -56,7 +60,17 @@
         {
           "contactsPermission": "Crono accede a tus contactos solo para importar cumpleaños."
         }
-      ]
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Crono accede a tus fotos solo para elegir la que quieras usar.",
+          "cameraPermission": "Crono usa la cámara solo si elegís sacar una foto nueva."
+        }
+      ],
+      "expo-font",
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true,

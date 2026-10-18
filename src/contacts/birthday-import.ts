@@ -3,6 +3,8 @@ import { Platform } from 'react-native';
 
 import type { EventItem, NewEvent } from '@/types';
 
+import { fetchAllowedContactIds } from './account-filter';
+
 /**
  * Cargar cumpleaños desde la agenda de contactos del celular.
  *
@@ -37,7 +39,7 @@ export interface ContactCandidate {
   loaded: LoadedBirthday | null;
 }
 
-/** Lo mínimo que necesitamos de un contacto (shape de expo-contacts). */
+/** Lo mínimo que necesitamos de un contacto. */
 export interface ContactLike {
   id?: string;
   name?: string;
@@ -45,17 +47,42 @@ export interface ContactLike {
   birthday?: { day?: number; month?: number; year?: number };
 }
 
+/** Lo que devuelve `Contact.getAllDetails` (API nueva de expo-contacts) para los campos que pedimos. */
+export interface ContactDetailsLike {
+  id: string;
+  fullName?: string | null;
+  phones?: { number?: string }[] | null;
+  birthday?: { day?: number; month?: number; year?: number } | null;
+  /** Android no tiene `birthday`: el cumpleaños viene acá con label 'birthday'. */
+  dates?: { label?: string; date?: { day?: number; month?: number; year?: number } }[] | null;
+}
+
+/**
+ * Adapta un contacto de la API nueva de expo-contacts a la forma que usa esta pantalla.
+ * ⚠️ Gotcha: el campo `birthday` es solo de iOS. En Android el cumpleaños es una
+ * fecha dentro de `dates` con label 'birthday'.
+ */
+export function toContactLike(details: ContactDetailsLike): ContactLike {
+  const androidBirthday = details.dates?.find((d) => d.label?.toLowerCase() === 'birthday')?.date;
+  return {
+    id: details.id,
+    name: details.fullName ?? undefined,
+    phoneNumbers: details.phones ?? undefined,
+    birthday: details.birthday ?? androidBirthday ?? undefined,
+  };
+}
+
 /**
  * Convierte el cumpleaños de expo-contacts a 'YYYY-MM-DD'.
- * ⚠️ Gotcha: expo-contacts devuelve el mes 0-indexado (estilo `Date` de JS):
- * enero = 0. En nuestro formato ISO enero = 01.
+ * ⚠️ Gotcha: la API nueva de expo-contacts usa el mes 1-12 (enero = 1), a
+ * diferencia de la API vieja (`getContactsAsync`), que lo devolvía 0-indexado.
  */
 export function birthdayToIso(
   birthday: { day: number; month: number; year?: number },
   fallbackYear: number,
 ): { date: string; hasYear: boolean } {
   const year = birthday.year ?? fallbackYear;
-  const mm = String(birthday.month + 1).padStart(2, '0');
+  const mm = String(birthday.month).padStart(2, '0');
   const dd = String(birthday.day).padStart(2, '0');
   return { date: `${year}-${mm}-${dd}`, hasYear: birthday.year !== undefined };
 }
@@ -80,6 +107,8 @@ export function buildCandidates(
 
   return contacts
     .filter((c): c is ContactLike & { name: string } => (c.name ?? '').trim().length > 0)
+    // Solo contactos con teléfono: los que no tienen número suelen ser basura (apps, cuentas, etc.).
+    .filter((c) => (c.phoneNumbers ?? []).some((p) => (p.number ?? '').trim().length > 0))
     .map((contact) => {
       const key = contact.id ?? contact.name;
       const birthday = contact.birthday;
@@ -103,10 +132,19 @@ export function buildCandidates(
     .sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
 
-/** Convierte un contacto + la fecha elegida en el evento que se guarda en la agenda. */
-export function candidateToEvent(candidate: ContactCandidate, date: string): NewEvent {
+/**
+ * Convierte un contacto + la fecha elegida en el evento que se guarda en la agenda.
+ * Si se usa la fecha sugerida y el contacto no traía año, queda marcado como
+ * "año desconocido" (el año de la fecha es solo de relleno).
+ */
+export function candidateToEvent(
+  candidate: ContactCandidate,
+  date: string,
+  name: string = candidate.name,
+): NewEvent {
+  const yearUnknown = date === candidate.suggestedDate && !candidate.suggestedHasYear ? 1 : 0;
   return {
-    title: candidate.name,
+    title: name,
     type: 'cumpleanos',
     date,
     time: null,
@@ -116,6 +154,9 @@ export function candidateToEvent(candidate: ContactCandidate, date: string): New
     reminders: [{ amount: 1, unit: 'dias' }], // aviso 1 día antes, igual que el default del formulario
     yearly: 1,
     isMine: 0, // el cumpleaños propio se carga aparte desde Perfil
+    tags: [],
+    photoUri: null,
+    yearUnknown,
   };
 }
 
@@ -126,7 +167,8 @@ export type FetchContactsResult =
 
 /**
  * Pide el permiso de contactos (recién acá, no al abrir la app) y devuelve
- * la lista completa. En web no existe la agenda de contactos.
+ * los contactos de las cuentas propias (ver `account-filter`). En web no existe
+ * la agenda de contactos.
  */
 export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchContactsResult> {
   if (Platform.OS === 'web') return { status: 'unavailable' };
@@ -134,8 +176,18 @@ export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchC
   const { status } = await Contacts.requestPermissionsAsync();
   if (status !== 'granted') return { status: 'denied' };
 
-  const { data } = await Contacts.getContactsAsync({
-    fields: [Contacts.Fields.Birthday, Contacts.Fields.PhoneNumbers],
-  });
-  return { status: 'ok', candidates: buildCandidates(data, existingEvents) };
+  // Pedir `birthday` en Android rompe el módulo nativo (el enum no lo tiene).
+  const birthdayField =
+    Platform.OS === 'ios' ? Contacts.ContactField.BIRTHDAY : Contacts.ContactField.DATES;
+  const details = await Contacts.Contact.getAllDetails([
+    Contacts.ContactField.FULL_NAME,
+    birthdayField,
+    Contacts.ContactField.PHONES,
+  ]);
+  const allowedIds = await fetchAllowedContactIds();
+  const fromAllowedAccounts = allowedIds ? details.filter((d) => allowedIds.has(d.id)) : details;
+  return {
+    status: 'ok',
+    candidates: buildCandidates(fromAllowedAccounts.map(toContactLike), existingEvents),
+  };
 }

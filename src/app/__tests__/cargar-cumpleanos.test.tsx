@@ -68,6 +68,9 @@ describe('<CargarCumpleanosScreen />', () => {
           yearly: 1,
           // Los cumpleaños importados nunca pueden ser el cumpleaños propio.
           isMine: 0,
+          tags: [],
+          photoUri: null,
+          yearUnknown: 0,
         },
       ]),
     );

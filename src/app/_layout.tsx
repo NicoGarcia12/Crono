@@ -1,16 +1,21 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
+import { errorMessage } from '@/components/confirm';
+import { DialogHost } from '@/components/dialog-host';
 import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { requestNotificationPermission } from '@/notifications/notifications';
 import { store, useAppSelector } from '@/store';
+import { loadEventBases } from '@/store/event-bases-slice';
+import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
+import { loadFieldValues } from '@/store/field-values-slice';
 import { loadNotes } from '@/store/notes-slice';
 import { loadSettings } from '@/store/settings-slice';
 import { useTheme } from '@/theme/use-theme';
@@ -32,6 +37,23 @@ import { useTheme } from '@/theme/use-theme';
 // Mantener el splash nativo visible hasta que la BD esté lista.
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * Período de gracia antes de re-pedir desbloqueo al volver a la app.
+ *
+ * 💡 Gotcha: en Android, tanto el diálogo nativo de permisos (por ejemplo el
+ * de contactos) como el propio prompt de biometría hacen que la Activity
+ * pierda foco un instante, y eso dispara `AppState` → 'background'. Sin este
+ * margen, cualquiera de esos diálogos volvía a bloquear la app en medio de un
+ * flujo (ej. importar cumpleaños) y la dejaba sin poder avanzar ni volver.
+ * También cubre salidas breves a otras apps (ej. responder un WhatsApp).
+ */
+const LOCK_GRACE_MS = 2 * 60 * 1000;
+
+/** Puro para poder testear la decisión sin simular AppState real. */
+export function shouldRelock(backgroundedAt: number | null, now: number): boolean {
+  return backgroundedAt !== null && now - backgroundedAt > LOCK_GRACE_MS;
+}
+
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -40,17 +62,21 @@ export default function RootLayout() {
     async function bootstrap() {
       await initDatabase();
       // Cargar todo lo persistido a Redux antes de renderizar pantallas.
+      // unwrap(): sin él, un thunk que falla no lanza y la app arrancaba vacía sin avisar.
       await Promise.all([
-        store.dispatch(loadSettings()),
-        store.dispatch(loadEvents()),
-        store.dispatch(loadNotes()),
+        store.dispatch(loadSettings()).unwrap(),
+        store.dispatch(loadEventBases()).unwrap(),
+        store.dispatch(loadEventTypes()).unwrap(),
+        store.dispatch(loadEvents()).unwrap(),
+        store.dispatch(loadFieldValues()).unwrap(),
+        store.dispatch(loadNotes()).unwrap(),
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
       await requestNotificationPermission();
     }
 
     bootstrap()
-      .catch((error: unknown) => setInitError(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setInitError(errorMessage(error)))
       .finally(() => {
         setReady(true);
         SplashScreen.hideAsync();
@@ -81,10 +107,21 @@ function Gates() {
   const displayName = useAppSelector((state) => state.settings.displayName);
   const { name: themeName, colors } = useTheme();
 
-  // Si la app pasa a segundo plano, se vuelve a bloquear (como una app de banco).
+  // Si la app pasa a segundo plano por más del período de gracia, se vuelve a
+  // bloquear (como una app de banco). Ausencias breves —incluidos los diálogos
+  // nativos que cuentan como "background" un instante— no piden desbloqueo de nuevo.
+  const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background') setUnlocked(false);
+      if (state === 'background') {
+        backgroundedAtRef.current = Date.now();
+        return;
+      }
+      if (state === 'active') {
+        const backgroundedAt = backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (shouldRelock(backgroundedAt, Date.now())) setUnlocked(false);
+      }
     });
     return () => subscription.remove(); // cleanup obligatorio de listeners nativos
   }, []);
@@ -92,11 +129,13 @@ function Gates() {
   // La barra de estado (hora, batería) necesita íconos claros sobre fondo oscuro.
   const statusBar = <StatusBar style={themeName === 'oscuro' ? 'light' : 'dark'} />;
 
+  // Los diálogos propios (confirm.ts) se muestran desde acá en cualquier etapa.
   if (!unlocked) {
     return (
       <>
         {statusBar}
         <LockScreen onUnlock={() => setUnlocked(true)} />
+        <DialogHost />
       </>
     );
   }
@@ -106,6 +145,7 @@ function Gates() {
       <>
         {statusBar}
         <NameSetup />
+        <DialogHost />
       </>
     );
   }
@@ -130,7 +170,10 @@ function Gates() {
           options={{ title: 'Cargar cumpleaños', presentation: 'modal' }}
         />
         <Stack.Screen name="saludos" options={{ title: '¿Quién me saludó?' }} />
+        <Stack.Screen name="regalos/[eventId]" options={{ title: 'Ideas de regalo' }} />
+        <Stack.Screen name="tipos-evento" options={{ title: 'Tipos de evento' }} />
       </Stack>
+      <DialogHost />
     </>
   );
 }

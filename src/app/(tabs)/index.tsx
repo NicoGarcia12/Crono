@@ -5,10 +5,11 @@ import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { EventCard } from '@/components/event-card';
 import { SearchField } from '@/components/search-field';
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { FALLBACK_EVENT_TYPE_META } from '@/constants/event-types';
+import { useEventTypesList } from '@/constants/use-event-types';
 import { useAppSelector } from '@/store';
-import { EVENT_TYPES, type EventType } from '@/types';
-import { nextOccurrence } from '@/utils/dates';
+import type { EventType } from '@/types';
+import { isUpcoming, nextOccurrence } from '@/utils/dates';
 import { filterEvents } from '@/utils/search';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -24,15 +25,35 @@ export default function AgendaScreen() {
 
   const router = useRouter();
   const events = useAppSelector((state) => state.events.items);
+  const eventTypes = useEventTypesList();
   const [filter, setFilter] = useState<EventType | 'todos'>('todos');
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  const typeLabel = useMemo(() => {
+    const byKey = new Map(eventTypes.map((t) => [t.key, t.label]));
+    return (type: string) => byKey.get(type) ?? FALLBACK_EVENT_TYPE_META.label;
+  }, [eventTypes]);
+
+  // Etiquetas en uso, para ofrecerlas como filtro (no hay una lista aparte: se derivan de los eventos).
+  const availableTags = useMemo(() => {
+    const names = new Set<string>();
+    events.forEach((event) => event.tags.forEach((tag) => names.add(tag.name)));
+    return [...names].sort((a, b) => a.localeCompare(b, 'es'));
+  }, [events]);
 
   // useMemo evita reordenar la lista en cada render — solo cuando cambia algo de esto.
   const sorted = useMemo(() => {
-    const byType = filter === 'todos' ? events : events.filter((e) => e.type === filter);
-    const found = filterEvents(byType, query);
+    const now = new Date();
+    // El calendario conserva el historial; la agenda solo muestra lo vigente.
+    const upcoming = events.filter((e) => isUpcoming(e, now));
+    const byType = filter === 'todos' ? upcoming : upcoming.filter((e) => e.type === filter);
+    const byTag = tagFilter
+      ? byType.filter((e) => e.tags.some((tag) => tag.name === tagFilter))
+      : byType;
+    const found = filterEvents(byTag, query, typeLabel);
     return [...found].sort((a, b) => nextOccurrence(a).getTime() - nextOccurrence(b).getTime());
-  }, [events, filter, query]);
+  }, [events, filter, tagFilter, query, typeLabel]);
 
   return (
     <View style={styles.container}>
@@ -46,16 +67,37 @@ export default function AgendaScreen() {
       {/* Filtros por tipo */}
       <View style={styles.filterRow}>
         <FilterChip label="Todos" active={filter === 'todos'} color={colors.contrast} onPress={() => setFilter('todos')} />
-        {EVENT_TYPES.map((t) => (
+        {eventTypes.map((meta) => (
           <FilterChip
-            key={t}
-            label={EVENT_TYPE_META[t].label}
-            color={EVENT_TYPE_META[t].color}
-            active={filter === t}
-            onPress={() => setFilter(t)}
+            key={meta.key}
+            label={meta.label}
+            color={meta.color}
+            active={filter === meta.key}
+            onPress={() => setFilter(meta.key)}
           />
         ))}
       </View>
+
+      {/* Filtro por etiqueta, solo si hay alguna creada. */}
+      {availableTags.length > 0 ? (
+        <View style={styles.filterRow}>
+          <FilterChip
+            label="Todas las etiquetas"
+            active={tagFilter === null}
+            color={colors.contrast}
+            onPress={() => setTagFilter(null)}
+          />
+          {availableTags.map((tag) => (
+            <FilterChip
+              key={tag}
+              label={tag}
+              color={colors.primary}
+              active={tagFilter === tag}
+              onPress={() => setTagFilter(tag === tagFilter ? null : tag)}
+            />
+          ))}
+        </View>
+      ) : null}
 
       {/* FlatList virtualiza: solo renderiza lo visible (nunca ScrollView + map para listas). */}
       <FlatList

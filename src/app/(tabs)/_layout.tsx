@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { Image, StyleSheet } from 'react-native';
 
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -20,6 +21,17 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '700' },
+        // Isotipo chico a la izquierda del título en las 4 pestañas: espacio de marca real
+        // (la barra superior de navegación) que ya existía, sin agregar pantallas nuevas.
+        headerLeft: () => (
+          <Image
+            source={require('../../../assets/images/branding/crono-isotipo.png')}
+            style={tabHeaderStyles.logo}
+            resizeMode="contain"
+            accessibilityRole="image"
+            accessibilityLabel="Crono"
+          />
+        ),
       }}
     >
       <Tabs.Screen
@@ -53,3 +65,7 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const tabHeaderStyles = StyleSheet.create({
+  logo: { width: 28, height: 28, marginLeft: 16 },
+});

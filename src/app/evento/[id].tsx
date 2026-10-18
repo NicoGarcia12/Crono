@@ -1,16 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { confirmDestructive, showError } from '@/components/confirm';
 import { CountdownBanner } from '@/components/countdown-banner';
 import { EventForm } from '@/components/event-form';
 import { GreetButton } from '@/components/greet-button';
+import { useTypeCapabilities } from '@/constants/use-event-types';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { editEvent, removeEvent } from '@/store/events-slice';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
-import type { NewEvent } from '@/types';
+import { saveFieldValues } from '@/store/field-values-slice';
+import type { FieldValues, NewEvent } from '@/types';
 
 /**
  * Ruta dinámica /evento/[id] — editar o borrar un evento existente.
@@ -25,6 +28,8 @@ export default function EditarEventoScreen() {
   const router = useRouter();
 
   const event = useAppSelector((state) => state.events.items.find((e) => e.id === Number(id)));
+  // Antes del return temprano: los hooks no pueden depender de que el evento exista.
+  const capabilities = useTypeCapabilities(event?.type ?? '');
 
   // Puede pasar al borrar: la pantalla sigue montada un instante sin el evento.
   if (!event) {
@@ -35,24 +40,24 @@ export default function EditarEventoScreen() {
     );
   }
 
-  const handleSubmit = async (data: NewEvent) => {
+  const handleSubmit = async (data: NewEvent, fieldValues: FieldValues) => {
     await dispatch(editEvent({ id: event.id, data, previousReminders: event.reminders })).unwrap();
+    // Se guardan siempre: así también se borran los que se vaciaron.
+    await dispatch(saveFieldValues({ eventId: event.id, values: fieldValues })).unwrap();
     router.back();
   };
 
-  const confirmDelete = () => {
-    // Alert nativo con confirmación — borrar es destructivo, siempre se pregunta.
-    Alert.alert('Eliminar evento', `¿Seguro que querés eliminar "${event.title}"?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: async () => {
-          await dispatch(removeEvent(event)).unwrap();
-          router.back();
-        },
-      },
-    ]);
+  const confirmDelete = async () => {
+    // Borrar es destructivo: siempre se pregunta.
+    if (!(await confirmDestructive('Eliminar evento', `¿Seguro que querés eliminar "${event.title}"?`, 'Eliminar'))) {
+      return;
+    }
+    try {
+      await dispatch(removeEvent(event)).unwrap();
+      router.back();
+    } catch (error: unknown) {
+      showError('No se pudo eliminar', error);
+    }
   };
 
   return (
@@ -61,7 +66,7 @@ export default function EditarEventoScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={confirmDelete} hitSlop={12}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Borrar evento" onPress={() => void confirmDelete()} hitSlop={12}>
               <Ionicons name="trash" size={22} color={colors.danger} />
             </Pressable>
           ),
@@ -70,15 +75,15 @@ export default function EditarEventoScreen() {
       <CountdownBanner event={event} />
       <GreetButton event={event} />
 
-      {/* Solo en MI cumpleaños: la lista de quién me saludó. */}
-      {event.isMine === 1 ? (
+      {/* Ideas de regalo: solo si el tipo tiene esa capacidad. */}
+      {capabilities.includes('regalos') ? (
         <Pressable
           style={styles.greetings}
-          accessibilityLabel="Ver quién me saludó"
-          onPress={() => router.push('/saludos')}
+          accessibilityLabel="Ver ideas de regalo"
+          onPress={() => router.push({ pathname: '/regalos/[eventId]', params: { eventId: String(event.id) } })}
         >
-          <Ionicons name="people" size={20} color={colors.primary} />
-          <Text style={styles.greetingsText}>¿Quién me saludó?</Text>
+          <Ionicons name="gift" size={20} color={colors.primary} />
+          <Text style={styles.greetingsText}>Ideas de regalo</Text>
           <Ionicons name="chevron-forward" size={18} color={colors.textSubtle} />
         </Pressable>
       ) : null}

@@ -1,4 +1,4 @@
-import type { EventItem } from '@/types';
+import type { Capability, EventItem } from '@/types';
 import { dateToIso, toLocalDate } from '@/utils/dates';
 
 /**
@@ -116,6 +116,31 @@ export function eventsByDay(events: EventItem[], days: Date[]): Map<string, Even
   }
 
   return byDay;
+}
+
+/**
+ * Eventos AJENOS (no `isMine`) con "¿ya lo saludé?" que caen en el mes de
+ * `anchor` (en la práctica, los cumpleaños de otras personas). Los anuales
+ * se repiten todos los años (se compara solo el mes); los puntuales, además,
+ * tienen que ser de ese año. Ordenados por día.
+ */
+export function greetableInMonth(
+  events: EventItem[],
+  anchor: Date,
+  hasCapability: (typeKey: string, capability: Capability) => boolean,
+): EventItem[] {
+  const month = anchor.getMonth();
+  const year = anchor.getFullYear();
+
+  return events
+    .filter((event) => hasCapability(event.type, 'saludado'))
+    .filter((event) => event.isMine !== 1)
+    .filter((event) => {
+      const base = toLocalDate(event.date);
+      if (base.getMonth() !== month) return false;
+      return event.yearly ? true : base.getFullYear() === year;
+    })
+    .sort((a, b) => toLocalDate(a.date).getDate() - toLocalDate(b.date).getDate());
 }
 
 const MONTHS_ES = [

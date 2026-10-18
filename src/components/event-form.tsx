@@ -1,16 +1,22 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
+import { errorMessage } from '@/components/confirm';
 import { DateField, TimeField } from '@/components/date-time-field';
+import { PhotoPicker } from '@/components/photo-picker';
 import { RemindersField } from '@/components/reminders-field';
-import { EVENT_TYPE_META } from '@/constants/event-types';
+import { TagsField } from '@/components/tags-field';
+import { DEFAULT_TYPE_KEY } from '@/constants/event-bases';
+import { CustomFieldsSection, fieldValuesProblem } from '@/components/custom-fields-section';
 import {
-  EVENT_TYPES,
-  type EventItem,
-  type EventType,
-  type NewEvent,
-  type ReminderInput,
-} from '@/types';
+  useEventBase,
+  useEventFieldSpecs,
+  useEventTypeMeta,
+  useEventTypesList,
+  useTypeCapabilities,
+} from '@/constants/use-event-types';
+import { useAppSelector } from '@/store';
+import { MY_BIRTHDAY_TYPE_KEY, type EventItem, type EventType, type FieldValues, type NewEvent, type ReminderInput } from '@/types';
 import { ageThisYear, dateToIso, dateWithAgeThisYear } from '@/utils/dates';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
@@ -28,15 +34,22 @@ interface EventFormProps {
   /** Evento existente al editar; undefined al crear. */
   initial?: EventItem;
   submitLabel: string;
-  onSubmit: (data: NewEvent) => void;
+  // Recibe el evento y los valores de sus campos personalizados (solo los del tipo elegido).
+  // Si la promesa falla, el error se muestra arriba del botón y se puede reintentar.
+  onSubmit: (data: NewEvent, fieldValues: FieldValues) => Promise<void>;
 }
 
 export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const eventTypes = useEventTypesList();
+
   const [title, setTitle] = useState(initial?.title ?? '');
-  const [type, setType] = useState<EventType>(initial?.type ?? 'evento');
+  const [type, setType] = useState<EventType>(initial?.type ?? DEFAULT_TYPE_KEY);
+  // Lo que puede tener el evento sale del tipo elegido (su base + extras).
+  const capabilities = useTypeCapabilities(type);
+  const base = useEventBase(type);
   const [date, setDate] = useState(initial?.date ?? dateToIso(new Date()));
   const [time, setTime] = useState<string | null>(initial?.time ?? null);
   const [description, setDescription] = useState(initial?.description ?? '');
@@ -48,23 +61,38 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       ? initial.reminders.map(({ amount, unit }) => ({ amount, unit }))
       : [{ amount: 1, unit: 'dias' }],
   );
-  const [yearly, setYearly] = useState<boolean>(
-    initial ? initial.yearly === 1 : EVENT_TYPE_META.evento.defaultYearly,
-  );
+  const [tags, setTags] = useState<string[]>(initial?.tags.map((tag) => tag.name) ?? []);
+  const [photoUri, setPhotoUri] = useState<string | null>(initial?.photoUri ?? null);
   // Edad que cumple este año: se deriva de la fecha, y al escribirla cambia la fecha.
   const [ageText, setAgeText] = useState(() => String(ageThisYear(initial?.date ?? dateToIso(new Date()))));
+  const [yearUnknown, setYearUnknown] = useState(initial?.yearUnknown === 1);
+  const savedValues = useAppSelector((state) => (initial ? state.fieldValues.byEvent[initial.id] : undefined));
+  const [fieldValues, setFieldValues] = useState<FieldValues>(() => savedValues ?? {});
+  const fieldSpecs = useEventFieldSpecs(type);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const canSave = title.trim().length > 0;
-
-  const isBirthday = type === 'cumpleanos';
+  const isEditing = initial !== undefined;
   const isMine = initial?.isMine === 1;
-  const canGreetType = isBirthday || type === 'aniversario';
+  const typeMeta = useEventTypeMeta(type);
+  const hasAge = capabilities.includes('edad');
+  const hasPhone = capabilities.includes('whatsapp');
+  const requiresTime = base?.requiresTime ?? false;
+
+  /**
+   * La repetición la decide la base del tipo. Al editar, el tipo no cambia y se
+   * conserva la repetición guardada (así un evento viejo migrado con otra
+   * repetición no desaparece de la agenda).
+   */
+  const yearly = isMine || (isEditing ? initial.yearly === 1 : (base?.yearly ?? false));
+
+  const fieldsProblem = fieldValuesProblem(fieldSpecs, fieldValues);
+  const canSave = title.trim().length > 0 && (!requiresTime || time !== null) && fieldsProblem === null;
 
   const selectType = (t: EventType) => {
-    if (isMine) return; // La UI no ofrece una acción que viole el invariante.
+    // Una vez creado, el evento queda atado a su tipo: solo se editan sus campos.
+    if (isEditing) return;
     setType(t);
-    // Cambiar el tipo ajusta el default de repetición anual (editable igual).
-    setYearly(EVENT_TYPE_META[t].defaultYearly);
   };
 
   /**
@@ -85,25 +113,50 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
     setAgeText(String(ageThisYear(isoDate)));
   };
 
-  const handleSubmit = () => {
-    onSubmit({
-      title: title.trim(),
-      type: isMine ? 'cumpleanos' : type,
-      date,
-      time,
-      description: description.trim() || null,
-      // Si el evento vino de un contacto, conserva de quién es.
-      contactId: initial?.contactId ?? null,
-      phone: phone.trim() || null,
-      reminders,
-      yearly: isMine ? 1 : yearly ? 1 : 0,
-      // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
-      isMine: initial?.isMine ?? 0,
-    });
+  const handleSubmit = async () => {
+    // Solo viajan los valores de los campos del tipo elegido.
+    const ids = new Set(fieldSpecs.map((s) => s.id));
+    const values: FieldValues = Object.fromEntries(
+      Object.entries(fieldValues).filter(([id]) => ids.has(Number(id))),
+    );
+
+    setSaving(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        title: title.trim(),
+        type: isMine ? MY_BIRTHDAY_TYPE_KEY : type,
+        date,
+        time,
+        description: description.trim() || null,
+        // Si el evento vino de un contacto, conserva de quién es.
+        contactId: initial?.contactId ?? null,
+        // Sin saludo por WhatsApp en el tipo, no se guarda teléfono.
+        phone: hasPhone ? phone.trim() || null : null,
+        reminders,
+        yearly: yearly ? 1 : 0,
+        // Mi cumpleaños se marca desde el perfil, no acá: al editar se conserva.
+        isMine: initial?.isMine ?? 0,
+        tags,
+        photoUri,
+        yearUnknown: hasAge && yearUnknown ? 1 : 0,
+      }, values);
+    } catch (error: unknown) {
+      setSubmitError(`No se pudo guardar: ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <PhotoPicker
+        uri={photoUri}
+        onChange={setPhotoUri}
+        filePrefix="evento"
+        accessibilityLabel="Elegir foto del evento"
+      />
+
       <Text style={styles.label}>Título</Text>
       <TextInput
         style={styles.input}
@@ -114,27 +167,34 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       />
 
       <Text style={styles.label}>Tipo</Text>
-      <View style={styles.chipRow}>
-        {EVENT_TYPES.map((t) => {
-          const meta = EVENT_TYPE_META[t];
-          const active = t === type;
-          return (
-            <Pressable
-              key={t}
-              style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
-              disabled={isMine}
-              onPress={() => selectType(t)}
-            >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* Al editar, el tipo queda fijo: solo se muestra el asignado. */}
+      {isEditing ? (
+        <View style={styles.chipRow}>
+          <View style={[styles.chip, { backgroundColor: typeMeta.color, borderColor: typeMeta.color }]}>
+            <Text style={[styles.chipText, styles.chipTextActive]}>{typeMeta.label}</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.chipRow}>
+          {eventTypes.map((meta) => {
+            const active = meta.key === type;
+            return (
+              <Pressable
+                key={meta.key}
+                style={[styles.chip, active && { backgroundColor: meta.color, borderColor: meta.color }]}
+                onPress={() => selectType(meta.key)}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{meta.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       <Text style={styles.label}>Fecha</Text>
       <DateField value={date} onChange={handleDateChange} />
 
-      <Text style={styles.label}>Hora (opcional)</Text>
+      <Text style={styles.label}>{requiresTime ? 'Hora' : 'Hora (opcional)'}</Text>
       <View style={styles.row}>
         <TimeField value={time} onChange={setTime} style={styles.grow} />
         {time ? (
@@ -144,31 +204,42 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         ) : null}
       </View>
 
-      {/* Edad: se puede cargar en vez del año de nacimiento (útil si no lo sabés). */}
-      {canGreetType ? (
+      {/* Edad: se puede cargar en vez del año de nacimiento, o marcar que no se sabe. */}
+      {hasAge ? (
         <>
-          <Text style={styles.label}>
-            {isBirthday ? 'Cumple este año (opcional)' : 'Cumplen este año (opcional)'}
-          </Text>
-          <View style={styles.row}>
-            <TextInput
-              style={[styles.input, styles.ageInput]}
-              accessibilityLabel="Edad que cumple este año"
-              placeholder="30"
-              placeholderTextColor={colors.textSubtle}
-              keyboardType="number-pad"
-              value={ageText}
-              onChangeText={handleAgeChange}
+          <View style={[styles.row, styles.switchRow]}>
+            <Text style={styles.switchLabel}>No sé el año de nacimiento</Text>
+            <Switch
+              accessibilityLabel="No sé el año de nacimiento"
+              value={yearUnknown}
+              onValueChange={setYearUnknown}
+              trackColor={{ true: colors.primary }}
             />
-            <Text style={styles.ageHint}>
-              {`años en ${new Date().getFullYear()} · nació en ${date.slice(0, 4)}`}
-            </Text>
           </View>
+          {!yearUnknown ? (
+            <>
+              <Text style={styles.label}>Cumple este año (opcional)</Text>
+              <View style={styles.row}>
+                <TextInput
+                  style={[styles.input, styles.ageInput]}
+                  accessibilityLabel="Edad que cumple este año"
+                  placeholder="30"
+                  placeholderTextColor={colors.textSubtle}
+                  keyboardType="number-pad"
+                  value={ageText}
+                  onChangeText={handleAgeChange}
+                />
+                <Text style={styles.ageHint}>
+                  {`años en ${new Date().getFullYear()} · nació en ${date.slice(0, 4)}`}
+                </Text>
+              </View>
+            </>
+          ) : null}
         </>
       ) : null}
 
-      {/* Solo donde tiene sentido saludar: el teléfono habilita el botón de WhatsApp. */}
-      {canGreetType ? (
+      {/* Solo si el tipo tiene saludo por WhatsApp: el teléfono habilita el botón. */}
+      {hasPhone ? (
         <>
           <Text style={styles.label}>Teléfono (opcional, para saludar por WhatsApp)</Text>
           <TextInput
@@ -183,6 +254,9 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         </>
       ) : null}
 
+      {/* Campos propios del tipo: los de la base primero (obligatorios), después los extras. */}
+      <CustomFieldsSection specs={fieldSpecs} values={fieldValues} onChange={setFieldValues} />
+
       <Text style={styles.label}>Descripción (opcional)</Text>
       <TextInput
         style={[styles.input, styles.multiline]}
@@ -196,15 +270,21 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       <Text style={styles.label}>Recordatorios (podés poner todos los que quieras)</Text>
       <RemindersField value={reminders} onChange={setReminders} />
 
-      <View style={[styles.row, styles.switchRow]}>
-        <Text style={styles.switchLabel}>Se repite todos los años</Text>
-        <Switch value={isMine ? true : yearly} disabled={isMine} onValueChange={setYearly} trackColor={{ true: colors.primary }} />
-      </View>
+      <Text style={styles.label}>Etiquetas (opcional)</Text>
+      <TagsField value={tags} onChange={setTags} />
+
+      {/* La repetición viene del tipo: se informa, no se edita. */}
+      <Text style={styles.repeatHint}>
+        {yearly ? 'Se repite todos los años' : 'Es por única vez'}
+      </Text>
+
+      {fieldsProblem ? <Text style={styles.problem}>{fieldsProblem}</Text> : null}
+      {submitError ? <Text style={styles.problem}>{submitError}</Text> : null}
 
       <Pressable
-        style={[styles.submit, !canSave && styles.submitDisabled]}
-        disabled={!canSave}
-        onPress={handleSubmit}
+        style={[styles.submit, (!canSave || saving) && styles.submitDisabled]}
+        disabled={!canSave || saving}
+        onPress={() => void handleSubmit()}
       >
         <Text style={styles.submitText}>{submitLabel}</Text>
       </Pressable>
@@ -249,6 +329,8 @@ const makeStyles = (c: ThemeColors) =>
   chipTextActive: { color: '#fff', fontWeight: '600' },
   switchRow: { justifyContent: 'space-between', marginTop: 12 },
   switchLabel: { fontSize: 15, color: c.text },
+  repeatHint: { fontSize: 13, color: c.textSubtle, marginTop: 12 },
+  problem: { fontSize: 13, color: c.danger, marginTop: 12 },
   submit: {
     backgroundColor: c.primary,
     borderRadius: 24,

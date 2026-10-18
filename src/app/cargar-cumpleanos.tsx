@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { BirthdayWizard } from '@/components/birthday-wizard';
+import { confirmDestructive } from '@/components/confirm';
+import { BirthdayWizard, type BirthdayWizardEntry } from '@/components/birthday-wizard';
 import { ContactPickList } from '@/components/contact-pick-list';
 import { candidateToEvent, fetchContacts, type ContactCandidate } from '@/contacts/birthday-import';
 import { store, useAppDispatch } from '@/store';
@@ -21,6 +22,7 @@ type ScreenState =
   | { status: 'loading' }
   | { status: 'denied' }
   | { status: 'unavailable' }
+  | { status: 'error'; message: string }
   | { status: 'empty' }
   | { status: 'list'; candidates: ContactCandidate[] }
   | { status: 'wizard'; candidates: ContactCandidate[]; selected: ContactCandidate[] };
@@ -43,34 +45,43 @@ export default function CargarCumpleanosScreen() {
   }, []);
 
   useEffect(() => {
-    load().catch(() => setState({ status: 'unavailable' }));
+    // Carga inicial de contactos (sistema externo): el setState llega en el
+    // resultado async de `load`, no de forma sincrónica en este cuerpo.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load().catch((error: unknown) => {
+      console.error('No se pudieron leer los contactos', error);
+      setState({
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    });
   }, [load]);
 
-  const handleDelete = (candidate: ContactCandidate) => {
+  const handleDelete = async (candidate: ContactCandidate) => {
     const loaded = candidate.loaded;
     if (!loaded) return;
 
-    Alert.alert('Borrar cumpleaños', `¿Sacar el cumpleaños de ${candidate.name} de tu agenda?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Borrar',
-        style: 'destructive',
-        onPress: async () => {
-          const event = store.getState().events.items.find((e) => e.id === loaded.eventId);
-          if (event) await dispatch(removeEvent(event)).unwrap();
-          await load(); // la lista se rearma: el contacto vuelve a estar disponible
-        },
-      },
-    ]);
+    const ok = await confirmDestructive(
+      'Borrar cumpleaños',
+      `¿Sacar el cumpleaños de ${candidate.name} de tu agenda?`,
+      'Borrar',
+    );
+    if (!ok) return;
+
+    const event = store.getState().events.items.find((e) => e.id === loaded.eventId);
+    if (event) await dispatch(removeEvent(event)).unwrap();
+    await load(); // la lista se rearma: el contacto vuelve a estar disponible
   };
 
-  const handleSave = async (entries: { candidate: ContactCandidate; date: string }[]) => {
+  const handleSave = async (entries: BirthdayWizardEntry[]) => {
     setSaving(true);
     try {
       // Un solo thunk mantiene juntos eventos, recordatorios y rollback de
       // avisos nativos; Redux se actualiza recién si SQLite hizo commit.
       await dispatch(
-        addContactBirthdays(entries.map(({ candidate, date }) => candidateToEvent(candidate, date))),
+        addContactBirthdays(
+          entries.map(({ candidate, date, name }) => candidateToEvent(candidate, date, name)),
+        ),
       ).unwrap();
       router.back();
     } finally {
@@ -106,6 +117,13 @@ export default function CargarCumpleanosScreen() {
           </Text>
         </Centered>
       );
+    case 'error':
+      return (
+        <Centered icon="warning">
+          <Text style={styles.title}>No se pudieron leer los contactos</Text>
+          <Text style={styles.message}>{state.message}</Text>
+        </Centered>
+      );
     case 'empty':
       return (
         <Centered icon="people">
@@ -120,7 +138,7 @@ export default function CargarCumpleanosScreen() {
         <View style={styles.container}>
           <ContactPickList
             candidates={state.candidates}
-            onDelete={handleDelete}
+            onDelete={(candidate) => void handleDelete(candidate)}
             onContinue={(selected) =>
               setState({ status: 'wizard', candidates: state.candidates, selected })
             }

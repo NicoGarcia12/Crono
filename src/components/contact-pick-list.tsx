@@ -92,7 +92,7 @@ export function ContactPickList({ candidates, onContinue, onDelete }: ContactPic
               <Ionicons
                 name={checked ? 'checkbox' : 'square-outline'}
                 size={24}
-                color={checked ? '#208AEF' : '#999'}
+                color={checked ? '#168BFF' : '#999'}
               />
               <View style={styles.rowBody}>
                 <Text style={styles.rowName} numberOfLines={1}>

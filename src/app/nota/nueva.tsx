@@ -10,7 +10,7 @@ export default function NuevaNotaScreen() {
   const dispatch = useAppDispatch();
   const router = useRouter();
 
-  const handleSubmit = async (data: NewNote) => {
+  const handleSubmit = async (data: NewNote): Promise<void> => {
     await dispatch(addNote(data)).unwrap();
     router.back();
   };

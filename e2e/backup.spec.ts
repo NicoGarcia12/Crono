@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
  */
 test('exporta la agenda y la restaura en un celular vacío', async ({ page, context }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();
 
@@ -33,6 +34,7 @@ test('exporta la agenda y la restaura en un celular vacío', async ({ page, cont
   // "Otro celular": página nueva con la base vacía (otro contexto de navegador).
   const otro = await context.browser()!.newPage();
   await otro.goto('http://localhost:8082/');
+  await otro.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
   await otro.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await otro.getByText('Empezar').click();
   await expect(otro.getByText('Todavía no hay nada agendado')).toBeVisible();

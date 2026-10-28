@@ -2,13 +2,13 @@ import { expect, test } from '@playwright/test';
 
 /**
  * Flujo crítico de Crono: primer uso → crear un evento → verlo en la agenda.
- *
- * En web no hay bloqueo del sistema, así que la app pasa directo a la
- * pantalla de bienvenida cuando la BD todavía no tiene nombre guardado.
+ * En web se acepta explícitamente continuar sin bloqueo del sistema antes de
+ * mostrar la bienvenida cuando la BD todavía no tiene nombre guardado.
  */
 test.describe('Crear evento (flujo crítico)', () => {
   test('primer uso: pide el nombre, crea un evento y persiste tras recargar', async ({ page }) => {
     await page.goto('/');
+    await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
 
     // 1) Primer uso: pantalla de bienvenida
     const nameInput = page.getByPlaceholder('¿Cómo te llamás?');
@@ -30,6 +30,7 @@ test.describe('Crear evento (flujo crítico)', () => {
 
     // 5) Persistencia: al recargar, el evento sigue (SQLite, no estado en memoria)
     await page.reload();
+    await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
     await expect(page.getByText('Cena con amigos')).toBeVisible();
     // Y ya no vuelve a pedir el nombre
     await expect(page.getByPlaceholder('¿Cómo te llamás?')).toHaveCount(0);
@@ -37,6 +38,7 @@ test.describe('Crear evento (flujo crítico)', () => {
 
   test('no deja crear un evento sin título', async ({ page }) => {
     await page.goto('/');
+    await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
 
     await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
     await page.getByText('Empezar').click();

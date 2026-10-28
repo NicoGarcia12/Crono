@@ -5,6 +5,13 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Notas (CRONO42)**: crear y editar esperan la confirmación del guardado y bloquean envíos duplicados. Si falla, el formulario conserva el texto, muestra el error y permite reintentar. Borrar también espera la confirmación real, avisa si falla y no puede ejecutarse al mismo tiempo que guardar.
+- **Bloqueo (CRONO40)**: se admite el PIN, patrón o contraseña del sistema sin exigir biometría, y sólo una verificación nativa exitosa habilita el acceso. Cancelaciones, fallos y errores mantienen la app cerrada; sin credencial se indica configurarla y reintentar. En web se advierte que no hay bloqueo local y se requiere continuar explícitamente. Se conserva la gracia de 2 minutos en segundo plano.
+
 ## [1.0.0] - 2026-10-18
 
 Primera versión de Crono: una agenda personal para el celular, sin servidor ni cuenta, con los datos guardados solo en el dispositivo. Funciona en Android, iOS y web.

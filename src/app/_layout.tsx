@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
@@ -104,6 +104,9 @@ export default function RootLayout() {
 /** Encadena bloqueo → primer uso → app. Vive dentro del Provider para poder usar Redux. */
 function Gates() {
   const [unlocked, setUnlocked] = useState(false);
+  // Una referencia estable evita volver a abrir el prompt nativo por un render
+  // del gate (por ejemplo, al cambiar el tema mientras la app sigue bloqueada).
+  const handleUnlock = useCallback(() => setUnlocked(true), []);
   const displayName = useAppSelector((state) => state.settings.displayName);
   const { name: themeName, colors } = useTheme();
 
@@ -134,7 +137,7 @@ function Gates() {
     return (
       <>
         {statusBar}
-        <LockScreen onUnlock={() => setUnlocked(true)} />
+        <LockScreen onUnlock={handleUnlock} />
         <DialogHost />
       </>
     );

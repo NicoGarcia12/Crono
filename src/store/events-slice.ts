@@ -3,6 +3,7 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import * as eventTypesRepo from '@/db/event-types-repo';
 import * as eventsRepo from '@/db/events-repo';
 import { loadEventTypes } from '@/store/event-types-slice';
+import { cancelRemindersAfterCommit } from '@/notifications/cancel-after-commit';
 import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
 import { enforceMineBirthday, type EventItem, type EventReminder, type NewEvent } from '@/types';
 
@@ -89,26 +90,38 @@ export const editEvent = createAsyncThunk(
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
     const normalized = enforceMineBirthday(payload.data);
     /**
-      * Primero pedimos los reemplazos al SO. A diferencia de SQLite, las
-      * notificaciones nativas no tienen rollback: con este orden, si programar
-      * falla los avisos anteriores siguen activos y el evento no se modifica.
-      */
+     * Orden: 1) programar los reemplazos, 2) persistir, 3) cancelar los anteriores.
+     * Las notificaciones nativas no tienen rollback, así que los avisos
+     * anteriores se cancelan RECIÉN cuando SQLite confirmó:
+     *  - si programar falla, nada cambió y los anteriores siguen activos;
+     *  - si persistir falla, SQLite hizo rollback del evento y de sus filas de
+     *    avisos (siguen apuntando a los ids anteriores, aún activos); sólo se
+     *    deshacen los reemplazos recién creados para que no queden huérfanos.
+     * Cancelar antes de persistir (el orden anterior) dejaba al evento sin
+     * avisos si el guardado fallaba: SQLite revertía, el SO no.
+     */
     const reminders = await scheduleEventReminders(normalized);
 
+    let saved: EventItem;
     try {
-      await cancelReminders(payload.previousReminders);
-      return await eventsRepo.updateEvent(payload.id, normalized, reminders);
+      saved = await eventsRepo.updateEvent(payload.id, normalized, reminders);
     } catch (error) {
-      // Si falla un paso posterior, no dejamos reemplazos huérfanos en el SO.
+      // allSettled: conserva el error de persistencia aunque falle la compensación.
       await Promise.allSettled([cancelReminders(reminders)]);
       throw error;
     }
+
+    await cancelRemindersAfterCommit(payload.previousReminders, 'Editar evento');
+    return saved;
   },
 );
 
 export const removeEvent = createAsyncThunk('events/remove', async (event: EventItem) => {
-  await cancelReminders(event.reminders);
+  // Borrar primero en SQLite: si falla, los avisos del evento siguen activos y
+  // el evento sigue existiendo (antes se cancelaban antes de borrar y un fallo
+  // dejaba un evento vivo sin avisos). Con el borrado confirmado se cancelan.
   await eventsRepo.deleteEvent(event.id);
+  await cancelRemindersAfterCommit(event.reminders, 'Borrar evento');
   return event.id;
 });
 

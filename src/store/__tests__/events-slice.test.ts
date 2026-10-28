@@ -64,7 +64,8 @@ const eventoGuardado: EventItem = {
 };
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  // reset (no sólo clear): las implementaciones de un test no deben filtrarse al siguiente.
+  jest.resetAllMocks();
 });
 
 describe('loadEvents', () => {
@@ -145,83 +146,150 @@ describe('addEvent', () => {
 });
 
 describe('editEvent', () => {
-  it('cancela los avisos viejos, programa los nuevos y actualiza el estado', async () => {
-    const nuevosAvisos = [{ amount: 0, unit: 'minutos' as const, notificationId: 'notif-3' }];
-    mockSchedule.mockResolvedValue(nuevosAvisos);
+  const nuevosAvisos = [{ amount: 0, unit: 'minutos' as const, notificationId: 'notif-3' }];
+  const data: NewEvent = {
+    ...nuevoEvento,
+    title: 'Cumple de papá',
+    reminders: [{ amount: 0, unit: 'minutos' }],
+  };
+  const actualizado: EventItem = { ...eventoGuardado, title: 'Cumple de papá', reminders: nuevosAvisos };
+
+  const storeConEvento = async () => {
     mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
     const store = makeStore();
     await store.dispatch(loadEvents());
+    return store;
+  };
 
-    const data: NewEvent = {
-      ...nuevoEvento,
-      title: 'Cumple de papá',
-      reminders: [{ amount: 0, unit: 'minutos' }],
-    };
-    const actualizado: EventItem = { ...eventoGuardado, title: 'Cumple de papá', reminders: nuevosAvisos };
-    mockRepo.updateEvent.mockResolvedValue(actualizado);
+  it('programa los nuevos, persiste y RECIÉN ENTONCES cancela los anteriores', async () => {
+    const operaciones: string[] = [];
+    mockSchedule.mockImplementation(async () => {
+      operaciones.push('programar');
+      return nuevosAvisos;
+    });
+    mockRepo.updateEvent.mockImplementation(async () => {
+      operaciones.push('persistir');
+      return actualizado;
+    });
+    mockCancel.mockImplementation(async (avisos) => {
+      operaciones.push(`cancelar ${avisos.map((a) => a.notificationId).join(',')}`);
+    });
+    const store = await storeConEvento();
 
     await store.dispatch(editEvent({ id: 1, data, previousReminders: eventoGuardado.reminders }));
 
-    expect(mockCancel).toHaveBeenCalledWith(avisosProgramados);
+    expect(operaciones).toEqual(['programar', 'persistir', 'cancelar notif-1,notif-2']);
     expect(mockSchedule).toHaveBeenCalledWith(data);
     expect(mockRepo.updateEvent).toHaveBeenCalledWith(1, data, nuevosAvisos);
     expect(store.getState().events.items[0].title).toBe('Cumple de papá');
   });
 
   it('conserva los avisos anteriores si no logra programar el reemplazo', async () => {
-    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
     mockSchedule.mockRejectedValue(new Error('El sistema de avisos no responde'));
-    const store = makeStore();
-    await store.dispatch(loadEvents());
+    const store = await storeConEvento();
 
     await store.dispatch(
-      editEvent({
-        id: eventoGuardado.id,
-        data: { ...nuevoEvento, title: 'Cumple de papá' },
-        previousReminders: eventoGuardado.reminders,
-      }),
+      editEvent({ id: eventoGuardado.id, data, previousReminders: eventoGuardado.reminders }),
     );
 
     expect(mockCancel).not.toHaveBeenCalled();
+    expect(mockRepo.updateEvent).not.toHaveBeenCalled();
   });
 
-  it('intenta limpiar los avisos nuevos si falla la cancelación de los anteriores', async () => {
-    const nuevosAvisos = [
-      { amount: 1, unit: 'horas' as const, notificationId: 'notif-reemplazo-1' },
-      { amount: 2, unit: 'dias' as const, notificationId: 'notif-reemplazo-2' },
-    ];
+  it('si falla persistir, los avisos anteriores siguen activos y los reemplazos no quedan huérfanos', async () => {
     mockSchedule.mockResolvedValue(nuevosAvisos);
-    // El primer rechazo representa una cancelación vieja fallida. El segundo
-    // representa un fallo parcial durante el cleanup; el thunk debe absorberlo
-    // para conservar el error original sin omitir el intento de compensación.
-    mockCancel
-      .mockRejectedValueOnce(new Error('No se pudo cancelar un aviso anterior'))
-      .mockRejectedValueOnce(new Error('No se pudo cancelar un reemplazo'));
-    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
-    const store = makeStore();
-    await store.dispatch(loadEvents());
+    mockRepo.updateEvent.mockRejectedValue(new Error('SQLite sin espacio'));
+    const store = await storeConEvento();
 
-    await store.dispatch(
-      editEvent({ id: eventoGuardado.id, data: nuevoEvento, previousReminders: eventoGuardado.reminders }),
+    const result = await store.dispatch(
+      editEvent({ id: eventoGuardado.id, data, previousReminders: eventoGuardado.reminders }),
     );
 
-    expect(mockCancel).toHaveBeenNthCalledWith(1, eventoGuardado.reminders);
-    expect(mockCancel).toHaveBeenNthCalledWith(2, nuevosAvisos);
-    expect(mockRepo.updateEvent).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ error: { message: 'SQLite sin espacio' } });
+    // Sólo se cancelan los reemplazos recién creados; los anteriores NO se tocan.
+    expect(mockCancel).toHaveBeenCalledTimes(1);
+    expect(mockCancel).toHaveBeenCalledWith(nuevosAvisos);
     expect(store.getState().events.items).toEqual([eventoGuardado]);
+  });
+
+  it('conserva el error de persistencia si además falla la limpieza de los reemplazos', async () => {
+    mockSchedule.mockResolvedValue(nuevosAvisos);
+    mockRepo.updateEvent.mockRejectedValue(new Error('SQLite sin espacio'));
+    mockCancel.mockRejectedValueOnce(new Error('No se pudo cancelar un reemplazo'));
+    const store = await storeConEvento();
+
+    const result = await store.dispatch(
+      editEvent({ id: eventoGuardado.id, data, previousReminders: eventoGuardado.reminders }),
+    );
+
+    expect(result).toMatchObject({ error: { message: 'SQLite sin espacio' } });
+  });
+
+  it('si la edición ya se guardó y el SO no cancela los anteriores, no revierte el estado y deja constancia', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockSchedule.mockResolvedValue(nuevosAvisos);
+    mockRepo.updateEvent.mockResolvedValue(actualizado);
+    mockCancel.mockRejectedValueOnce(new Error('El SO no pudo cancelar'));
+    const store = await storeConEvento();
+
+    const result = await store.dispatch(
+      editEvent({ id: eventoGuardado.id, data, previousReminders: eventoGuardado.reminders }),
+    );
+
+    expect(result.type).toBe(editEvent.fulfilled.type);
+    expect(store.getState().events.items[0].title).toBe('Cumple de papá');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('notif-1, notif-2'), expect.any(Error));
+    warn.mockRestore();
   });
 });
 
 describe('removeEvent', () => {
-  it('cancela los avisos, borra de la BD y saca del estado', async () => {
+  it('borra de la BD, cancela los avisos y saca del estado', async () => {
+    const operaciones: string[] = [];
     mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    mockRepo.deleteEvent.mockImplementation(async () => {
+      operaciones.push('borrar');
+    });
+    mockCancel.mockImplementation(async () => {
+      operaciones.push('cancelar');
+    });
     const store = makeStore();
     await store.dispatch(loadEvents());
 
     await store.dispatch(removeEvent(eventoGuardado));
 
+    expect(operaciones).toEqual(['borrar', 'cancelar']);
     expect(mockCancel).toHaveBeenCalledWith(avisosProgramados);
     expect(mockRepo.deleteEvent).toHaveBeenCalledWith(1);
     expect(store.getState().events.items).toEqual([]);
+  });
+
+  it('si falla el borrado, el evento y sus avisos siguen intactos', async () => {
+    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    mockRepo.deleteEvent.mockRejectedValue(new Error('SQLite bloqueada'));
+    const store = makeStore();
+    await store.dispatch(loadEvents());
+
+    const result = await store.dispatch(removeEvent(eventoGuardado));
+
+    expect(result).toMatchObject({ error: { message: 'SQLite bloqueada' } });
+    expect(mockCancel).not.toHaveBeenCalled();
+    expect(store.getState().events.items).toEqual([eventoGuardado]);
+  });
+
+  it('si el borrado ya se confirmó y el SO no cancela, el evento se va del estado y queda constancia', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
+    mockRepo.deleteEvent.mockResolvedValue(undefined);
+    mockCancel.mockRejectedValueOnce(new Error('El SO no pudo cancelar'));
+    const store = makeStore();
+    await store.dispatch(loadEvents());
+
+    const result = await store.dispatch(removeEvent(eventoGuardado));
+
+    expect(result.type).toBe(removeEvent.fulfilled.type);
+    expect(store.getState().events.items).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });

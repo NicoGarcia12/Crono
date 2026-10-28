@@ -7,7 +7,7 @@ import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
 import { loadEvents } from '@/store/events-slice';
 import { loadFieldValues } from '@/store/field-values-slice';
-import { cancelReminders } from '@/notifications/notifications';
+import { cancelRemindersAfterCommit } from '@/notifications/cancel-after-commit';
 import type { EventItem, NewEventBase, NewEventType, RemovalPlan } from '@/types';
 
 /**
@@ -80,15 +80,19 @@ export const deleteTypeMovingEvents = createAsyncThunk(
 );
 
 /**
- * Borra un tipo con todos sus eventos. Los avisos del sistema se cancelan
- * primero: a diferencia de SQLite, no tienen rollback, y un aviso huérfano de
- * un evento borrado sería peor que un evento con avisos cancelados.
+ * Borra un tipo con todos sus eventos. Primero SQLite (con rollback) y recién
+ * con el borrado confirmado se cancelan los avisos del sistema (sin rollback):
+ * si el borrado falla, los eventos siguen existiendo CON sus avisos activos.
+ * Si es la cancelación la que falla, no hay vuelta atrás (los eventos ya no
+ * existen): queda registrado con `console.warn` en vez de abortar el flujo.
  */
 export const deleteTypeWithEvents = createAsyncThunk(
   'typeConfig/deleteTypeWithEvents',
   async (payload: { id: number; key: string; events: readonly EventItem[] }, { dispatch }) => {
-    await Promise.allSettled(payload.events.map((event) => cancelReminders(event.reminders)));
     await eventTypesRepo.deleteEventTypeWithEvents(payload.id, payload.key);
+    await Promise.all(
+      payload.events.map((event) => cancelRemindersAfterCommit(event.reminders, 'Borrar tipo con eventos')),
+    );
     await reloadAll(dispatch);
   },
 );

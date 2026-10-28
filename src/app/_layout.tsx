@@ -11,6 +11,7 @@ import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { requestNotificationPermission } from '@/notifications/notifications';
+import { reconcileReminders } from '@/notifications/reconcile';
 import { store, useAppSelector } from '@/store';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
@@ -73,6 +74,22 @@ export default function RootLayout() {
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
       await requestNotificationPermission();
+      // Reprograma los avisos que quedaron con un contrato viejo (ver notifications/reconcile).
+      // Va DESPUÉS del permiso porque éste crea el canal 'recordatorios' que usan los avisos.
+      // Un fallo acá no debe impedir abrir la app: no se marca el contrato como aplicado y el
+      // próximo arranque reintenta.
+      const report = await reconcileReminders().catch((error: unknown) => {
+        console.warn('No se pudieron reconciliar los avisos', error);
+        return null;
+      });
+      if (report?.status === 'incomplete') {
+        console.warn('Avisos sin reconciliar; se reintenta al próximo arranque', report.failed);
+      }
+      // Si se tocó la BD, Redux debe recargar los ids de notificación nuevos: si no, la próxima
+      // edición cancelaría los ids viejos y dejaría huérfanos los reprogramados.
+      if (report?.status !== 'current' && report?.status !== 'unavailable') {
+        await store.dispatch(loadEvents()).unwrap();
+      }
     }
 
     bootstrap()

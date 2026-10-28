@@ -14,7 +14,6 @@ import * as greetingsRepo from '@/db/greetings-repo';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
 import { addEvent } from '@/store/events-slice';
-import { saveFieldValues } from '@/store/field-values-slice';
 import { addNote } from '@/store/notes-slice';
 import type { RootState } from '@/store';
 import type { FieldValues } from '@/types';
@@ -99,11 +98,9 @@ export const restoreBackup = createAsyncThunk<RestoreSummary | null, void, { sta
 
     // Secuencial: cada evento programa sus recordatorios al guardarse.
     for (const { fieldValues, ...event } of events) {
-      const created = await dispatch(addEvent(event)).unwrap();
+      // Resolver antes del INSERT evita un evento sin sus campos si falla guardarlos.
       const values = fieldValues ? resolveFieldValues(getState(), event.type, fieldValues) : {};
-      if (Object.keys(values).length > 0) {
-        await dispatch(saveFieldValues({ eventId: created.id, values })).unwrap();
-      }
+      await dispatch(addEvent({ ...event, fieldValues: values })).unwrap();
     }
     for (const note of notes) await dispatch(addNote(note)).unwrap();
     // Los ids de eventos son locales al dispositivo de origen, por eso cada

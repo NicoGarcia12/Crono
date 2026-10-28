@@ -68,4 +68,20 @@ describe('setEventTags', () => {
     expect(db.deletes).toEqual([[5]]);
     expect(db.inserts).toEqual([]); // sin etiquetas, no inserta nada
   });
+
+  it('no deja consultas hermanas pendientes cuando falla resolver una etiqueta', async () => {
+    const failure = new Error('No se pudo resolver la etiqueta');
+    const db = {
+      getFirstAsync: jest.fn().mockRejectedValueOnce(failure),
+      runAsync: jest.fn(),
+    };
+
+    await expect(setEventTags(db, 5, ['Primera', 'Segunda'])).rejects.toBe(failure);
+
+    expect(db.getFirstAsync).toHaveBeenCalledTimes(1);
+    expect(db.getFirstAsync).toHaveBeenCalledWith(
+      'SELECT id FROM tags WHERE name = ? COLLATE NOCASE', 'Primera',
+    );
+    expect(db.runAsync).not.toHaveBeenCalled();
+  });
 });

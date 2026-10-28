@@ -129,12 +129,19 @@ const eventsSlice = createSlice({
         state.status = 'error';
       })
       .addCase(addEvent.fulfilled, (state, action) => {
+        // SQLite ya confirmó el cambio de dueño; Redux replica ambas marcas juntas.
+        if (action.payload.isMine === 1) {
+          for (const event of state.items) event.isMine = 0;
+        }
         state.items.push(action.payload);
       })
       .addCase(addContactBirthdays.fulfilled, (state, action) => {
         state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {
+        if (action.payload.isMine === 1) {
+          for (const event of state.items) event.isMine = 0;
+        }
         const index = state.items.findIndex((e) => e.id === action.payload.id);
         if (index !== -1) state.items[index] = action.payload;
       })

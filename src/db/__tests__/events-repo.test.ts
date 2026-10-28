@@ -4,8 +4,8 @@ import { attachReminders, attachTags, insertEvent } from '@/db/events-repo';
 import { getDb } from '@/db/database';
 import type { NewEvent } from '@/types';
 
-// El repo importa la conexión SQLite (nativa); acá solo se testea la
-// función pura de agrupado, así que alcanza con mockear el módulo de BD.
+// Jest no inicia el módulo SQLite nativo; el doble permite observar cuándo
+// se escriben las filas dentro de la transacción del repositorio.
 jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
 
 const miCumple: NewEvent = {
@@ -77,16 +77,10 @@ describe('insertEvent', () => {
   it('mantiene un único cumpleaños propio cuando dos escrituras llegan en paralelo', async () => {
     const rows: Array<{ isMine: 0 | 1 }> = [];
     let clears = 0;
-    let releaseBothClears: (() => void) | undefined;
-    const bothClearsStarted = new Promise<void>((resolve) => {
-      releaseBothClears = resolve;
-    });
 
     const runAsync = async (query: string, ...params: unknown[]): Promise<SQLiteRunResult> => {
       if (query.startsWith('UPDATE events SET is_mine = 0')) {
         clears += 1;
-        if (clears === 2) releaseBothClears?.();
-        await bothClearsStarted;
         rows.forEach((row) => {
           row.isMine = 0;
         });
@@ -136,5 +130,6 @@ describe('insertEvent', () => {
     await Promise.all([insertEvent(miCumple, []), insertEvent({ ...miCumple, date: '1991-08-08' }, [])]);
 
     expect(rows.filter((row) => row.isMine === 1)).toHaveLength(1);
+    expect(clears).toBe(2);
   });
 });

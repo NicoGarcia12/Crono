@@ -1,4 +1,6 @@
 import { getDb } from '@/db/database';
+import { writeEventFieldValues } from '@/db/custom-fields-repo';
+import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
 import * as tagsRepo from '@/db/tags-repo';
 import type * as SQLite from 'expo-sqlite';
 import type {
@@ -82,18 +84,9 @@ export async function findAllEvents(): Promise<EventItem[]> {
 }
 
 export async function insertEvent(data: NewEvent, reminders: EventReminder[]): Promise<EventItem> {
-  const db = getDb();
-  const event = enforceMineBirthday(data);
-  if (event.isMine === 0) return writeEvent(db, event, reminders, null);
-
-  // Web no soporta withExclusiveTransactionAsync en Expo. Esta cola corre en
-  // el hilo JS y ordena escrituras de esta instancia; el índice único parcial
-  // de la migración v6 conserva el invariante entre conexiones distintas.
-  await clearMine(db, null);
-  return serializeMineWrite(async () => {
-    await clearMine(db, null);
-    return writeEvent(db, event, reminders, null);
-  });
+  return withEventTransaction(getDb(), (transaction) =>
+    writeEvent(transaction, enforceMineBirthday(data), reminders, null),
+  );
 }
 
 /**
@@ -117,7 +110,7 @@ export async function insertContactBirthdays(
   const database = getDb();
   const inserted: EventItem[] = [];
 
-  await withImportTransaction(database, async (transaction) => {
+  await withEventTransaction(database, async (transaction) => {
     for (const [index, event] of events.entries()) {
       // La consulta se hace en la transacción: también cubre ids duplicados
       // dentro del mismo lote, antes de que haya commit.
@@ -127,30 +120,13 @@ export async function insertContactBirthdays(
       );
       if (existing) continue;
 
-      const result = await transaction.runAsync(
-        `INSERT INTO events (title, type, date, time, description, yearly, contact_id, phone, year_unknown)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        event.title,
-        event.type,
-        event.date,
-        event.time,
-        event.description,
-        event.yearly,
-        event.contactId,
-        event.phone,
-        event.yearUnknown,
-      );
       // Antes de persistir, un reminder elegido en UI se completa con `null`:
       // después el scheduler puede guardar un id nativo, pero web no tiene uno.
       const reminders = remindersByEvent[index].map((reminder) => ({
         ...reminder,
         notificationId: 'notificationId' in reminder ? reminder.notificationId : null,
       }));
-      await insertRemindersWithExecutor(transaction, result.lastInsertRowId, reminders);
-
-      // Los cumpleaños importados no traen etiquetas: se agregan después, a mano.
-      const { reminders: _chosen, tags: _chosenTags, ...eventWithoutReminders } = event;
-      inserted.push({ ...eventWithoutReminders, id: result.lastInsertRowId, reminders, tags: [] });
+      inserted.push(await writeEvent(transaction, enforceMineBirthday(event), reminders, null));
     }
   });
 
@@ -168,36 +144,22 @@ export async function updateEvent(
   data: NewEvent,
   reminders: EventReminder[],
 ): Promise<EventItem> {
-  const db = getDb();
-  const enforced = enforceMineBirthday(data);
-  if (enforced.isMine === 0) return writeEvent(db, enforced, reminders, id);
-
-  await clearMine(db, id);
-  return serializeMineWrite(async () => {
-    await clearMine(db, id);
-    return writeEvent(db, enforced, reminders, id);
-  });
-}
-
-let mineWriteTail: Promise<void> = Promise.resolve();
-
-function serializeMineWrite<T>(task: () => Promise<T>): Promise<T> {
-  const previous = mineWriteTail;
-  let release: (() => void) | undefined;
-  mineWriteTail = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return previous.then(task).finally(() => release?.());
+  return withEventTransaction(getDb(), (transaction) =>
+    writeEvent(transaction, enforceMineBirthday(data), reminders, id),
+  );
 }
 
 async function writeEvent(
-  db: SQLite.SQLiteDatabase,
+  db: EventExecutor,
   data: NewEvent,
   reminders: EventReminder[],
   existingId: number | null,
 ): Promise<EventItem> {
+  // También el cambio de cumpleaños propio debe revertirse si falla una relación.
+  if (data.isMine === 1) await clearMine(db, existingId);
+  const { reminders: _chosen, tags: _chosenTags, fieldValues, ...event } = data;
   if (existingId !== null) {
-    await db.runAsync(
+    const result = await db.runAsync(
       `UPDATE events
        SET title = ?, type = ?, date = ?, time = ?, description = ?, yearly = ?,
            contact_id = ?, phone = ?, is_mine = ?, photo_uri = ?, year_unknown = ?
@@ -205,10 +167,12 @@ async function writeEvent(
       data.title, data.type, data.date, data.time, data.description, data.yearly,
       data.contactId, data.phone, data.isMine, data.photoUri, data.yearUnknown, existingId,
     );
+    if (result.changes === 0) throw new Error('El evento ya no existe.');
     await db.runAsync('DELETE FROM reminders WHERE event_id = ?', existingId);
-    await insertReminders(db, existingId, reminders);
+    await insertRemindersWithExecutor(db, existingId, reminders);
     const tags = await tagsRepo.setEventTags(db, existingId, data.tags);
-    return { ...data, id: existingId, reminders, tags };
+    if (fieldValues !== undefined) await writeEventFieldValues(db, existingId, fieldValues);
+    return { ...event, id: existingId, reminders, tags };
   }
 
   const result: SQLite.SQLiteRunResult = await db.runAsync(
@@ -217,17 +181,21 @@ async function writeEvent(
     data.title, data.type, data.date, data.time, data.description, data.yearly,
     data.contactId, data.phone, data.isMine, data.photoUri, data.yearUnknown,
   );
-  await insertReminders(db, result.lastInsertRowId, reminders);
+  await insertRemindersWithExecutor(db, result.lastInsertRowId, reminders);
   const tags = await tagsRepo.setEventTags(db, result.lastInsertRowId, data.tags);
-  const { reminders: _chosen, tags: _chosenTags, ...event } = data;
+  if (fieldValues !== undefined) await writeEventFieldValues(db, result.lastInsertRowId, fieldValues);
   return { ...event, id: result.lastInsertRowId, reminders, tags };
 }
 
 export async function deleteEvent(id: number): Promise<void> {
-  await getDb().runAsync('DELETE FROM events WHERE id = ?', id);
+  // En web el DELETE también debe esperar: si se ejecuta durante otro BEGIN,
+  // su fulfilled podría publicarse antes de que un rollback lo deshaga.
+  await withEventTransaction(getDb(), async (transaction) => {
+    await transaction.runAsync('DELETE FROM events WHERE id = ?', id);
+  });
 }
 
-async function clearMine(db: SQLite.SQLiteDatabase, exceptId: number | null): Promise<void> {
+async function clearMine(db: EventExecutor, exceptId: number | null): Promise<void> {
   if (exceptId === null) {
     await db.runAsync('UPDATE events SET is_mine = 0 WHERE is_mine = 1');
   } else {
@@ -235,18 +203,8 @@ async function clearMine(db: SQLite.SQLiteDatabase, exceptId: number | null): Pr
   }
 }
 
-async function insertReminders(
-  database: SqlWriteExecutor,
-  eventId: number,
-  reminders: EventReminder[],
-): Promise<void> {
-  // Conservamos la misma conexión/transacción del evento para que sus
-  // recordatorios no queden escritos desde otra operación de SQLite.
-  await insertRemindersWithExecutor(database, eventId, reminders);
-}
 
 type SqlWriteExecutor = Pick<SQLite.SQLiteDatabase, 'runAsync'>;
-type ImportTransactionExecutor = Pick<SQLite.SQLiteDatabase, 'getFirstAsync' | 'runAsync'>;
 
 async function insertRemindersWithExecutor(
   database: SqlWriteExecutor,
@@ -263,27 +221,3 @@ async function insertRemindersWithExecutor(
   }
 }
 
-/**
- * Expo SDK 54+ ofrece transacciones exclusivas en nativo, pero la API no está
- * disponible en web. El fallback sigue siendo atómico; la diferencia es que
- * en web no puede bloquear escrituras async ajenas durante el lote.
- */
-async function withImportTransaction(
-  database: SQLite.SQLiteDatabase,
-  task: (transaction: ImportTransactionExecutor) => Promise<void>,
-): Promise<void> {
-  const exclusiveDatabase = database as SQLite.SQLiteDatabase & {
-    withExclusiveTransactionAsync?: (
-      transactionTask: (transaction: SQLite.SQLiteDatabase) => Promise<void>,
-    ) => Promise<void>;
-  };
-
-  if (typeof exclusiveDatabase.withExclusiveTransactionAsync === 'function') {
-    await exclusiveDatabase.withExclusiveTransactionAsync(task);
-    return;
-  }
-
-  // En web Expo no expone la variante exclusiva. Las consultas se hacen con
-  // `database` dentro del callback, como exige withTransactionAsync.
-  await database.withTransactionAsync(async () => task(database));
-}

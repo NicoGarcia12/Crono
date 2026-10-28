@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 
 import { backupFileName, buildBackup, serializeBackup } from '@/backup/backup';
 import { pickTextFile, saveAndShare } from '@/backup/file-io';
+import * as customFieldsRepo from '@/db/custom-fields-repo';
 import * as eventsRepo from '@/db/events-repo';
 import * as greetingsRepo from '@/db/greetings-repo';
 import * as notesRepo from '@/db/notes-repo';
@@ -16,7 +17,7 @@ import greetingsSentReducer from '@/store/greetings-sent-slice';
 import notesReducer from '@/store/notes-slice';
 import settingsReducer from '@/store/settings-slice';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
-import type { EventItem, Greeting, Note } from '@/types';
+import type { CustomField, EventItem, EventTypeMeta, Greeting, Note } from '@/types';
 
 // Límites del sistema mockeados: archivos, BD y notificaciones.
 jest.mock('@/backup/file-io');
@@ -65,7 +66,10 @@ const saludo: Greeting = {
   greeted: 1,
 };
 
-const makeStore = (greetings: Greeting[] = []) =>
+const makeStore = (
+  greetings: Greeting[] = [],
+  config: { types: EventTypeMeta[]; fields: CustomField[] } = { types: [], fields: [] },
+) =>
   configureStore({
     reducer: {
       events: eventsReducer,
@@ -80,8 +84,8 @@ const makeStore = (greetings: Greeting[] = []) =>
     },
     preloadedState: {
       events: { items: [evento], status: 'ready' as const },
-      eventBases: { bases: [], fields: [], status: 'ready' as const },
-      eventTypes: { items: [], status: 'ready' as const },
+      eventBases: { bases: [], fields: config.fields, status: 'ready' as const },
+      eventTypes: { items: config.types, status: 'ready' as const },
       fieldValues: { byEvent: {}, status: 'ready' as const },
       giftIdeas: { eventId: null, items: [], status: 'ready' as const },
       greetings: { year: 2026, items: greetings, status: 'ready' as const },
@@ -188,5 +192,42 @@ describe('restoreBackup', () => {
     await store.dispatch(restoreBackup()).unwrap();
 
     expect(mockGreetingsRepo.insertGuest).toHaveBeenCalledWith(2026, 'Carla', '+54 11 5555-0014', true);
+  });
+
+  it('restaura evento y campos en un solo guardado; ante rechazo se puede reintentar', async () => {
+    const type: EventTypeMeta = {
+      id: 20, key: 'torneo', label: 'Torneo', icon: 'star', color: '#000',
+      defaultYearly: false, isBuiltin: false, baseKey: 'evento', extraCapabilities: [], hidden: false,
+    };
+    const field: CustomField = {
+      id: 903, owner: 'type', ownerId: 20, label: 'Cancha', kind: 'numero',
+      options: [], position: 0, required: false,
+    };
+    const restored: EventItem = { ...evento, id: 2, title: 'Final', type: 'torneo', reminders: [] };
+    const raw = JSON.stringify({
+      app: 'crono', formatVersion: 1, events: [{
+        ...restored, tags: [], fieldValues: { 'type:Cancha': '0' },
+      }], notes: [],
+    });
+    mockPick.mockResolvedValue(raw);
+    mockEventsRepo.insertEvent
+      .mockRejectedValueOnce(new Error('SQLite sin espacio'))
+      .mockResolvedValueOnce(restored);
+    const saveFields = jest.spyOn(customFieldsRepo, 'saveEventFieldValues');
+    const store = makeStore([], { types: [type], fields: [field] });
+
+    await expect(store.dispatch(restoreBackup()).unwrap()).rejects.toMatchObject({ message: 'SQLite sin espacio' });
+    expect(store.getState().events.items).toEqual([evento]);
+    expect(store.getState().fieldValues.byEvent).toEqual({});
+    const summary = await store.dispatch(restoreBackup()).unwrap();
+
+    expect(summary).toEqual({ events: 1, notes: 0, skipped: 0 });
+    expect(mockEventsRepo.insertEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Final', fieldValues: { 903: '0' } }), [],
+    );
+    expect(saveFields).not.toHaveBeenCalled();
+    expect(store.getState().events.items).toEqual([evento, restored]);
+    expect(store.getState().fieldValues.byEvent[2]).toEqual({ 903: '0' });
+    saveFields.mockRestore();
   });
 });

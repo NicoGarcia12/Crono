@@ -1,6 +1,6 @@
 import { writeFields, applyRemovals } from '@/db/custom-fields-repo';
 import { getDb } from '@/db/database';
-import type { EventExecutor } from '@/db/event-transaction';
+import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
 import { parseCapabilities, parseOptions } from '@/db/json-columns';
 import {
   FIELD_KINDS,
@@ -42,7 +42,7 @@ export async function findAllEventBases(db: Pick<EventExecutor, 'getAllAsync'> =
 }
 
 /** Clave estable para una base propia: 'base_' + slug del nombre, sin chocar con las existentes. */
-async function uniqueBaseKey(label: string): Promise<string> {
+async function uniqueBaseKey(db: Pick<EventExecutor, 'getFirstAsync'>, label: string): Promise<string> {
   const slug = label
     .trim()
     .toLowerCase()
@@ -53,7 +53,7 @@ async function uniqueBaseKey(label: string): Promise<string> {
   const base = `base_${slug || Date.now()}`;
   let key = base;
   let suffix = 2;
-  while (await getDb().getFirstAsync('SELECT 1 FROM event_bases WHERE key = ?', key)) {
+  while (await db.getFirstAsync('SELECT 1 FROM event_bases WHERE key = ?', key)) {
     key = `${base}_${suffix}`;
     suffix += 1;
   }
@@ -62,17 +62,17 @@ async function uniqueBaseKey(label: string): Promise<string> {
 
 /** Crea una base propia con sus campos obligatorios, todo junto o nada. */
 export async function createEventBase(data: NewEventBase): Promise<EventBase> {
-  const key = await uniqueBaseKey(data.label);
-  const db = getDb();
+  let key = '';
   let id = 0;
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
+    key = await uniqueBaseKey(db, data.label);
     const result = await db.runAsync(
       'INSERT INTO event_bases (key, label, yearly, requires_time, capabilities, is_builtin) VALUES (?, ?, ?, ?, ?, 0)',
       key, data.label.trim(), data.yearly ? 1 : 0, data.requiresTime ? 1 : 0, JSON.stringify(data.capabilities),
     );
     id = result.lastInsertRowId;
     await writeFields(db, { column: 'base_id', id }, data.fields);
-  });
+  }, 'primary');
   return {
     id,
     key,
@@ -91,8 +91,7 @@ export async function createEventBase(data: NewEventBase): Promise<EventBase> {
  * después de crearla. Las de fábrica no se editan.
  */
 export async function updateEventBase(id: number, data: NewEventBase, plan: RemovalPlan): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
     const row = await db.getFirstAsync<{ key: string; isBuiltin: 0 | 1 }>(
       'SELECT key, is_builtin AS isBuiltin FROM event_bases WHERE id = ?',
       id,
@@ -105,17 +104,16 @@ export async function updateEventBase(id: number, data: NewEventBase, plan: Remo
     const types = await db.getAllAsync<{ key: string }>('SELECT key FROM event_types WHERE base_key = ?', row.key);
     await applyRemovals(db, types.map((t) => t.key), plan);
     await writeFields(db, { column: 'base_id', id }, data.fields);
-  });
+  }, 'primary');
 }
 
 /** Borra una base propia sin tipos (sus campos y valores caen con ella). La UI ya validó que no se use. */
 export async function deleteEventBase(id: number): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
     await db.runAsync('DELETE FROM event_field_values WHERE field_id IN (SELECT id FROM custom_fields WHERE base_id = ?)', id);
     await db.runAsync('DELETE FROM custom_fields WHERE base_id = ?', id);
     await db.runAsync('DELETE FROM event_bases WHERE id = ? AND is_builtin = 0', id);
-  });
+  }, 'primary');
 }
 
 interface CustomFieldRow {

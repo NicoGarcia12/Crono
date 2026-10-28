@@ -1,5 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 
+import { confirmAction } from '@/components/confirm';
+import { PENDING_CANCELLATIONS_KEY, retryPendingReminderCancellations } from '@/notifications/cancel-after-commit';
 import {
   BACKUP_FORMAT_VERSION,
   backupFileName,
@@ -44,6 +46,7 @@ jest.mock('@/db/greetings-sent-repo');
 jest.mock('@/db/notes-repo');
 jest.mock('@/db/settings-repo');
 jest.mock('@/notifications/notifications');
+jest.mock('@/components/confirm', () => ({ confirmAction: jest.fn() }));
 
 const mockPick = jest.mocked(pickTextFile);
 const mockSave = jest.mocked(saveAndShare);
@@ -113,8 +116,11 @@ const makeStore = () =>
 
 const fileWith = (over: Partial<BackupSnapshot> = {}) => serializeBackup(buildBackup(snapshot(over)));
 
-beforeEach(() => {
+let pendingSettings: Map<string, string>;
+beforeEach(async () => {
   jest.resetAllMocks();
+  pendingSettings = new Map();
+  jest.mocked(confirmAction).mockResolvedValue(false);
   // Las recargas posteriores a restaurar leen SQLite: aquí devuelven lo que "quedó" en la base.
   jest.mocked(eventsRepo.findAllEvents).mockResolvedValue([evento]);
   jest.mocked(eventBasesRepo.findAllEventBases).mockResolvedValue([]);
@@ -122,11 +128,14 @@ beforeEach(() => {
   jest.mocked(eventTypesRepo.findAllEventTypes).mockResolvedValue([]);
   jest.mocked(customFieldsRepo.findAllFieldValues).mockResolvedValue({});
   jest.mocked(notesRepo.findAllNotes).mockResolvedValue([nota]);
-  jest.mocked(settingsRepo.getSetting).mockResolvedValue('Nico');
+  jest.mocked(settingsRepo.getSetting).mockImplementation(async (key) => key === 'displayName' ? 'Nico' : pendingSettings.get(key) ?? null);
+  jest.mocked(settingsRepo.setSetting).mockImplementation(async (key, value) => { pendingSettings.set(key, value); });
   jest.mocked(greetingsRepo.findGreetingsByYear).mockResolvedValue([]);
   jest.mocked(greetingsSentRepo.findGreetingsSentByYear).mockResolvedValue([]);
   mockSchedule.mockResolvedValue([]);
   mockCancel.mockResolvedValue(undefined);
+  await retryPendingReminderCancellations();
+  mockCancel.mockClear();
 });
 
 describe('exportBackup', () => {
@@ -286,8 +295,7 @@ describe('restoreBackup', () => {
     expect(store.getState().events.items).toEqual([]);
   });
 
-  it('si el SO no puede cancelar un aviso, deja constancia con sus ids y conserva el error original', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('si el SO rechaza compensar registra IDs, conserva causa y ofrece limpieza sin reprogramar', async () => {
     mockPick.mockResolvedValue(fileWith());
     mockRepo.findMissingEventIndexes.mockResolvedValue([0]);
     mockSchedule.mockResolvedValue([{ amount: 1, unit: 'dias', notificationId: 'huerfano-1' }]);
@@ -297,8 +305,17 @@ describe('restoreBackup', () => {
     await expect(makeStore().dispatch(restoreBackup()).unwrap()).rejects.toMatchObject({
       message: expect.stringContaining('SQLite sin espacio'),
     });
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('huerfano-1'), expect.any(Error));
-    warn.mockRestore();
+    expect(JSON.parse(pendingSettings.get(PENDING_CANCELLATIONS_KEY)!)).toEqual(['huerfano-1']);
+    expect(confirmAction).toHaveBeenCalledWith('Limpieza de avisos pendiente', expect.any(String), 'Reintentar limpieza');
+    // Repetir restore mientras el SO falla no suma otro juego.
+    await expect(makeStore().dispatch(restoreBackup()).unwrap()).rejects.toMatchObject({
+      message: expect.stringContaining('limpieza de avisos pendiente'),
+    });
+    expect(mockSchedule).toHaveBeenCalledTimes(1);
+    mockCancel.mockResolvedValue(undefined);
+    await retryPendingReminderCancellations();
+    expect(pendingSettings.get(PENDING_CANCELLATIONS_KEY)).toBe('[]');
+    expect(mockSchedule).toHaveBeenCalledTimes(1);
   });
 
   it('si la copia se escribió pero una recarga falla, lo informa en vez de aparentar un fallo', async () => {

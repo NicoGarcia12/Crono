@@ -1,5 +1,5 @@
 import { getDb } from '@/db/database';
-import type { EventExecutor } from '@/db/event-transaction';
+import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
 import type { Greeting } from '@/types';
 
 /**
@@ -32,29 +32,30 @@ export async function setGreetedForEvent(
   phone: string | null,
   greeted: boolean,
 ): Promise<Greeting> {
-  const db = getDb();
-  const existing = await db.getFirstAsync<Greeting>(
-    `SELECT ${SELECT_FIELDS} FROM greetings WHERE year = ? AND event_id = ?`,
-    year,
-    eventId,
-  );
+  return withEventTransaction(getDb(), async (db) => {
+    const existing = await db.getFirstAsync<Greeting>(
+      `SELECT ${SELECT_FIELDS} FROM greetings WHERE year = ? AND event_id = ?`,
+      year,
+      eventId,
+    );
 
-  const value = greeted ? 1 : 0;
+    const value = greeted ? 1 : 0;
 
-  if (existing) {
-    await db.runAsync('UPDATE greetings SET greeted = ? WHERE id = ?', value, existing.id);
-    return { ...existing, greeted: value };
-  }
+    if (existing) {
+      await db.runAsync('UPDATE greetings SET greeted = ? WHERE id = ?', value, existing.id);
+      return { ...existing, greeted: value };
+    }
 
-  const result = await db.runAsync(
-    'INSERT INTO greetings (year, event_id, name, phone, greeted) VALUES (?, ?, ?, ?, ?)',
-    year,
-    eventId,
-    name,
-    phone,
-    value,
-  );
-  return { id: result.lastInsertRowId, year, eventId, name, phone, greeted: value };
+    const result = await db.runAsync(
+      'INSERT INTO greetings (year, event_id, name, phone, greeted) VALUES (?, ?, ?, ?, ?)',
+      year,
+      eventId,
+      name,
+      phone,
+      value,
+    );
+    return { id: result.lastInsertRowId, year, eventId, name, phone, greeted: value };
+  }, 'primary');
 }
 
 /** Agrega a la lista a alguien que no tengo en la agenda. */
@@ -65,26 +66,26 @@ export async function insertGuest(
   greeted: boolean,
 ): Promise<Greeting> {
   const value = greeted ? 1 : 0;
-  const result = await getDb().runAsync(
+  const result = await withEventTransaction(getDb(), (db) => db.runAsync(
     'INSERT INTO greetings (year, event_id, name, phone, greeted) VALUES (?, NULL, ?, ?, ?)',
     year,
     name,
     phone,
     value,
-  );
+  ), 'primary');
   return { id: result.lastInsertRowId, year, eventId: null, name, phone, greeted: value };
 }
 
 /** Marca/desmarca a alguien anotado a mano. */
 export async function setGreetedById(id: number, greeted: boolean): Promise<void> {
-  await getDb().runAsync('UPDATE greetings SET greeted = ? WHERE id = ?', greeted ? 1 : 0, id);
+  await withEventTransaction(getDb(), (db) => db.runAsync('UPDATE greetings SET greeted = ? WHERE id = ?', greeted ? 1 : 0, id), 'primary');
 }
 
 /** Cuando a un invitado se le carga el cumpleaños, su fila pasa a apuntar a ese evento. */
 export async function linkGuestToEvent(id: number, eventId: number): Promise<void> {
-  await getDb().runAsync('UPDATE greetings SET event_id = ? WHERE id = ?', eventId, id);
+  await withEventTransaction(getDb(), (db) => db.runAsync('UPDATE greetings SET event_id = ? WHERE id = ?', eventId, id), 'primary');
 }
 
 export async function deleteGreeting(id: number): Promise<void> {
-  await getDb().runAsync('DELETE FROM greetings WHERE id = ?', id);
+  await withEventTransaction(getDb(), (db) => db.runAsync('DELETE FROM greetings WHERE id = ?', id), 'primary');
 }

@@ -57,7 +57,7 @@ function loadModules(adapter, platform, bridge) {
  * devuelve "cannot start a transaction within a transaction".
  */
 function adapterFor(db, platform) {
-  const state = { active: false, strict: false, writes: 0, cut: null, exclusive: 0, regular: 0 };
+  const state = { active: false, strict: false, writes: 0, cut: null, exclusive: 0, regular: 0, pause: null, onBegin: null };
   const params = (args) => (args.length === 1 && Array.isArray(args[0]) ? args[0] : args);
   const executor = {
     runAsync: async (sql, ...args) => {
@@ -65,6 +65,12 @@ function adapterFor(db, platform) {
       const result = db.prepare(sql).run(...params(args));
       if (state.active) {
         state.writes += 1;
+        if (state.pause?.write === state.writes) {
+          const pause = state.pause;
+          state.pause = null;
+          pause.entered();
+          await pause.gate;
+        }
         if (state.cut === state.writes) {
           state.cut = null;
           throw FAILURE; // Se corta DESPUÉS de escribir para demostrar rollback real.
@@ -84,6 +90,11 @@ function adapterFor(db, platform) {
       if (separateConnection) db.exec('PRAGMA foreign_keys = OFF');
       db.exec('BEGIN');
       state.active = true;
+      if (state.onBegin) {
+        const onBegin = state.onBegin;
+        state.onBegin = null;
+        onBegin();
+      }
       await (exclusive ? task(executor) : task());
       db.exec('COMMIT');
     } catch (error) {
@@ -111,6 +122,14 @@ function adapterFor(db, platform) {
     adapter,
     state,
     reset: (cut = null) => { state.writes = 0; state.cut = cut; state.exclusive = 0; state.regular = 0; },
+    pauseAfterWrite(write) {
+      let entered;
+      let release;
+      const reached = new Promise((resolve) => { entered = resolve; });
+      const gate = new Promise((resolve) => { release = resolve; });
+      state.pause = { write, entered, gate };
+      return { reached, release };
+    },
   };
 }
 
@@ -125,7 +144,7 @@ async function device(platform) {
   const db = new DatabaseSync(':memory:');
   const control = adapterFor(db, platform);
   // `hold`: promesa que el scheduler espera antes de programar (para forzar carreras entre restauraciones).
-  const notifier = { next: 1, active: new Set(), calls: 0, failOn: null, hold: null };
+  const notifier = { next: 1, active: new Set(), calls: 0, failOn: null, hold: null, failCancelIds: new Set() };
   const files = { picked: null, saved: null };
   const bridge = {
     schedule: async (event) => {
@@ -139,7 +158,12 @@ async function device(platform) {
       });
     },
     cancel: async (reminders) => {
-      for (const { notificationId } of reminders) if (notificationId) notifier.active.delete(notificationId);
+      const attempts = await Promise.allSettled(reminders.map(async ({ notificationId }) => {
+        if (notifier.failCancelIds.has(notificationId)) throw new Error(`El SO no pudo cancelar ${notificationId}`);
+        if (notificationId) notifier.active.delete(notificationId);
+      }));
+      const failed = attempts.find((result) => result.status === 'rejected');
+      if (failed) throw failed.reason;
     },
     pick: async () => files.picked,
     save: async (_name, content) => { files.saved = content; },
@@ -804,5 +828,201 @@ for (const platform of platforms) {
       }
       assert.deepEqual(source.db.prepare('PRAGMA foreign_key_check').all(), []);
     } finally { source.db.close(); }
+  });
+}
+
+const localBaseDraft = {
+  label: 'Base del writer', yearly: false, requiresTime: false, capabilities: [],
+  fields: [{ label: 'Campo base local', kind: 'texto', options: [], required: false }],
+};
+const localTypeDraft = {
+  label: 'Tipo del writer', icon: 'star', color: '#123456', baseKey: 'evento', extraCapabilities: [],
+  fields: [{ label: 'Campo tipo local', kind: 'texto', options: [], required: false }],
+};
+
+async function writerFixture(d) {
+  await seedLocal(d);
+  const base = await d.repos.eventBases.createEventBase(localBaseDraft);
+  const type = await d.repos.eventTypes.createEventType(localTypeDraft);
+  const emptyType = await d.repos.eventTypes.createEventType({ ...localTypeDraft, label: 'Tipo sin eventos' });
+  const event = await d.repos.events.insertEvent({ ...original, title: 'Evento del writer', type: type.key }, []);
+  d.db.exec("DELETE FROM event_types WHERE key = 'festivo'");
+  d.control.reset();
+  return { base, type, emptyType, event };
+}
+
+const concurrentWriters = [
+  ['crear base', (d) => d.repos.eventBases.createEventBase({ ...localBaseDraft, label: 'Base concurrente' }),
+    (d) => assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM event_bases WHERE label = 'Base concurrente'").get().n, 1)],
+  ['editar base', (d, f) => d.repos.eventBases.updateEventBase(f.base.id, { ...localBaseDraft, label: 'Base editada', fields: [] }, NO_PLAN),
+    (d, f) => assert.equal(d.db.prepare('SELECT label FROM event_bases WHERE id = ?').get(f.base.id).label, 'Base editada')],
+  ['borrar base', (d, f) => d.repos.eventBases.deleteEventBase(f.base.id),
+    (d, f) => assert.equal(d.db.prepare('SELECT id FROM event_bases WHERE id = ?').get(f.base.id), undefined)],
+  ['crear tipo', (d) => d.repos.eventTypes.createEventType({ ...localTypeDraft, label: 'Tipo concurrente' }),
+    (d) => assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM event_types WHERE label = 'Tipo concurrente'").get().n, 1)],
+  ['editar tipo', (d, f) => d.repos.eventTypes.updateEventType(f.type.id, { ...localTypeDraft, label: 'Tipo editado', fields: [] }, NO_PLAN),
+    (d, f) => assert.equal(d.db.prepare('SELECT label FROM event_types WHERE id = ?').get(f.type.id).label, 'Tipo editado')],
+  ['borrar tipo vacío', (d, f) => d.repos.eventTypes.deleteEventType(f.emptyType.id),
+    (d, f) => assert.equal(d.db.prepare('SELECT id FROM event_types WHERE id = ?').get(f.emptyType.id), undefined)],
+  ['borrar tipo moviendo eventos', (d, f) => d.repos.eventTypes.deleteEventTypeMovingEvents(f.type.id, f.type.key, 'evento', NO_PLAN),
+    (d, f) => assert.equal(d.db.prepare('SELECT type FROM events WHERE id = ?').get(f.event.id).type, 'evento')],
+  ['borrar tipo con eventos', (d, f) => d.repos.eventTypes.deleteEventTypeWithEvents(f.type.id, f.type.key),
+    (d, f) => assert.equal(d.db.prepare('SELECT id FROM events WHERE id = ?').get(f.event.id), undefined)],
+  ['recrear tipo de fábrica', (d) => d.repos.eventTypes.ensureBuiltinType('festivo'),
+    (d) => assert.equal(d.db.prepare("SELECT is_builtin FROM event_types WHERE key = 'festivo'").get().is_builtin, 1)],
+  ['guardar nota', (d) => d.load('@/db/notes-repo').insertNote({ title: 'Nota concurrente', content: 'Independiente' }),
+    (d) => assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM notes WHERE title = 'Nota concurrente'").get().n, 1)],
+  ['guardar perfil', (d) => d.repos.settings.setSetting('displayName', 'Perfil concurrente'),
+    (d) => assert.equal(d.db.prepare("SELECT value FROM settings WHERE key = 'displayName'").get().value, 'Perfil concurrente')],
+  ['guardar saludo', (d, f) => d.repos.greetings.setGreetedForEvent(2026, f.event.id, 'Saludo concurrente', null, true),
+    (d) => assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM greetings WHERE name = 'Saludo concurrente'").get().n, 1)],
+  ['guardar marca de saludo', (d, f) => d.repos.sent.setGreetingSent(2026, f.event.id, true),
+    (d, f) => assert.equal(d.db.prepare('SELECT greeted FROM greetings_sent WHERE event_id = ?').get(f.event.id).greeted, 1)],
+  ['guardar idea de regalo', (d, f) => d.load('@/db/gift-ideas-repo').insertGiftIdea({ eventId: f.event.id, text: 'Regalo concurrente' }),
+    (d) => assert.equal(d.db.prepare("SELECT COUNT(*) AS n FROM gift_ideas WHERE text = 'Regalo concurrente'").get().n, 1)],
+];
+
+for (const fails of [true, false]) {
+  for (const [name, write, verify] of concurrentWriters) {
+    test(`web: restore ${fails ? 'revierte' : 'confirma'} antes de ${name} y del snapshot encolados`, async () => {
+      const target = await device('web');
+      let pause;
+      try {
+        const fixture = await writerFixture(target);
+        const before = snapshot(target.db);
+        const raw = JSON.stringify({
+          app: 'crono', formatVersion: 2, displayName: null,
+          events: [{ ...original, title: 'Evento restaurado concurrente' }],
+          notes: [{ title: 'Nota restaurada concurrente', content: 'Completa o nada' }],
+        });
+        target.control.reset(fails ? 2 : null);
+        pause = target.control.pauseAfterWrite(1);
+        const restoring = target.restore(raw);
+        const restoreOutcome = Promise.allSettled([restoring]);
+        await pause.reached; // El evento ya está escrito, pero la unidad todavía no confirmó.
+        assert.equal(target.control.state.active, true);
+        assert.equal(target.db.prepare("SELECT COUNT(*) AS n FROM events WHERE title = 'Evento restaurado concurrente'").get().n, 1);
+        let atWriterBegin;
+        target.control.state.onBegin = () => { atWriterBegin = snapshot(target.db); };
+        const regularBefore = target.control.state.regular;
+        let writerSettled = false;
+        let snapshotSettled = false;
+        const writing = write(target, fixture).then(() => { writerSettled = true; });
+        const reading = target.repos.backup.readBackupSnapshot().then((result) => { snapshotSettled = true; return result; });
+        const outcomes = Promise.allSettled([writing, reading]);
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(writerSettled, false, 'el writer real espera fuera de la transacción del restore');
+        assert.equal(snapshotSettled, false, 'el export no lee el restore a medio escribir');
+        assert.equal(target.control.state.regular, regularBefore, 'ningún BEGIN competidor alcanzó SQLite');
+        pause.release();
+        const [restoreResult] = await restoreOutcome;
+        const [writerResult, snapshotResult] = await outcomes;
+        assert.equal(restoreResult.status, fails ? 'rejected' : 'fulfilled');
+        if (fails) {
+          assert.match(String(restoreResult.reason?.message ?? restoreResult.reason), /Interrupción entre escrituras/);
+          assert.deepEqual(atWriterBegin, before, 'rollback completo ANTES de comenzar el writer independiente');
+        } else {
+          assert.equal(atWriterBegin.events.length, before.events.length + 1);
+          assert.equal(atWriterBegin.notes.length, before.notes.length + 1);
+        }
+        assert.equal(writerResult.status, 'fulfilled', String(writerResult.reason));
+        assert.equal(snapshotResult.status, 'fulfilled', String(snapshotResult.reason));
+        verify(target, fixture);
+        assert.equal(snapshotResult.value.events.some((event) => event.title === 'Evento restaurado concurrente'), !fails);
+        assert.equal(snapshotResult.value.notes.some((note) => note.title === 'Nota restaurada concurrente'), !fails);
+        assert.deepEqual(target.db.prepare('PRAGMA foreign_key_check').all(), []);
+        assert.equal(target.control.state.active, false);
+        assert.equal(target.openTransaction(), false);
+      } finally {
+        pause?.release();
+        target.db.close();
+      }
+    });
+  }
+}
+
+for (const platform of platforms) {
+  test(`${platform}: el borrado de tipo conserva las cascadas en la conexión principal serializada`, async () => {
+    const target = await device(platform);
+    try {
+      const { type, event } = await writerFixture(target);
+      const field = target.db.prepare('SELECT id FROM custom_fields WHERE type_id = ?').get(type.id);
+      target.db.prepare('INSERT INTO event_field_values (event_id, field_id, value) VALUES (?, ?, ?)').run(event.id, field.id, 'Valor local');
+      await target.repos.greetings.setGreetedForEvent(2026, event.id, 'Vínculo conservado', null, true);
+      await target.repos.sent.setGreetingSent(2026, event.id, true);
+      await target.load('@/db/gift-ideas-repo').insertGiftIdea({ eventId: event.id, text: 'Regalo' });
+      target.control.reset();
+      await target.repos.eventTypes.deleteEventTypeWithEvents(type.id, type.key);
+      assert.equal(target.control.state.regular, 1, 'la unidad usa la principal con FK activas');
+      assert.equal(target.control.state.exclusive, 0);
+      for (const table of ['reminders', 'greetings', 'greetings_sent', 'gift_ideas', 'event_tags', 'event_field_values']) {
+        assert.equal(target.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE event_id = ?`).get(event.id).n, 0);
+      }
+      assert.equal(target.db.prepare('SELECT COUNT(*) AS n FROM custom_fields WHERE type_id = ?').get(type.id).n, 0);
+      assert.deepEqual(target.db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(target.openTransaction(), false);
+    } finally { target.db.close(); }
+  });
+}
+
+for (const platform of platforms) {
+  test(`${platform}: compensación de restore rechazada registra IDs y reintenta limpieza sin programar`, async () => {
+    const { source, file } = await sourceFile(platform);
+    const target = await device(platform);
+    try {
+      await seedLocal(target);
+      const before = semantic(target.db);
+      const activeBefore = [...target.notifier.active].sort();
+      const stuck = `aviso-${target.notifier.next}`;
+      target.notifier.failCancelIds.add(stuck);
+      target.control.reset(1);
+      await assert.rejects(target.restore(file), (error) => {
+        assert.match(error.message, /Interrupción entre escrituras/);
+        assert.match(error.message, /SQLite[\s\S]*limpieza de avisos pendiente/);
+        return true;
+      });
+      assert.deepEqual(semantic(target.db), before, 'el contenido previo de SQLite sigue intacto');
+      const cleanup = target.load('@/notifications/cancel-after-commit');
+      const pending = JSON.parse(await target.repos.settings.getSetting(cleanup.PENDING_CANCELLATIONS_KEY));
+      assert.ok(pending.includes(stuck), 'ningún ID rechazado queda sin referencia persistida');
+      const calls = target.notifier.calls;
+      await assert.rejects(target.restore(file));
+      assert.equal(target.notifier.calls, calls, 'repetir restore no suma avisos mientras queda limpieza');
+      const dialogs = target.load('@/components/confirm');
+      const dialog = dialogs.currentDialog();
+      assert.equal(dialog.title, 'Limpieza de avisos pendiente');
+      assert.ok(dialog.buttons.some((button) => button.label === 'Reintentar limpieza'));
+      target.notifier.failCancelIds.clear();
+      dialogs.resolveDialog(dialog.id, true);
+      await cleanup.retryPendingReminderCancellations();
+      assert.equal(target.notifier.calls, calls, 'el botón sólo limpia IDs existentes');
+      assert.deepEqual([...target.notifier.active].sort(), activeBefore);
+      assert.equal(await target.repos.settings.getSetting(cleanup.PENDING_CANCELLATIONS_KEY), '[]');
+      assert.equal(target.openTransaction(), false);
+    } finally { source.db.close(); target.db.close(); }
+  });
+
+  test(`${platform}: borrar tipo conserva IDs rechazados y limpia sin recrear eventos`, async () => {
+    const target = await device(platform);
+    try {
+      const type = await target.repos.eventTypes.createEventType({ ...localTypeDraft, label: 'Con avisos' });
+      const event = await target.store.dispatch(target.S.events.addEvent({
+        ...original, type: type.key, reminders: [{ amount: 1, unit: 'dias' }],
+      })).unwrap();
+      const [stuck] = event.reminders.map((reminder) => reminder.notificationId);
+      target.notifier.failCancelIds.add(stuck);
+      await target.store.dispatch(target.load('@/store/type-config-thunks').deleteTypeWithEvents({
+        id: type.id, key: type.key, events: [event],
+      })).unwrap();
+      assert.equal(target.store.getState().events.items.length, 0);
+      const cleanup = target.load('@/notifications/cancel-after-commit');
+      assert.ok(JSON.parse(await target.repos.settings.getSetting(cleanup.PENDING_CANCELLATIONS_KEY)).includes(stuck));
+      const calls = target.notifier.calls;
+      target.notifier.failCancelIds.clear();
+      await cleanup.retryPendingReminderCancellations();
+      assert.equal(target.notifier.calls, calls);
+      assert.deepEqual([...target.notifier.active], []);
+      assert.equal(await target.repos.settings.getSetting(cleanup.PENDING_CANCELLATIONS_KEY), '[]');
+    } finally { target.db.close(); }
   });
 }

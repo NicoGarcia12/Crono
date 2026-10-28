@@ -11,7 +11,7 @@ import {
 } from '@/backup/backup';
 import { pickTextFile, saveAndShare } from '@/backup/file-io';
 import * as backupRepo from '@/db/backup-repo';
-import { cancelRemindersAfterCommit } from '@/notifications/cancel-after-commit';
+import { cancelRemindersAfterCommit, requireReminderCleanup } from '@/notifications/cancel-after-commit';
 import { scheduleEventReminders } from '@/notifications/notifications';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
@@ -54,9 +54,12 @@ function toNewEvent({ ref: _ref, fieldValues: _fieldValues, ...event }: BackupEv
 }
 
 /** Mensaje accionable: la restauración es atómica, así que lo previo siempre queda como estaba. */
-function restoreFailure(cause: unknown): Error {
+function restoreFailure(cause: unknown, cleanupPending: boolean): Error {
   const detail = cause instanceof Error ? cause.message : String(cause);
-  return new Error(`${detail}\nNo se modificó ningún dato: podés volver a intentarlo.`, { cause });
+  const recovery = cleanupPending
+    ? 'No se modificó ningún dato en SQLite. Quedó limpieza de avisos pendiente: usá Reintentar limpieza antes de restaurar otra vez.'
+    : 'No se modificó ningún dato: podés volver a intentarlo.';
+  return new Error(`${detail}\n${recovery}`, { cause });
 }
 
 /**
@@ -77,6 +80,7 @@ export const restoreBackup = createAsyncThunk<RestoreSummary | null, void, { sta
     const parsed = parseBackup(raw);
     if (!parsed.ok) return rejectWithValue(parsed.error) as never;
     const { backup, discarded } = parsed;
+    await requireReminderCleanup();
 
     const scheduled = new Map<number, EventReminder[]>();
     let counts: RestoreCounts;
@@ -86,11 +90,10 @@ export const restoreBackup = createAsyncThunk<RestoreSummary | null, void, { sta
       }
       counts = await backupRepo.applyBackupRestore(backup, scheduled);
     } catch (error) {
-      // Un aviso que no se pueda cancelar no tapa el error que explica la falla: se deja console.warn con sus ids.
-      await Promise.all(
-        [...scheduled.values()].map((reminders) => cancelRemindersAfterCommit(reminders, 'Restaurar copia')),
-      );
-      throw restoreFailure(error);
+      // La causa de SQLite se conserva, pero no prometemos rollback del SO
+      // cuando su cancelación todavía necesita intervención/reintento.
+      const cleanup = await cancelRemindersAfterCommit([...scheduled.values()].flat(), 'Restaurar copia fallida');
+      throw restoreFailure(error, cleanup.pendingIds.length > 0 || Boolean(cleanup.error || cleanup.storageError));
     }
 
     // Ya está confirmado en SQLite: se recarga la copia en memoria desde la base.

@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import { applyRemovals, writeFields } from '@/db/custom-fields-repo';
 import { getDb } from '@/db/database';
-import type { EventExecutor } from '@/db/event-transaction';
+import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
 import { parseCapabilities } from '@/db/json-columns';
 import type { BuiltinEventType, EventTypeMeta, NewEventType, RemovalPlan } from '@/types';
 
@@ -60,11 +60,11 @@ function slugify(label: string): string {
 }
 
 /** Agrega "_2", "_3"... hasta que la clave no choque con una existente. */
-async function uniqueKey(label: string): Promise<string> {
+async function uniqueKey(db: Pick<EventExecutor, 'getFirstAsync'>, label: string): Promise<string> {
   const base = slugify(label);
   let key = base;
   let suffix = 2;
-  while (await getDb().getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', key)) {
+  while (await db.getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', key)) {
     key = `${base}_${suffix}`;
     suffix += 1;
   }
@@ -73,11 +73,11 @@ async function uniqueKey(label: string): Promise<string> {
 
 /** Crea el tipo con su base, sus extras y sus campos extra, todo junto o nada. */
 export async function createEventType(data: NewEventType): Promise<EventTypeMeta> {
-  const key = await uniqueKey(data.label);
-  const db = getDb();
+  let key = '';
   let id = 0;
   let defaultYearly = false;
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
+    key = await uniqueKey(db, data.label);
     // `default_yearly` queda como copia de la repetición de la base (columna histórica).
     const base = await db.getFirstAsync<{ yearly: 0 | 1 }>('SELECT yearly FROM event_bases WHERE key = ?', data.baseKey);
     defaultYearly = base?.yearly === 1;
@@ -89,7 +89,7 @@ export async function createEventType(data: NewEventType): Promise<EventTypeMeta
     );
     id = result.lastInsertRowId;
     await writeFields(db, { column: 'type_id', id }, data.fields);
-  });
+  }, 'primary');
   return {
     id,
     key,
@@ -110,8 +110,7 @@ export async function createEventType(data: NewEventType): Promise<EventTypeMeta
  * fábrica solo cambian label/ícono/color: la clave, la base y los extras nunca.
  */
 export async function updateEventType(id: number, data: NewEventType, plan: RemovalPlan): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
     const row = await db.getFirstAsync<{ key: string; isBuiltin: 0 | 1 }>(
       'SELECT key, is_builtin AS isBuiltin FROM event_types WHERE id = ?',
       id,
@@ -127,7 +126,7 @@ export async function updateEventType(id: number, data: NewEventType, plan: Remo
     );
     await applyRemovals(db, [row.key], plan);
     await writeFields(db, { column: 'type_id', id }, data.fields);
-  });
+  }, 'primary');
 }
 
 /** Borra el tipo y sus campos extra (sus valores caen por cascada). */
@@ -148,12 +147,11 @@ export async function deleteEventTypeMovingEvents(
   destinationKey: string,
   plan: RemovalPlan,
 ): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
     await applyRemovals(db, [sourceKey], plan);
     await db.runAsync('UPDATE events SET type = ? WHERE type = ?', destinationKey, sourceKey);
     await deleteTypeRow(db, id);
-  });
+  }, 'primary');
 }
 
 /**
@@ -162,17 +160,15 @@ export async function deleteEventTypeMovingEvents(
  * cancelan antes, en el thunk, porque no tienen rollback.
  */
 export async function deleteEventTypeWithEvents(id: number, key: string): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => {
+  await withEventTransaction(getDb(), async (db) => {
     await db.runAsync('DELETE FROM events WHERE type = ?', key);
     await deleteTypeRow(db, id);
-  });
+  }, 'primary');
 }
 
 /** Borra un tipo sin eventos. */
 export async function deleteEventType(id: number): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => deleteTypeRow(db, id));
+  await withEventTransaction(getDb(), (db) => deleteTypeRow(db, id), 'primary');
 }
 
 /**
@@ -180,13 +176,14 @@ export async function deleteEventType(id: number): Promise<void> {
  * importar contactos necesita "Cumpleaños"). Devuelve true si lo creó.
  */
 export async function ensureBuiltinType(key: BuiltinEventType): Promise<boolean> {
-  const db = getDb();
-  if (await db.getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', key)) return false;
-  const meta = DEFAULT_EVENT_TYPES[key];
-  await db.runAsync(
-    'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities) ' +
-      "VALUES (?, ?, ?, ?, ?, 1, ?, '[]')",
-    key, meta.label, meta.icon, meta.color, meta.defaultYearly ? 1 : 0, key,
-  );
-  return true;
+  return withEventTransaction(getDb(), async (db) => {
+    if (await db.getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', key)) return false;
+    const meta = DEFAULT_EVENT_TYPES[key];
+    await db.runAsync(
+      'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities) ' +
+        "VALUES (?, ?, ?, ?, ?, 1, ?, '[]')",
+      key, meta.label, meta.icon, meta.color, meta.defaultYearly ? 1 : 0, key,
+    );
+    return true;
+  }, 'primary');
 }

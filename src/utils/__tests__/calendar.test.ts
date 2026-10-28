@@ -9,7 +9,8 @@ import {
   startOfWeek,
 } from '@/utils/calendar';
 import { defaultHasCapability } from '@/test-utils';
-import { dateToIso } from '@/utils/dates';
+import { countdownLabel, dateToIso, dateToTime, formatRelative, nextOccurrence, toLocalDate } from '@/utils/dates';
+import { reminderDate } from '@/utils/reminders';
 import type { EventItem } from '@/types';
 
 const evento = (over: Partial<EventItem> & { id: number }): EventItem => ({
@@ -136,6 +137,43 @@ describe('eventsByDay', () => {
     // Los días de enero visibles son los de 2027: ahí cae el feriado, y no en 2026.
     expect(byDay.get('2027-01-01')).toEqual([anioNuevo]);
     expect(byDay.get('2026-01-01')).toBeUndefined();
+  });
+
+  it.each([
+    { from: '2027-02-27', next: '2027-02-28', label: 'Falta 1 día', relative: 'Mañana', reminder: '2027-02-27' },
+    { from: '2027-02-28', next: '2027-02-28', label: 'Es hoy', relative: 'Hoy', reminder: '2027-02-27' },
+    { from: '2027-03-01', next: '2028-02-29', label: 'Faltan 365 días', relative: '29 feb 2028', reminder: '2028-02-28' },
+    { from: '2027-12-31', next: '2028-02-29', label: 'Faltan 60 días', relative: '29 feb 2028', reminder: '2028-02-28' },
+    { from: '2028-01-01', next: '2028-02-29', label: 'Faltan 59 días', relative: '29 feb', reminder: '2028-02-28' },
+    { from: '2028-02-28', next: '2028-02-29', label: 'Falta 1 día', relative: 'Mañana', reminder: '2028-02-28' },
+    { from: '2028-02-29', next: '2028-02-29', label: 'Es hoy', relative: 'Hoy', reminder: '2028-02-28' },
+    { from: '2028-03-01', next: '2029-02-28', label: 'Faltan 364 días', relative: '28 feb 2029', reminder: '2029-02-27' },
+  ])('agenda, calendario, countdown y fecha del aviso coinciden desde $from', ({ from, next, label, relative, reminder }) => {
+    const original = Object.freeze(evento({ id: 38, date: '2000-02-29', yearly: 1, time: '10:00' }));
+    const now = toLocalDate(from, '09:00');
+    const occurrence = nextOccurrence(original, now);
+    const month = buildMonthGrid(toLocalDate(next)).flat();
+    const byDay = eventsByDay([original], month);
+
+    expect(dateToIso(occurrence)).toBe(next);
+    expect([...byDay.keys()]).toEqual([next]);
+    expect(byDay.get(next)).toEqual([original]);
+    expect(formatRelative(occurrence, now)).toBe(relative);
+    expect(countdownLabel(occurrence, now)).toBe(label);
+    const reminderAt = reminderDate(occurrence, { amount: 1, unit: 'dias' });
+    expect(dateToIso(reminderAt)).toBe(reminder);
+    expect(dateToTime(reminderAt)).toBe('10:00');
+    expect(original.date).toBe('2000-02-29');
+  });
+
+  it('proyectar años no bisiestos no cambia la identidad del 29/2 al volver a un bisiesto', () => {
+    const original = Object.freeze(evento({ id: 38, date: '2000-02-29', yearly: 1 }));
+
+    for (const year of [2027, 2028, 2029, 2032, 2028]) {
+      const byDay = eventsByDay([original], buildMonthGrid(new Date(year, 1, 1)).flat());
+      expect([...byDay.keys()]).toEqual([`${year}-02-${year === 2028 || year === 2032 ? '29' : '28'}`]);
+      expect(original.date).toBe('2000-02-29');
+    }
   });
 
   it('junta varios eventos en el mismo día', () => {

@@ -67,42 +67,45 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
 
   if (currentVersion >= DATABASE_VERSION) return;
 
-  if (currentVersion === 0) {
-    // WAL = write-ahead logging: mejora la concurrencia lectura/escritura.
-    // Solo en nativo: el backend WebAssembly de web no soporta WAL.
-    if (Platform.OS !== 'web') {
-      await database.execAsync(`PRAGMA journal_mode = 'wal'`);
-    }
-
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS events (
-        id INTEGER PRIMARY KEY NOT NULL,
-        title TEXT NOT NULL,
-        type TEXT NOT NULL,
-        date TEXT NOT NULL,
-        time TEXT,
-        description TEXT,
-        reminder_minutes INTEGER,
-        yearly INTEGER NOT NULL DEFAULT 0,
-        notification_id TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS notes (
-        id INTEGER PRIMARY KEY NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      -- Tabla clave-valor para preferencias (nombre del usuario, etc.).
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY NOT NULL,
-        value TEXT NOT NULL
-      );
-    `);
-    currentVersion = 1;
+  // WAL no se puede cambiar dentro de una transacción. La conexión todavía
+  // no se publica: ninguna operación de repositorios participa de la migración.
+  if (currentVersion === 0 && Platform.OS !== 'web') {
+    await database.execAsync(`PRAGMA journal_mode = 'wal'`);
   }
+
+  if (currentVersion === 0) {
+      await database.withTransactionAsync(async () => {
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY NOT NULL,
+            title TEXT NOT NULL,
+            type TEXT NOT NULL,
+            date TEXT NOT NULL,
+            time TEXT,
+            description TEXT,
+            reminder_minutes INTEGER,
+            yearly INTEGER NOT NULL DEFAULT 0,
+            notification_id TEXT
+          );
+    
+          CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+    
+          -- Tabla clave-valor para preferencias (nombre del usuario, etc.).
+          CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL
+          );
+        `);
+        await database.execAsync('PRAGMA user_version = 1');
+      });
+      currentVersion = 1;
+    }
 
   if (currentVersion === 1) {
     // v2: recordatorios múltiples. El aviso único (columnas reminder_minutes /
@@ -135,163 +138,197 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   }
 
   if (currentVersion === 2) {
-    // v3: avisos personalizados. En vez de guardar minutos, se guarda la
-    // anticipación tal como la eligió el usuario (cantidad + unidad), porque
-    // "1 mes" no equivale a una cantidad fija de minutos.
-    await database.execAsync(`
-      ALTER TABLE reminders ADD COLUMN amount INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE reminders ADD COLUMN unit TEXT NOT NULL DEFAULT 'minutos';
-
-      -- Backfill: los minutos guardados se expresan en la unidad más natural.
-      UPDATE reminders SET amount = minutes / 10080, unit = 'semanas' WHERE minutes % 10080 = 0 AND minutes > 0;
-      UPDATE reminders SET amount = minutes / 1440,  unit = 'dias'    WHERE minutes % 1440 = 0  AND minutes > 0 AND unit = 'minutos';
-      UPDATE reminders SET amount = minutes / 60,    unit = 'horas'   WHERE minutes % 60 = 0    AND minutes > 0 AND unit = 'minutos';
-      UPDATE reminders SET amount = minutes,         unit = 'minutos' WHERE minutes > 0 AND unit = 'minutos';
-
-      ALTER TABLE reminders DROP COLUMN minutes;
-    `);
-    currentVersion = 3;
-  }
+      await database.withTransactionAsync(async () => {
+        // v3: avisos personalizados. En vez de guardar minutos, se guarda la
+        // anticipación tal como la eligió el usuario (cantidad + unidad), porque
+        // "1 mes" no equivale a una cantidad fija de minutos.
+        await addColumnIfMissing(database, 'reminders', 'amount', 'INTEGER NOT NULL DEFAULT 0');
+        await addColumnIfMissing(database, 'reminders', 'unit', "TEXT NOT NULL DEFAULT 'minutos'");
+        // Una versión vieja pudo cortar después de cualquiera de los ALTER o del
+        // backfill. Mientras exista la fuente, recalcular ambas columnas es seguro;
+        // si ya se eliminó, conservar los valores convertidos, no volverlos a cero.
+        if (await hasColumn(database, 'reminders', 'minutes')) {
+          await database.execAsync(`
+            UPDATE reminders SET
+              amount = CASE
+                WHEN minutes > 0 AND minutes % 10080 = 0 THEN minutes / 10080
+                WHEN minutes > 0 AND minutes % 1440 = 0 THEN minutes / 1440
+                WHEN minutes > 0 AND minutes % 60 = 0 THEN minutes / 60
+                ELSE minutes
+              END,
+              unit = CASE
+                WHEN minutes > 0 AND minutes % 10080 = 0 THEN 'semanas'
+                WHEN minutes > 0 AND minutes % 1440 = 0 THEN 'dias'
+                WHEN minutes > 0 AND minutes % 60 = 0 THEN 'horas'
+                ELSE 'minutos'
+              END;
+            ALTER TABLE reminders DROP COLUMN minutes;
+          `);
+        }
+        await database.execAsync('PRAGMA user_version = 3');
+      });
+      currentVersion = 3;
+    }
 
   if (currentVersion === 3) {
-    // v4: los eventos creados desde la agenda de contactos recuerdan de qué
-    // contacto salieron (para no cargarlo dos veces) y su teléfono (para
-    // saludarlo por WhatsApp sin tener que buscarlo).
-    // SQLite no soporta `ADD COLUMN IF NOT EXISTS`. Si el proceso se cortó
-    // entre ambos ALTER, detectar el error de columna duplicada permite
-    // retomar desde ese esquema parcial sin ocultar otros errores reales.
-    await addColumnIfMissing(database, 'contact_id', 'TEXT');
-    await addColumnIfMissing(database, 'phone', 'TEXT');
-    currentVersion = 4;
-  }
+      await database.withTransactionAsync(async () => {
+        // v4: los eventos creados desde la agenda de contactos recuerdan de qué
+        // contacto salieron (para no cargarlo dos veces) y su teléfono (para
+        // saludarlo por WhatsApp sin tener que buscarlo).
+        await addColumnIfMissing(database, 'events', 'contact_id', 'TEXT');
+        await addColumnIfMissing(database, 'events', 'phone', 'TEXT');
+        await database.execAsync('PRAGMA user_version = 4');
+      });
+      currentVersion = 4;
+    }
 
   if (currentVersion === 4) {
-    // v5: "mi cumpleaños" y la lista de quién me saludó cada año.
-    await database.execAsync(`
-      ALTER TABLE events ADD COLUMN is_mine INTEGER NOT NULL DEFAULT 0;
-
-      CREATE TABLE IF NOT EXISTS greetings (
-        id INTEGER PRIMARY KEY NOT NULL,
-        year INTEGER NOT NULL,
-        -- Si la persona está en mi agenda apunta a su cumpleaños; si la anoté
-        -- a mano, queda en NULL y solo guardo su nombre.
-        event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        phone TEXT,
-        greeted INTEGER NOT NULL DEFAULT 0
-      );
-
-      -- Una sola fila por persona y año (índice parcial: solo aplica a los de la agenda).
-      CREATE UNIQUE INDEX IF NOT EXISTS greetings_event_year
-        ON greetings(year, event_id) WHERE event_id IS NOT NULL;
-    `);
-    currentVersion = 5;
-  }
+      await database.withTransactionAsync(async () => {
+        // v5: "mi cumpleaños" y la lista de quién me saludó cada año.
+        await addColumnIfMissing(database, 'events', 'is_mine', 'INTEGER NOT NULL DEFAULT 0');
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS greetings (
+            id INTEGER PRIMARY KEY NOT NULL,
+            year INTEGER NOT NULL,
+            -- Si la persona está en mi agenda apunta a su cumpleaños; si la anoté
+            -- a mano, queda en NULL y solo guardo su nombre.
+            event_id INTEGER REFERENCES events(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            phone TEXT,
+            greeted INTEGER NOT NULL DEFAULT 0
+          );
+    
+          -- Una sola fila por persona y año (índice parcial: solo aplica a los de la agenda).
+          CREATE UNIQUE INDEX IF NOT EXISTS greetings_event_year
+            ON greetings(year, event_id) WHERE event_id IS NOT NULL;
+        `);
+        await database.execAsync('PRAGMA user_version = 5');
+      });
+      currentVersion = 5;
+    }
 
   if (currentVersion === 5) {
-    // v6: antes de crear el índice, se normalizan instalaciones viejas que
-    // pudieran tener duplicados. Se conserva el evento más viejo y ningún
-    // evento se borra: los demás solo pierden la marca de "propio".
-    await database.execAsync(`
-      UPDATE events
-      SET is_mine = 0
-      WHERE is_mine = 1
-        AND id NOT IN (SELECT MIN(id) FROM events WHERE is_mine = 1);
-
-      CREATE UNIQUE INDEX IF NOT EXISTS events_single_mine
-        ON events(is_mine) WHERE is_mine = 1;
-    `);
-    currentVersion = 6;
-  }
+      await database.withTransactionAsync(async () => {
+        // v6: antes de crear el índice, se normalizan instalaciones viejas que
+        // pudieran tener duplicados. Se conserva el evento más viejo y ningún
+        // evento se borra: los demás solo pierden la marca de "propio".
+        await database.execAsync(`
+          UPDATE events
+          SET is_mine = 0
+          WHERE is_mine = 1
+            AND id NOT IN (SELECT MIN(id) FROM events WHERE is_mine = 1);
+    
+          CREATE UNIQUE INDEX IF NOT EXISTS events_single_mine
+            ON events(is_mine) WHERE is_mine = 1;
+        `);
+        await database.execAsync('PRAGMA user_version = 6');
+      });
+      currentVersion = 6;
+    }
 
   if (currentVersion === 6) {
-    // v7: ideas de regalo por persona. Lista libre de texto ligada al evento
-    // que representa a esa persona (cumpleaños, aniversario, etc.); al
-    // regalarse algo la fila se borra, no se archiva.
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS gift_ideas (
-        id INTEGER PRIMARY KEY NOT NULL,
-        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-        text TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      );
-    `);
-    currentVersion = 7;
-  }
+      await database.withTransactionAsync(async () => {
+        // v7: ideas de regalo por persona. Lista libre de texto ligada al evento
+        // que representa a esa persona (cumpleaños, aniversario, etc.); al
+        // regalarse algo la fila se borra, no se archiva.
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS gift_ideas (
+            id INTEGER PRIMARY KEY NOT NULL,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          );
+        `);
+        await database.execAsync('PRAGMA user_version = 7');
+      });
+      currentVersion = 7;
+    }
 
   if (currentVersion === 7) {
-    // v8: marca de "ya lo saludé" para cumpleaños/aniversarios ajenos, año
-    // por año — mismo patrón no destructivo que `greetings` (clave año +
-    // evento), pero en tabla propia porque es la dirección opuesta: acá
-    // registro que YO saludé, no que me saludaron a mí.
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS greetings_sent (
-        id INTEGER PRIMARY KEY NOT NULL,
-        year INTEGER NOT NULL,
-        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-        greeted INTEGER NOT NULL DEFAULT 0,
-        UNIQUE(year, event_id)
-      );
-    `);
-    currentVersion = 8;
-  }
+      await database.withTransactionAsync(async () => {
+        // v8: marca de "ya lo saludé" para cumpleaños/aniversarios ajenos, año
+        // por año — mismo patrón no destructivo que `greetings` (clave año +
+        // evento), pero en tabla propia porque es la dirección opuesta: acá
+        // registro que YO saludé, no que me saludaron a mí.
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS greetings_sent (
+            id INTEGER PRIMARY KEY NOT NULL,
+            year INTEGER NOT NULL,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            greeted INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(year, event_id)
+          );
+        `);
+        await database.execAsync('PRAGMA user_version = 8');
+      });
+      currentVersion = 8;
+    }
 
   if (currentVersion === 8) {
-    // v9: etiquetas libres (familia, amigos, trabajo...), muchos a muchos con
-    // eventos. `tags.name` es única para no duplicar "familia"/"Familia" con
-    // mayúsculas distintas por typo; se normaliza antes de insertar.
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS tags (
-        id INTEGER PRIMARY KEY NOT NULL,
-        name TEXT NOT NULL UNIQUE
-      );
-
-      CREATE TABLE IF NOT EXISTS event_tags (
-        event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-        tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-        PRIMARY KEY (event_id, tag_id)
-      );
-    `);
-    currentVersion = 9;
-  }
+      await database.withTransactionAsync(async () => {
+        // v9: etiquetas libres (familia, amigos, trabajo...), muchos a muchos con
+        // eventos. `tags.name` es única para no duplicar "familia"/"Familia" con
+        // mayúsculas distintas por typo; se normaliza antes de insertar.
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL UNIQUE
+          );
+    
+          CREATE TABLE IF NOT EXISTS event_tags (
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            PRIMARY KEY (event_id, tag_id)
+          );
+        `);
+        await database.execAsync('PRAGMA user_version = 9');
+      });
+      currentVersion = 9;
+    }
 
   if (currentVersion === 9) {
-    // v10: foto opcional por evento (sobre todo cumpleaños/aniversarios). Se
-    // guarda la ruta ya copiada al sandbox de la app (ver src/media/photos.ts),
-    // nunca la URI temporal que devuelve el selector de imágenes.
-    await addColumnIfMissing(database, 'photo_uri', 'TEXT');
-    currentVersion = 10;
-  }
+      await database.withTransactionAsync(async () => {
+        // v10: foto opcional por evento (sobre todo cumpleaños/aniversarios). Se
+        // guarda la ruta ya copiada al sandbox de la app (ver src/media/photos.ts),
+        // nunca la URI temporal que devuelve el selector de imágenes.
+        await addColumnIfMissing(database, 'events', 'photo_uri', 'TEXT');
+        await database.execAsync('PRAGMA user_version = 10');
+      });
+      currentVersion = 10;
+    }
 
   if (currentVersion === 10) {
-    // v11: tipos de evento personalizables. Los 5 originales pasan de un enum
-    // fijo a filas sembradas acá (is_builtin = 1): se puede editar su label/
-    // ícono/color desde Perfil, pero no borrarlos ni cambiar su `key`, porque
-    // hay lógica de negocio atada a esas claves literales (cumpleanos propio,
-    // ideas de regalo, etc.). `events.type` sigue siendo TEXT: ahora referencia
-    // `event_types.key` en vez de un valor de un enum cerrado.
-    await database.execAsync(`
-      CREATE TABLE IF NOT EXISTS event_types (
-        id INTEGER PRIMARY KEY NOT NULL,
-        key TEXT NOT NULL UNIQUE,
-        label TEXT NOT NULL,
-        icon TEXT NOT NULL,
-        color TEXT NOT NULL,
-        default_yearly INTEGER NOT NULL DEFAULT 0,
-        is_builtin INTEGER NOT NULL DEFAULT 0
-      );
-    `);
-    for (const [key, meta] of Object.entries(DEFAULT_EVENT_TYPES)) {
-      // Todos los valores son constantes propias (no hay input de usuario acá),
-      // así que van embebidos como el resto de las migraciones de este archivo.
-      await database.execAsync(`
-        INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin)
-        SELECT '${key}', '${sqlEscape(meta.label)}', '${meta.icon}', '${meta.color}', ${meta.defaultYearly ? 1 : 0}, 1
-        WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${key}');
-      `);
+      await database.withTransactionAsync(async () => {
+        // v11: tipos de evento personalizables. Los 5 originales pasan de un enum
+        // fijo a filas sembradas acá (is_builtin = 1): se puede editar su label/
+        // ícono/color desde Perfil, pero no borrarlos ni cambiar su `key`, porque
+        // hay lógica de negocio atada a esas claves literales (cumpleanos propio,
+        // ideas de regalo, etc.). `events.type` sigue siendo TEXT: ahora referencia
+        // `event_types.key` en vez de un valor de un enum cerrado.
+        await database.execAsync(`
+          CREATE TABLE IF NOT EXISTS event_types (
+            id INTEGER PRIMARY KEY NOT NULL,
+            key TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL,
+            icon TEXT NOT NULL,
+            color TEXT NOT NULL,
+            default_yearly INTEGER NOT NULL DEFAULT 0,
+            is_builtin INTEGER NOT NULL DEFAULT 0
+          );
+        `);
+        for (const [key, meta] of Object.entries(DEFAULT_EVENT_TYPES)) {
+          // Todos los valores son constantes propias (no hay input de usuario acá),
+          // así que van embebidos como el resto de las migraciones de este archivo.
+          await database.execAsync(`
+            INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin)
+            SELECT '${key}', '${sqlEscape(meta.label)}', '${meta.icon}', '${meta.color}', ${meta.defaultYearly ? 1 : 0}, 1
+            WHERE NOT EXISTS (SELECT 1 FROM event_types WHERE key = '${key}');
+          `);
+        }
+        await database.execAsync('PRAGMA user_version = 11');
+      });
+      currentVersion = 11;
     }
-    currentVersion = 11;
-  }
 
   if (currentVersion === 11) {
     // v12: tipos componibles. Cada tipo pasa a salir de una BASE (repetición,
@@ -366,7 +403,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     // "ya lo saludé" de los aniversarios, que ahora son conmemoraciones, o las
     // ideas de regalo del tipo Evento). También se agrega "año desconocido".
     await database.withTransactionAsync(async () => {
-      await addColumnIfMissing(database, 'year_unknown', 'INTEGER NOT NULL DEFAULT 0');
+      await addColumnIfMissing(database, 'events', 'year_unknown', 'INTEGER NOT NULL DEFAULT 0');
       await database.execAsync(`
         DELETE FROM gift_ideas WHERE event_id IN (${eventsWithoutCapability('regalos')});
         DELETE FROM greetings_sent WHERE event_id IN (${eventsWithoutCapability('saludado')});
@@ -395,7 +432,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     // y fijo (tiene cosas que los demás no, como "¿Quién me saludó?"). Así
     // "Cumpleaños" se puede borrar sin arrastrar mi cumpleaños.
     await database.withTransactionAsync(async () => {
-      await addTypeColumnIfMissing(database, 'hidden', 'INTEGER NOT NULL DEFAULT 0');
+      await addColumnIfMissing(database, 'event_types', 'hidden', 'INTEGER NOT NULL DEFAULT 0');
       await database.execAsync(`
         INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities, hidden)
         SELECT '${MY_BIRTHDAY_TYPE_KEY}', '${sqlEscape(MY_BIRTHDAY_TYPE.label)}', '${MY_BIRTHDAY_TYPE.icon}',
@@ -409,7 +446,6 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
     currentVersion = 15;
   }
 
-  await database.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 /**
@@ -427,18 +463,15 @@ function eventsWithoutCapability(capability: Capability): string {
   `;
 }
 
-/** Igual que addColumnIfMissing, para `event_types` (reanudable si se cortó a mitad). */
-async function addTypeColumnIfMissing(
+type MigrationTable = 'events' | 'reminders' | 'event_types';
+
+async function hasColumn(
   database: SQLite.SQLiteDatabase,
-  columnName: 'hidden',
-  definition: 'INTEGER NOT NULL DEFAULT 0',
-): Promise<void> {
-  try {
-    await database.execAsync(`ALTER TABLE event_types ADD COLUMN ${columnName} ${definition}`);
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) return;
-    throw error;
-  }
+  table: MigrationTable,
+  column: string,
+): Promise<boolean> {
+  const columns = await database.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
+  return columns.some(({ name }) => name === column);
 }
 
 /** Escapa comillas simples para embeber texto en SQL crudo (sql = ''valor''). */
@@ -448,17 +481,14 @@ function sqlEscape(value: string): string {
 
 async function addColumnIfMissing(
   database: SQLite.SQLiteDatabase,
-  columnName: 'contact_id' | 'phone' | 'photo_uri' | 'year_unknown',
-  definition: 'TEXT' | 'INTEGER NOT NULL DEFAULT 0',
+  table: MigrationTable,
+  columnName: 'contact_id' | 'phone' | 'photo_uri' | 'year_unknown' | 'is_mine' | 'amount' | 'unit' | 'hidden',
+  definition: 'TEXT' | 'INTEGER NOT NULL DEFAULT 0' | "TEXT NOT NULL DEFAULT 'minutos'",
 ): Promise<void> {
-  try {
-    await database.execAsync(`ALTER TABLE events ADD COLUMN ${columnName} ${definition}`);
-  } catch (error: unknown) {
-    // Sólo absorbemos el estado parcial que sabemos reanudar. Por ejemplo,
-    // un error de disco se propaga y evita subir `user_version` prematuramente.
-    if (error instanceof Error && error.message.includes(`duplicate column name: ${columnName}`)) {
-      return;
-    }
-    throw error;
+  // Inspección del esquema, no del mensaje de error del puente nativo. Permite
+  // retomar ALTER confirmados por builds anteriores sin ocultar fallos de disco.
+  // Los identificadores y definiciones son literales internos, nunca input.
+  if (!(await hasColumn(database, table, columnName))) {
+    await database.execAsync(`ALTER TABLE ${table} ADD COLUMN ${columnName} ${definition}`);
   }
 }

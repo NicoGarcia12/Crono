@@ -77,6 +77,12 @@ function adapterFor(db) {
   };
   async function transaction(task, exclusive) {
     assert.equal(active, false, 'no se permiten transacciones anidadas');
+    // Modelo del nativo: `withExclusiveTransactionAsync` abre una conexión NUEVA y SQLite la
+    // arranca con foreign_keys = OFF (ni expo-sqlite ni su código nativo ejecutan el PRAGMA).
+    // node:sqlite trae FK activas, así que se apagan ANTES del BEGIN (dentro de una transacción
+    // el PRAGMA es un no-op) y se restauran al terminar. La conexión principal y la ruta web
+    // (`withTransactionAsync`) conservan FK activas, igual que `initDatabase`.
+    if (exclusive) db.exec('PRAGMA foreign_keys = OFF');
     db.exec('BEGIN');
     active = true;
     try {
@@ -87,6 +93,7 @@ function adapterFor(db) {
       throw error;
     } finally {
       active = false;
+      if (exclusive) db.exec('PRAGMA foreign_keys = ON');
     }
   }
   const adapter = {
@@ -337,4 +344,122 @@ for (const platform of ['android', 'web']) {
       assert.equal(f.control.state().active, false);
     } finally { f.db.close(); }
   });
+
+  test(`${platform}: el esquema real y EVENT_CHILD_TABLES coinciden (todas CASCADE hacia events)`, async () => {
+    const f = await fixture(platform);
+    try {
+      const referencing = [];
+      for (const { name } of f.db.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()) {
+        for (const fk of f.db.prepare(`PRAGMA foreign_key_list(${name})`).all()) {
+          if (fk.table === 'events') referencing.push({ table: name, onDelete: fk.on_delete });
+        }
+      }
+      assert.deepEqual(
+        referencing.map((r) => r.table).sort(),
+        [...f.repo.EVENT_CHILD_TABLES].sort(),
+        'una tabla hija nueva debe agregarse a EVENT_CHILD_TABLES',
+      );
+      // Si alguna pasara a SET NULL / RESTRICT, borrar sus filas ya no sería equivalente.
+      assert.deepEqual([...new Set(referencing.map((r) => r.onDelete))], ['CASCADE']);
+    } finally { f.db.close(); }
+  });
+
+  test(`${platform}: borrar un evento (conexión exclusiva con FK off) no deja hijos y el id reutilizado no hereda nada`, async () => {
+    const f = await fixture(platform);
+    try {
+      const children = (id) => Object.fromEntries(f.repo.EVENT_CHILD_TABLES.map(
+        (table) => [table, f.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE event_id = ?`).get(id).n],
+      ));
+      // Segundo evento con TODAS las relaciones; es el de id máximo, así que su id se reutiliza.
+      const second = await f.repo.insertEvent(
+        { ...original, title: 'Otro', contactId: null, tags: ['Ajena'], fieldValues: { 901: 'ajeno', 903: '7' } },
+        [{ amount: 3, unit: 'horas', notificationId: 'ajeno-1' }],
+      );
+      f.db.prepare('INSERT INTO gift_ideas (event_id, text, created_at) VALUES (?, ?, ?)').run(second.id, 'Regalo ajeno', '2026-01-01');
+      f.db.prepare('INSERT INTO greetings_sent (year, event_id, greeted) VALUES (?, ?, 1)').run(2026, second.id);
+      f.db.prepare('INSERT INTO greetings (year, event_id, name, phone, greeted) VALUES (?, ?, ?, ?, 1)').run(2026, second.id, 'Beto', null);
+      // Saludo anotado a mano: no tiene evento (event_id NULL) y no debe tocarse.
+      f.db.prepare('INSERT INTO greetings (year, event_id, name, phone, greeted) VALUES (?, NULL, ?, NULL, 1)').run(2026, 'Manual');
+      const firstBefore = children(f.first.id);
+      assert.ok(Object.values(children(second.id)).every((n) => n > 0), 'el fixture ejercita las 6 tablas hijas');
+
+      f.control.reset();
+      await f.store.dispatch(f.actions.loadEvents()).unwrap();
+      const target = f.store.getState().events.items.find((event) => event.id === second.id);
+      await f.store.dispatch(f.actions.removeEvent(target)).unwrap();
+
+      assert.deepEqual(children(second.id), Object.fromEntries(f.repo.EVENT_CHILD_TABLES.map((table) => [table, 0])));
+      assert.deepEqual(children(f.first.id), firstBefore, 'las relaciones de otros eventos no se tocan');
+      assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM greetings WHERE event_id IS NULL').get().n, 1, 'el saludo manual sobrevive');
+      assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+      assert.equal(f.control.state().active, false);
+
+      const reused = await f.repo.insertEvent(
+        { ...original, title: 'Nuevo', contactId: null, tags: [], fieldValues: undefined }, [],
+      );
+      assert.equal(reused.id, second.id, 'events.id (sin AUTOINCREMENT) se reutiliza');
+      assert.deepEqual(children(reused.id), Object.fromEntries(f.repo.EVENT_CHILD_TABLES.map((table) => [table, 0])));
+      const loaded = (await f.repo.findAllEvents()).find((event) => event.id === reused.id);
+      assert.deepEqual(loaded.reminders, []);
+      assert.deepEqual(loaded.tags, []);
+      assert.equal((await f.load('@/db/custom-fields-repo').findAllFieldValues())[reused.id], undefined);
+      assert.deepEqual(f.db.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally { f.db.close(); }
+  });
+
+  test(`${platform}: un corte durante el borrado revierte hijos y evento, y el reintento completa`, async () => {
+    const f = await fixture(platform);
+    try {
+      let total;
+      {
+        const probe = await fixture(platform);
+        try {
+          probe.control.reset();
+          await probe.repo.deleteEvent(probe.first.id);
+          total = probe.control.state().writes;
+        } finally { probe.db.close(); }
+      }
+      assert.equal(total, f.repo.EVENT_CHILD_TABLES.length + 1, 'un DELETE por hija y uno para el evento');
+      for (let cut = 1; cut <= total; cut += 1) {
+        const g = await fixture(platform);
+        try {
+          const before = snapshot(g.db);
+          g.control.reset(cut);
+          await assert.rejects(g.repo.deleteEvent(g.first.id), { message: failure.message });
+          assert.deepEqual(snapshot(g.db), before, `rollback completo tras la escritura ${cut}/${total}`);
+          g.control.reset();
+          await g.repo.deleteEvent(g.first.id);
+          assert.equal(g.db.prepare('SELECT COUNT(*) AS n FROM events').get().n, 0);
+          for (const table of g.repo.EVENT_CHILD_TABLES) {
+            assert.equal(g.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE event_id = ?`).get(g.first.id).n, 0, table);
+          }
+        } finally { g.db.close(); }
+      }
+    } finally { f.db.close(); }
+  });
 }
+
+// Control del modelo: demuestra que el adaptador reproduce la conexión exclusiva del nativo
+// (FK apagadas) y que un DELETE sin borrado explícito sí dejaría huérfanos; sin este control
+// los tests de borrado pasarían también con un adaptador que mantuviera las FK activas.
+test('android: la conexión exclusiva tiene foreign_keys apagadas y un DELETE pelado deja huérfanos', async () => {
+  const f = await fixture('android');
+  try {
+    const pragma = () => f.db.prepare('PRAGMA foreign_keys').get().foreign_keys;
+    assert.equal(pragma(), 1, 'la conexión principal mantiene FK activas');
+    let inside;
+    await f.control.adapter.withExclusiveTransactionAsync(async (tx) => {
+      inside = (await tx.getFirstAsync('PRAGMA foreign_keys')).foreign_keys;
+      await tx.runAsync('DELETE FROM events WHERE id = ?', f.first.id);
+    });
+    assert.equal(inside, 0);
+    assert.equal(pragma(), 1, 'las FK de la conexión principal se restauran al terminar');
+    for (const table of f.repo.EVENT_CHILD_TABLES) {
+      assert.ok(
+        f.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE event_id = ?`).get(f.first.id).n > 0,
+        `${table} quedó huérfana sin cascada`,
+      );
+    }
+    assert.ok(f.db.prepare('PRAGMA foreign_key_check').all().length > 0);
+  } finally { f.db.close(); }
+});

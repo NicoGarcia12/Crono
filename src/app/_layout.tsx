@@ -5,12 +5,13 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
-import { errorMessage } from '@/components/confirm';
+import { confirmAction, errorMessage } from '@/components/confirm';
 import { DialogHost } from '@/components/dialog-host';
 import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { requestNotificationPermission } from '@/notifications/notifications';
+import { reconcileReminders } from '@/notifications/reconcile';
 import { store, useAppSelector } from '@/store';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
@@ -54,6 +55,30 @@ export function shouldRelock(backgroundedAt: number | null, now: number): boolea
   return backgroundedAt !== null && now - backgroundedAt > LOCK_GRACE_MS;
 }
 
+// Incluye el diálogo en el single-flight: StrictMode no abre dos reintentos.
+let reminderRecoveryInFlight: Promise<void> | null = null;
+function recoverReminders(): Promise<void> {
+  reminderRecoveryInFlight ??= (async () => {
+    for (;;) {
+      let problem: string | null = null;
+      try {
+        const report = await reconcileReminders();
+        if (report.status !== 'current' && report.status !== 'unavailable') {
+          // La próxima edición debe cancelar los IDs actuales, no los del arranque.
+          await store.dispatch(loadEvents()).unwrap();
+        }
+        if (report.status === 'incomplete') {
+          problem = 'No se pudo completar la actualización o limpieza de avisos. Los anteriores pueden seguir apareciendo. Podés reintentar sin cerrar la app.';
+        }
+      } catch (error: unknown) {
+        problem = `No se pudieron recuperar los avisos: ${errorMessage(error)}`;
+      }
+      if (!problem || !await confirmAction('Avisos pendientes', problem, 'Reintentar avisos')) return;
+    }
+  })().finally(() => { reminderRecoveryInFlight = null; });
+  return reminderRecoveryInFlight;
+}
+
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -73,6 +98,9 @@ export default function RootLayout() {
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
       await requestNotificationPermission();
+      // No esperamos la respuesta del diálogo antes de montar DialogHost:
+      // hacerlo bloquearía el arranque sin mostrar el botón de recuperación.
+      void recoverReminders();
     }
 
     bootstrap()

@@ -38,6 +38,8 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 - Cada evento puede tener **varios avisos**: en el momento, 1 hora antes, 1 día antes, 1 semana antes, o uno **a medida** (número + unidad).
 - Las notificaciones son humanas: llevan el emoji del tipo en el título ("🎂 Cumple de Ana") y dicen el tiempo relativo ("Es mañana", "Es en 3 días").
 - Si los recordatorios no están disponibles (por ejemplo, en Expo Go), la app lo avisa en vez de fallar en silencio.
+- Al iniciar, la app actualiza los avisos anuales guardados con el contrato anterior; los eventos ya actualizados no se vuelven a programar.
+- Si el sistema no puede cancelar avisos, aparece **Reintentar limpieza**. Si tampoco se pudo guardar esa limpieza pendiente, no cierres la app antes de reintentar.
 
 ### Cumpleaños
 - **Importar cumpleaños desde los contactos** del celular: lista los contactos con teléfono de tu cuenta de Google (Android) o iCloud/Google (iOS), permite editar el nombre antes de guardar y marca los que ya están cargados.
@@ -113,11 +115,12 @@ El filtro de contactos por cuenta de Google usa un **módulo nativo propio** (`m
 | `npm run e2e` | Tests end-to-end con Playwright sobre la versión web (levanta el servidor solo) |
 | `node --test scripts/test-migrations.cjs` | #36: migraciones de producción sobre SQLite real, fallos entre sentencias y recuperación tras interrupciones |
 | `node --test scripts/test-event-save.cjs` | #37: guardado atómico, rollback, reintento, concurrencia y coherencia con Redux sobre SQLite real |
+| `node --test scripts/test-reminders.cjs` | #39: avisos anuales, reconciliación, compensación y reintento de cancelaciones con SQLite real y el validador de Expo |
 | `npm run build:apk` | Genera un APK instalable con EAS |
 
 La primera vez que corras los e2e instalá el navegador: `npx playwright install chromium`.
 
-Los harnesses #36 y #37 requieren Node.js 22.13+ de la rama 22 LTS (N-1) por `node:sqlite`. Sustituyen el puente Expo y, en #37, el scheduler nativo: no validan el upgrade de un APK instalado, la instalación limpia nativa ni la entrega de avisos del sistema operativo.
+Los harnesses #36, #37 y #39 requieren Node.js 22.13+ de la rama 22 LTS (N-1) por `node:sqlite`. Sustituyen el puente Expo y, en #37 y #39, el scheduler nativo: no validan el upgrade de un APK instalado, la instalación limpia nativa ni la entrega de avisos del sistema operativo.
 
 ---
 
@@ -189,7 +192,11 @@ docs/identidad-visual.md    # Logo, isotipo y paleta de colores
 
 **Migraciones (#36)**: el esquema de la base se versiona en `src/db/database.ts`. Cada paso confirma sus cambios y `PRAGMA user_version` en la misma transacción; un fallo revierte ese paso y permite reintentarlo. Las migraciones legacy inspeccionan las columnas para retomar cambios ya confirmados por builds interrumpidos, sin resetear la base. La limpieza de datos no admitidos de v13 sigue siendo intencional. La conexión se publica solo al completar las migraciones. Para futuros cambios de tablas, agregá una migración nueva en vez de editar las existentes.
 
-**Guardado de eventos (#37)**: crear o editar guarda evento, recordatorios persistidos, etiquetas, campos personalizados y cambio de `isMine` como una sola unidad SQLite. Al editar, omitir `fieldValues` conserva los valores existentes; enviar `{}` los vacía; enviar valores reemplaza el conjunto, descartando vacíos pero conservando el contenido válido. Redux se actualiza tras el commit y mantiene una sola marca de cumpleaños propio. El borrado también comparte la cola de escrituras, necesaria en web para no mezclarse con un guardado que luego se revierta. La transacción no incluye al scheduler del sistema operativo: su reconciliación y compensación siguen pendientes en #39.
+**Guardado de eventos (#37)**: crear o editar guarda evento, recordatorios persistidos, etiquetas, campos personalizados y cambio de `isMine` como una sola unidad SQLite. Al editar, omitir `fieldValues` conserva los valores existentes; enviar `{}` los vacía; enviar valores reemplaza el conjunto, descartando vacíos pero conservando el contenido válido. Redux se actualiza tras el commit y mantiene una sola marca de cumpleaños propio. El borrado también comparte la cola de escrituras, necesaria en web para no mezclarse con un guardado que luego se revierta. La transacción no incluye al scheduler del sistema operativo; su reconciliación y compensación se resuelven en #39, con los límites indicados abajo.
+
+**Recordatorios (#39)**: el contrato 2 usa `YEARLY.month` de 0 a 11. La reconciliación lee SQLite al inicio, no admite ejecuciones simultáneas y guarda los IDs nuevos y la marca de contrato por evento antes de cancelar los anteriores. Si falla SQLite, conserva los anteriores y compensa los nuevos; al reintentar omite los eventos ya actualizados. Las cancelaciones rechazadas quedan en `settings.pendingReminderCancellations`; **Reintentar limpieza** confirma esos IDs en SQLite antes de volver a cancelar, sin programar otro juego. La limpieza pendiente se reintenta también al iniciar y debe completarse antes de programar nuevos avisos. Si falla su persistencia, los IDs se retienen en memoria y la app advierte que no la cierres.
+
+SQLite y el SO no comparten rollback: #39 no incorpora un journal ante cierre abrupto entre programar y persistir, ni barre avisos huérfanos históricos (#30). El trigger anual nativo fija un mes y día; no se garantiza la alternancia 28/2–29/2. El harness valida SQLite y el validador JavaScript de Expo con un scheduler sustituido, no entrega real, permisos ni reinicio del SO; eso requiere una candidata Android.
 
 ### Decisiones de diseño
 - **Sin servidor**: privacidad total y funciona sin conexión. La contracara es que los datos viven en el celular; para no perderlos está la copia de seguridad.

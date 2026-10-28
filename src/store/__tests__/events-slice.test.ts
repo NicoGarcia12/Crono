@@ -1,5 +1,8 @@
 import { configureStore } from '@reduxjs/toolkit';
 
+import { confirmAction } from '@/components/confirm';
+import { getSetting, setSetting } from '@/db/settings-repo';
+import { PENDING_CANCELLATIONS_KEY, retryPendingReminderCancellations } from '@/notifications/cancel-after-commit';
 import * as eventsRepo from '@/db/events-repo';
 import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
 import reducer, { addEvent, editEvent, loadEvents, removeEvent } from '@/store/events-slice';
@@ -14,6 +17,8 @@ import type { EventItem, NewEvent } from '@/types';
 
 jest.mock('@/db/events-repo');
 jest.mock('@/notifications/notifications');
+jest.mock('@/db/settings-repo');
+jest.mock('@/components/confirm', () => ({ confirmAction: jest.fn() }));
 
 const mockRepo = jest.mocked(eventsRepo);
 const mockSchedule = jest.mocked(scheduleEventReminders);
@@ -63,9 +68,16 @@ const eventoGuardado: EventItem = {
   yearUnknown: 0,
 };
 
-beforeEach(() => {
-  // reset (no sólo clear): las implementaciones de un test no deben filtrarse al siguiente.
+let settings: Map<string, string>;
+beforeEach(async () => {
   jest.resetAllMocks();
+  settings = new Map();
+  jest.mocked(getSetting).mockImplementation(async (key) => settings.get(key) ?? null);
+  jest.mocked(setSetting).mockImplementation(async (key, value) => { settings.set(key, value); });
+  jest.mocked(confirmAction).mockResolvedValue(false);
+  mockCancel.mockResolvedValue(undefined);
+  await retryPendingReminderCancellations();
+  mockCancel.mockClear();
 });
 
 describe('loadEvents', () => {
@@ -223,10 +235,14 @@ describe('editEvent', () => {
     );
 
     expect(result).toMatchObject({ error: { message: 'SQLite sin espacio' } });
+    expect(JSON.parse(settings.get(PENDING_CANCELLATIONS_KEY)!)).toEqual(['notif-3']);
+    expect(confirmAction).toHaveBeenCalledWith('Limpieza de avisos pendiente', expect.any(String), 'Reintentar limpieza');
+    await retryPendingReminderCancellations();
+    expect(settings.get(PENDING_CANCELLATIONS_KEY)).toBe('[]');
+    expect(mockSchedule).toHaveBeenCalledTimes(1);
   });
 
-  it('si la edición ya se guardó y el SO no cancela los anteriores, no revierte el estado y deja constancia', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('si la edición ya se guardó registra limpieza pendiente y la recupera sin reprogramar', async () => {
     mockSchedule.mockResolvedValue(nuevosAvisos);
     mockRepo.updateEvent.mockResolvedValue(actualizado);
     mockCancel.mockRejectedValueOnce(new Error('El SO no pudo cancelar'));
@@ -238,8 +254,10 @@ describe('editEvent', () => {
 
     expect(result.type).toBe(editEvent.fulfilled.type);
     expect(store.getState().events.items[0].title).toBe('Cumple de papá');
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('notif-1, notif-2'), expect.any(Error));
-    warn.mockRestore();
+    expect(JSON.parse(settings.get(PENDING_CANCELLATIONS_KEY)!)).toEqual(['notif-1', 'notif-2']);
+    await retryPendingReminderCancellations();
+    expect(settings.get(PENDING_CANCELLATIONS_KEY)).toBe('[]');
+    expect(mockSchedule).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -277,8 +295,7 @@ describe('removeEvent', () => {
     expect(store.getState().events.items).toEqual([eventoGuardado]);
   });
 
-  it('si el borrado ya se confirmó y el SO no cancela, el evento se va del estado y queda constancia', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  it('si el borrado ya se confirmó, elimina de Redux y ofrece limpiar sin recrear el evento', async () => {
     mockRepo.findAllEvents.mockResolvedValue([eventoGuardado]);
     mockRepo.deleteEvent.mockResolvedValue(undefined);
     mockCancel.mockRejectedValueOnce(new Error('El SO no pudo cancelar'));
@@ -289,7 +306,10 @@ describe('removeEvent', () => {
 
     expect(result.type).toBe(removeEvent.fulfilled.type);
     expect(store.getState().events.items).toEqual([]);
-    expect(warn).toHaveBeenCalledTimes(1);
-    warn.mockRestore();
+    expect(JSON.parse(settings.get(PENDING_CANCELLATIONS_KEY)!)).toEqual(['notif-1', 'notif-2']);
+    expect(confirmAction).toHaveBeenCalled();
+    await retryPendingReminderCancellations();
+    expect(settings.get(PENDING_CANCELLATIONS_KEY)).toBe('[]');
+    expect(mockSchedule).not.toHaveBeenCalled();
   });
 });

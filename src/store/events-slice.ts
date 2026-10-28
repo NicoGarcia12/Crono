@@ -3,8 +3,8 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import * as eventTypesRepo from '@/db/event-types-repo';
 import * as eventsRepo from '@/db/events-repo';
 import { loadEventTypes } from '@/store/event-types-slice';
-import { cancelRemindersAfterCommit } from '@/notifications/cancel-after-commit';
-import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
+import { cancelRemindersAfterCommit, requireReminderCleanup } from '@/notifications/cancel-after-commit';
+import { scheduleEventReminders } from '@/notifications/notifications';
 import { enforceMineBirthday, type EventItem, type EventReminder, type NewEvent } from '@/types';
 
 /**
@@ -45,6 +45,7 @@ async function ensureBirthdayType(
 }
 
 export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { getState, dispatch }) => {
+  await requireReminderCleanup();
   const normalized = enforceMineBirthday(data);
   await ensureBirthdayType([normalized], getState, dispatch);
   // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
@@ -52,10 +53,9 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { 
   try {
     return await eventsRepo.insertEvent(normalized, reminders);
   } catch (error: unknown) {
-    // Expo programa en el SO fuera de la transacción de SQLite. Si SQLite
-    // rechaza el evento, cancelamos los ids recién creados para no dejarlos
-    // huérfanos. allSettled conserva el error de persistencia original.
-    await Promise.allSettled([cancelReminders(reminders)]);
+    // La compensación conserva sus IDs si el SO rechaza cancelar; el error
+    // de SQLite sigue siendo la causa de que no se haya guardado el evento.
+    await cancelRemindersAfterCommit(reminders, 'Crear evento fallido');
     throw error;
   }
 });
@@ -68,6 +68,7 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { 
 export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEvent[]>(
   'events/addContactBirthdays',
   async (entries: readonly NewEvent[], { getState, dispatch }) => {
+    await requireReminderCleanup();
     await ensureBirthdayType(entries, getState, dispatch);
     const scheduledReminders: EventReminder[][] = [];
     try {
@@ -76,10 +77,7 @@ export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEve
       }
       return await eventsRepo.insertContactBirthdays(entries, scheduledReminders);
     } catch (error: unknown) {
-      // SQLite revierte sus filas dentro de la transacción; este cleanup corre
-      // en JS para revertir el efecto externo de TODOS los avisos ya creados.
-      // allSettled conserva el error original aunque falle una cancelación.
-      await Promise.allSettled(scheduledReminders.map((reminders) => cancelReminders(reminders)));
+      await cancelRemindersAfterCommit(scheduledReminders.flat(), 'Importar cumpleaños fallido');
       throw error;
     }
   },
@@ -88,6 +86,7 @@ export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEve
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
+    await requireReminderCleanup();
     const normalized = enforceMineBirthday(payload.data);
     /**
      * Orden: 1) programar los reemplazos, 2) persistir, 3) cancelar los anteriores.
@@ -106,8 +105,7 @@ export const editEvent = createAsyncThunk(
     try {
       saved = await eventsRepo.updateEvent(payload.id, normalized, reminders);
     } catch (error) {
-      // allSettled: conserva el error de persistencia aunque falle la compensación.
-      await Promise.allSettled([cancelReminders(reminders)]);
+      await cancelRemindersAfterCommit(reminders, 'Editar evento fallido');
       throw error;
     }
 

@@ -1,8 +1,8 @@
 import * as remindersRepo from '@/db/reminders-repo';
 import { getSetting, setSetting } from '@/db/settings-repo';
+import { cancelRemindersAfterCommit, retryPendingReminderCancellations } from '@/notifications/cancel-after-commit';
 import {
   REMINDER_CONTRACT_VERSION,
-  cancelReminders,
   remindersAvailable,
   scheduleEventReminders,
 } from '@/notifications/notifications';
@@ -31,9 +31,8 @@ import {
  *    hasta que se barran. No hay compensación posible porque no hay código
  *    corriendo; resolverlo exigiría registrar los ids antes de programar o
  *    barrer el SO, fuera de este alcance.
- *  - Idempotente: la marca se escribe SOLO si todos los eventos quedaron bien.
- *    Si algo falla, el arranque siguiente repite todo y converge sin duplicar
- *    (ver orden de pasos en `reprogramEvent`).
+ *  - Cada evento guarda su progreso junto con los nuevos IDs. El reintento
+ *    limpia pendientes antes de programar y omite los eventos ya migrados.
  *  - Una sola ejecución a la vez (React StrictMode monta el layout dos veces).
  *
  * Decisión sobre el 29/2 (límite residual de #38): NO se reprograma cada año.
@@ -59,12 +58,13 @@ export type ReconcileReport =
   /** La marca ya coincide con el contrato vigente: no se toca nada. */
   | { status: 'current' }
   | {
-      /** `migrated`: todo reprogramado y marcado. `incomplete`: quedaron eventos pendientes (se reintenta al próximo arranque). */
+      /** `incomplete` requiere recuperación visible sin cerrar la app. */
       status: 'migrated' | 'incomplete';
       /** Eventos reprogramados y persistidos en esta corrida. */
       migrated: number;
       /** Eventos que no se pudieron reprogramar, con su causa. */
       failed: { eventId: number; error: unknown }[];
+      cleanupPending?: boolean;
     };
 
 let inFlight: Promise<ReconcileReport> | null = null;
@@ -80,16 +80,19 @@ export function reconcileReminders(): Promise<ReconcileReport> {
 async function runReconciliation(): Promise<ReconcileReport> {
   if (!remindersAvailable) return { status: 'unavailable' };
 
+  const cleanup = await retryPendingReminderCancellations();
+  if (cleanup.pendingIds.length > 0 || cleanup.error || cleanup.storageError) {
+    return { status: 'incomplete', migrated: 0, failed: [], cleanupPending: true };
+  }
   // Sin clave = BD creada antes de versionar el contrato (contrato 1).
   const stored = await getSetting(REMINDER_CONTRACT_KEY);
   if (stored === String(REMINDER_CONTRACT_VERSION)) return { status: 'current' };
 
-  const events = await remindersRepo.findEventsWithReminders();
+  const events = await remindersRepo.findEventsWithReminders(REMINDER_CONTRACT_VERSION);
   let migrated = 0;
   const failed: { eventId: number; error: unknown }[] = [];
 
-  // Secuencial a propósito: cada evento es una unidad (programar → cancelar →
-  // persistir) y un fallo no debe dejar a medias a los demás.
+  // Secuencial: persistir precede siempre a cancelar los avisos anteriores.
   for (const event of events) {
     try {
       await reprogramEvent(event);
@@ -106,29 +109,20 @@ async function runReconciliation(): Promise<ReconcileReport> {
 }
 
 /**
- * Orden de los pasos, pensado para converger sin duplicar ni perder en silencio:
- *  1. Programar los avisos nuevos (si falla a medias, scheduleEventReminders ya
- *     cancela los que alcanzó a crear). Nada cambió todavía.
- *  2. Cancelar los ids viejos que conoce la BD. Si falla, se cancelan los nuevos:
- *     la BD sigue apuntando a los viejos y el próximo arranque reintenta.
- *  3. Persistir los ids nuevos. Si falla (o el evento cambió en el medio), se
- *     cancelan los nuevos; la BD sigue con los ids viejos, ya cancelados, y el
- *     próximo arranque los reprograma. Se asume que cancelar un id que ya no
- *     existe no falla (en Android el delegado hace alarmManager.cancel + sacar
- *     del store; sin validar en dispositivo), así que el reintento no necesita
- *     saber en qué paso se cortó la vez anterior.
- * Distinto de editEvent (que persiste ANTES de cancelar lo anterior): acá el
- * objetivo es borrar los avisos con el contrato viejo, y dejarlos vivos sin
- * referencia en la BD sería exactamente el duplicado que se quiere evitar.
+ * El reemplazo y la marca por evento se guardan antes de cancelar lo anterior.
+ * Si SQLite rechaza, los anteriores siguen activos y sólo se compensan los nuevos.
+ * Si el SO rechaza la limpieza, el helper retiene sus IDs y ofrece reintentar.
  */
 async function reprogramEvent(event: remindersRepo.EventWithStoredReminders): Promise<void> {
   const fresh = await scheduleEventReminders(event);
   try {
-    await cancelReminders(event.reminders);
-    await remindersRepo.replaceNotificationIds(event.id, event.reminders, fresh);
+    await remindersRepo.replaceNotificationIds(event.id, event.reminders, fresh, REMINDER_CONTRACT_VERSION);
   } catch (error: unknown) {
-    // allSettled: conserva el error original aunque también falle la compensación.
-    await Promise.allSettled([cancelReminders(fresh)]);
+    await cancelRemindersAfterCommit(fresh, 'Reconciliar avisos fallido');
     throw error;
+  }
+  const cleanup = await cancelRemindersAfterCommit(event.reminders, 'Actualizar avisos');
+  if (cleanup.pendingIds.length > 0 || cleanup.error || cleanup.storageError) {
+    throw cleanup.error ?? cleanup.storageError ?? new Error('Limpieza de avisos pendiente.');
   }
 }

@@ -83,16 +83,14 @@ export const deleteTypeMovingEvents = createAsyncThunk(
  * Borra un tipo con todos sus eventos. Primero SQLite (con rollback) y recién
  * con el borrado confirmado se cancelan los avisos del sistema (sin rollback):
  * si el borrado falla, los eventos siguen existiendo CON sus avisos activos.
- * Si es la cancelación la que falla, no hay vuelta atrás (los eventos ya no
- * existen): queda registrado con `console.warn` en vez de abortar el flujo.
+ * Si el SO rechaza cancelar, los IDs quedan registrados y se ofrece reintentar
+ * sin revertir en Redux un borrado que SQLite ya confirmó.
  */
 export const deleteTypeWithEvents = createAsyncThunk(
   'typeConfig/deleteTypeWithEvents',
   async (payload: { id: number; key: string; events: readonly EventItem[] }, { dispatch }) => {
     await eventTypesRepo.deleteEventTypeWithEvents(payload.id, payload.key);
-    await Promise.all(
-      payload.events.map((event) => cancelRemindersAfterCommit(event.reminders, 'Borrar tipo con eventos')),
-    );
+    await cancelRemindersAfterCommit(payload.events.flatMap((event) => event.reminders), 'Borrar tipo con eventos');
     await reloadAll(dispatch);
   },
 );

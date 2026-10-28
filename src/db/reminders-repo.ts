@@ -50,15 +50,17 @@ interface ReminderRow {
 /**
  * Eventos ANUALES con al menos un aviso, con el id de fila y de notificación de cada uno.
  * Sólo los anuales: el contrato que cambió es el del trigger YEARLY. Los avisos puntuales
- * (trigger DATE) no se tocan, así que no entran en la ventana "cancelar antes de persistir".
+ * (trigger DATE) no se tocan. La marca por evento evita reprogramar los ya migrados.
  */
-export async function findEventsWithReminders(): Promise<EventWithStoredReminders[]> {
+export async function findEventsWithReminders(contractVersion?: number): Promise<EventWithStoredReminders[]> {
   const db = getDb();
   const events = await db.getAllAsync<EventRow>(
     `SELECT id, title, type, date, time, description, yearly
      FROM events
      WHERE yearly = 1 AND id IN (SELECT event_id FROM reminders)
+       AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'reminderContractEvent:' || events.id AND value = ?)
      ORDER BY id ASC`,
+    String(contractVersion ?? ''),
   );
   const reminders = await db.getAllAsync<ReminderRow>(
     `SELECT id AS rowId, event_id AS eventId, amount, unit, notification_id AS notificationId
@@ -88,6 +90,7 @@ export async function replaceNotificationIds(
   eventId: number,
   expected: readonly StoredReminder[],
   fresh: readonly EventReminder[],
+  contractVersion?: number,
 ): Promise<void> {
   if (expected.length !== fresh.length) {
     throw new Error('Cada aviso reprogramado debe corresponder a una fila existente.');
@@ -122,6 +125,15 @@ export async function replaceNotificationIds(
         'UPDATE reminders SET notification_id = ? WHERE id = ?',
         reminder.notificationId,
         expected[index].rowId,
+      );
+    }
+    if (contractVersion !== undefined) {
+      // La marca y los nuevos IDs se confirman juntos: un reintento de limpieza
+      // no vuelve a programar los eventos que ya migraron.
+      await transaction.runAsync(
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        `reminderContractEvent:${eventId}`, String(contractVersion),
       );
     }
   });

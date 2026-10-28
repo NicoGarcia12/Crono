@@ -13,8 +13,9 @@
 // Nada de esto prueba entrega real, permisos ni reinicio del SO: eso requiere la
 // candidata Android.
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const path = require('node:path');
+const { tmpdir } = require('node:os');
 const { DatabaseSync } = require('node:sqlite');
 const { mock, test } = require('node:test');
 const vm = require('node:vm');
@@ -237,10 +238,9 @@ async function withClock(when, task) {
   }
 }
 
-async function fixture(platform = 'android') {
-  const db = new DatabaseSync(':memory:');
+async function fixture(platform = 'android', databasePath = ':memory:', native = createNative()) {
+  const db = new DatabaseSync(databasePath);
   const control = adapterFor(db);
-  const native = createNative();
   const load = loadModules({ adapter: control.adapter, platform, native });
   await load('@/db/database').initDatabase();
   const actions = load('@/store/events-slice');
@@ -375,7 +375,8 @@ function triggersOf(f, eventId) {
 
 function assertNoOrphans(f, message) {
   // Todo lo que el SO tiene programado está referenciado por la BD (nadie se queda sin dueño).
-  const referenced = new Set(f.dbIds());
+  const pending = JSON.parse(f.db.prepare("SELECT value FROM settings WHERE key = 'pendingReminderCancellations'").get()?.value ?? '[]');
+  const referenced = new Set([...f.dbIds(), ...pending]);
   for (const id of f.native.ids()) assert.ok(referenced.has(id), `${message}: ${id} quedó huérfano`);
 }
 
@@ -465,26 +466,32 @@ for (let k = 1; k <= 4; k += 1) {
   }));
 }
 
-test('reconciliación: si el SO no cancela un aviso viejo se deshacen los nuevos y el reintento converge', () => withClock(NOW, async () => {
+test('reconciliación: rechazar cancelación conserva IDs pendientes y el reintento no programa lo ya migrado', () => withClock(NOW, async () => {
   const f = await legacyFixture();
   try {
     f.native.state.failCancelIds.add('legacy-oct-1');
     const report = await f.reconcile.reconcileReminders();
     assert.equal(report.status, 'incomplete');
-    assert.deepEqual(report.failed.map((item) => item.eventId), [f.events.oct.id]);
-    assert.equal(f.stamp(), null);
-    assertNoOrphans(f, 'tras el fallo de cancelación');
-    assert.ok(f.native.trigger('legacy-oct-1'), 'el aviso que el SO se negó a cancelar sigue referenciado por la BD');
-    // Los demás eventos sí quedaron migrados: un evento problemático no bloquea al resto.
-    assert.equal(report.migrated, 2); // dec y jan; el único (DATE) no entra en la reconciliación
-
+    assertNoOrphans(f, 'tras rechazar cancelación');
+    assert.ok(f.native.trigger('legacy-oct-1'));
+    const pending = JSON.parse(f.db.prepare("SELECT value FROM settings WHERE key = 'pendingReminderCancellations'").get().value);
+    assert.ok(pending.includes('legacy-oct-1'));
+    const dialogs = f.load('@/components/confirm');
+    const dialog = dialogs.currentDialog();
+    assert.equal(dialog.title, 'Limpieza de avisos pendiente');
+    assert.ok(dialog.buttons.some((button) => button.label === 'Reintentar limpieza'));
+    const calls = f.native.state.scheduleCalls;
     f.native.clearFailures();
+    dialogs.resolveDialog(dialog.id, true);
+    await f.load('@/notifications/cancel-after-commit').retryPendingReminderCancellations();
+    assert.equal(f.native.state.scheduleCalls, calls, 'el botón sólo cancela, no programa');
     assert.equal((await f.reconcile.reconcileReminders()).status, 'migrated');
+    assert.equal(f.native.state.scheduleCalls, calls, 'las marcas por evento evitan reprogramar');
     assertConverged(f, 5);
   } finally { f.db.close(); }
 }));
 
-for (const cut of [1, 2]) {
+for (const cut of [1, 2, 3]) {
   test(`reconciliación: falla SQLite tras la escritura ${cut} del evento; rollback, sin huérfanos y el reintento converge`, () => withClock(NOW, async () => {
     const f = await legacyFixture();
     try {
@@ -495,6 +502,7 @@ for (const cut of [1, 2]) {
       assert.deepEqual(report.failed.map((item) => item.eventId), [f.events.oct.id]);
       assert.equal(report.failed[0].error, failure);
       assert.deepEqual(f.rows(f.events.oct.id), before, 'rollback: las filas del evento no cambiaron');
+      for (const row of before) assert.ok(f.native.trigger(row.notification_id), 'el aviso anterior sigue ACTIVO');
       assert.equal(f.stamp(), null);
       assertNoOrphans(f, 'tras el fallo de SQLite');
       assert.equal(f.control.state().active, false);
@@ -669,25 +677,24 @@ test('editar: si SQLite falla en CUALQUIER escritura, los avisos anteriores sigu
   }
 });
 
-test('editar: si la edición ya se guardó y el SO no cancela un aviso viejo, no se revierte y queda constancia', () => withClock(NOW, async () => {
+test('editar: el SO rechaza cancelar viejos; quedan registrados y el botón limpia sin programar', () => withClock(NOW, async () => {
   const f = await editFixture();
-  const warn = mock.method(console, 'warn', () => undefined);
   try {
     const [stuck] = f.oldIds;
     f.native.state.failCancelIds.add(stuck);
     const saved = await edit(f).unwrap();
-
     assert.equal(saved.title, 'Editado');
     assert.equal(f.store.getState().events.items[0].title, 'Editado');
-    assert.deepEqual(f.dbIds(), saved.reminders.map((r) => r.notificationId).sort());
-    assert.equal(warn.mock.callCount(), 1);
-    assert.match(String(warn.mock.calls[0].arguments[0]), new RegExp(stuck));
-    // Límite conocido: el SO se negó a cancelar `stuck` y la BD ya no lo referencia.
-    assert.ok(f.native.trigger(stuck));
-  } finally {
-    warn.mock.restore();
-    f.db.close();
-  }
+    assertNoOrphans(f, 'edición confirmada con limpieza pendiente');
+    const dialog = f.load('@/components/confirm').currentDialog();
+    assert.equal(dialog.title, 'Limpieza de avisos pendiente');
+    f.native.clearFailures();
+    const calls = f.native.state.scheduleCalls;
+    f.load('@/components/confirm').resolveDialog(dialog.id, true);
+    await f.load('@/notifications/cancel-after-commit').retryPendingReminderCancellations();
+    assert.equal(f.native.state.scheduleCalls, calls);
+    assert.deepEqual(f.native.ids(), f.dbIds());
+  } finally { f.db.close(); }
 }));
 
 test('borrar: confirma SQLite y recién entonces cancela los avisos del evento', () => withClock(NOW, async () => {
@@ -723,19 +730,122 @@ test('borrar: si SQLite falla, el evento y sus avisos siguen intactos y se puede
   } finally { f.db.close(); }
 }));
 
-test('borrar: si el SO no cancela tras confirmar el borrado, el evento se va igual y queda constancia', () => withClock(NOW, async () => {
+test('borrar: cancelación rechazada queda referenciada y el reintento elimina limpieza sin recrear evento', () => withClock(NOW, async () => {
   const f = await editFixture();
-  const warn = mock.method(console, 'warn', () => undefined);
   try {
     f.native.state.failCancelIds.add(f.oldIds[0]);
     await f.store.dispatch(f.actions.removeEvent(f.first)).unwrap();
     assert.deepEqual(f.store.getState().events.items, []);
-    assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM events').get().n, 0);
-    assert.equal(warn.mock.callCount(), 1);
-    assert.match(String(warn.mock.calls[0].arguments[0]), new RegExp(f.oldIds[0]));
-    assert.deepEqual(f.native.ids(), [f.oldIds[0]], 'sólo queda el aviso que el SO rechazó cancelar');
-  } finally {
-    warn.mock.restore();
+    assertNoOrphans(f, 'borrado con limpieza pendiente');
+    f.native.clearFailures();
+    const calls = f.native.state.scheduleCalls;
+    await f.load('@/notifications/cancel-after-commit').retryPendingReminderCancellations();
+    assert.equal(f.native.state.scheduleCalls, calls);
+    assert.deepEqual(f.native.ids(), []);
+  } finally { f.db.close(); }
+}));
+
+test('editar: SQLite falla y el SO rechaza compensar; causa original, IDs registrados y reintento sin avisos nuevos', () => withClock(NOW, async () => {
+  const f = await editFixture();
+  try {
+    const stuck = `notif-${f.native.state.scheduleCalls + 1}`;
+    f.native.state.failCancelIds.add(stuck);
+    f.control.reset(1);
+    await assert.rejects(edit(f).unwrap(), { message: failure.message });
+    for (const id of f.oldIds) assert.ok(f.native.trigger(id), 'los anteriores siguen activos');
+    assertNoOrphans(f, 'compensación rechazada');
+    const pending = JSON.parse(f.db.prepare("SELECT value FROM settings WHERE key = 'pendingReminderCancellations'").get().value);
+    assert.ok(pending.includes(stuck));
+    const calls = f.native.state.scheduleCalls;
+    await assert.rejects(edit(f).unwrap());
+    assert.equal(f.native.state.scheduleCalls, calls, 'repetir guardar no suma avisos');
+    const dialogs = f.load('@/components/confirm');
+    const dialog = dialogs.currentDialog();
+    assert.ok(dialog.buttons.some((button) => button.label === 'Reintentar limpieza'));
+    f.native.clearFailures();
+    dialogs.resolveDialog(dialog.id, true);
+    await f.load('@/notifications/cancel-after-commit').retryPendingReminderCancellations();
+    assert.deepEqual(f.native.ids(), [...f.oldIds].sort());
+    assert.equal(f.native.state.scheduleCalls, calls);
+    assert.equal(f.db.prepare("SELECT value FROM settings WHERE key = 'pendingReminderCancellations'").get().value, '[]');
+  } finally { f.db.close(); }
+}));
+
+test('programación parcial: si el SO rechaza compensar conserva IDs y el error original', () => withClock(NOW, async () => {
+  const f = await editFixture();
+  try {
+    const stuck = `notif-${f.native.state.scheduleCalls + 1}`;
+    f.native.state.failCancelIds.add(stuck);
+    f.native.state.failScheduleAt = f.native.state.scheduleCalls + 2;
+    await assert.rejects(edit(f).unwrap(), { message: 'El SO rechazó programar el aviso' });
+    for (const id of f.oldIds) assert.ok(f.native.trigger(id));
+    assertNoOrphans(f, 'programación parcial con compensación rechazada');
+    const calls = f.native.state.scheduleCalls;
+    f.native.clearFailures();
+    await f.load('@/notifications/cancel-after-commit').retryPendingReminderCancellations();
+    assert.equal(f.native.state.scheduleCalls, calls);
+    assert.deepEqual(f.native.ids(), [...f.oldIds].sort());
+  } finally { f.db.close(); }
+}));
+
+test('recuperación SQLite: persiste pendientes antes de otro rechazo del SO y sobrevive cierre/reapertura', () => withClock(NOW, async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'crono-reminder-recovery-'));
+  const databasePath = path.join(directory, 'agenda.db');
+  let f;
+  try {
+    f = await fixture('android', databasePath);
+    const original = await f.store.dispatch(f.actions.addEvent(editOriginal)).unwrap();
+    const oldIds = original.reminders.map((reminder) => reminder.notificationId).sort();
+    const fresh = await f.notifications.scheduleEventReminders(editChanged);
+    const stuck = fresh[0].notificationId;
+    const previousPending = 'pendiente-previo';
+    f.native.seed(previousPending, { type: 'yearly', month: 0, day: 1, hour: 9, minute: 0 });
+    const cleanup = f.load('@/notifications/cancel-after-commit');
+    f.db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run(
+      cleanup.PENDING_CANCELLATIONS_KEY, JSON.stringify([previousPending]),
+    );
+    f.native.state.failCancelIds.add(stuck);
+    f.control.reset(1); // SQLite rechaza el primer intento de guardar la unión.
+    const first = await cleanup.cancelRemindersAfterCommit(fresh, 'Compensar guardado fallido');
+    assert.equal(first.storageError, failure);
+    assert.deepEqual(JSON.parse(f.db.prepare('SELECT value FROM settings WHERE key = ?').get(cleanup.PENDING_CANCELLATIONS_KEY).value), [previousPending]);
+    for (const id of oldIds) assert.ok(f.native.trigger(id), 'los avisos anteriores siguen activos');
+
+    f.control.reset(); // SQLite vuelve, pero el SO sigue rechazando el mismo ID.
+    const calls = f.native.state.scheduleCalls;
+    const dialogs = f.load('@/components/confirm');
+    const dialog = dialogs.currentDialog();
+    assert.ok(dialog.buttons.some((button) => button.value === true));
+    dialogs.resolveDialog(dialog.id, true);
+    const retry = await cleanup.retryPendingReminderCancellations();
+    assert.ok(retry.error);
+    assert.equal(retry.storageError, undefined);
+    const stored = JSON.parse(f.db.prepare('SELECT value FROM settings WHERE key = ?').get(cleanup.PENDING_CANCELLATIONS_KEY).value);
+    assert.deepEqual(new Set(stored), new Set([previousPending, ...fresh.map((reminder) => reminder.notificationId)]));
+    assert.equal(f.native.state.scheduleCalls, calls);
+    await new Promise((resolve) => setImmediate(resolve));
+    const nextDialog = dialogs.currentDialog();
+    assert.ok(nextDialog, 'el rechazo del SO sigue ofreciendo una acción visible');
+    dialogs.resolveDialog(nextDialog.id, false);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const native = f.native;
     f.db.close();
+    f = null;
+    // Conexión SQLite y módulos nuevos: ya no existe la memoria del primer intento.
+    f = await fixture('android', databasePath, native);
+    const reloaded = f.load('@/notifications/cancel-after-commit');
+    const afterReload = await reloaded.retryPendingReminderCancellations();
+    assert.ok(afterReload.error);
+    assert.deepEqual(new Set(afterReload.pendingIds), new Set(stored));
+    assertNoOrphans(f, 'después de reabrir sin memoria previa');
+    f.native.clearFailures();
+    await reloaded.retryPendingReminderCancellations();
+    assert.deepEqual(f.native.ids(), oldIds);
+    assert.equal(f.native.state.scheduleCalls, calls, 'recuperar y reabrir sólo limpia');
+    assert.equal(f.db.prepare('SELECT value FROM settings WHERE key = ?').get(reloaded.PENDING_CANCELLATIONS_KEY).value, '[]');
+  } finally {
+    if (f) f.db.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 }));

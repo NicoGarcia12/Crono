@@ -3,6 +3,7 @@ import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
+import { cancelRemindersAfterCommit } from '@/notifications/cancellation-recovery';
 import type { EventReminder, NewEvent, ReminderInput, ReminderUnit } from '@/types';
 import { nextOccurrence } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
@@ -150,21 +151,9 @@ export async function scheduleEventReminders(event: SchedulableEvent): Promise<E
     }
     return scheduled;
   } catch (error) {
-    /**
-     * `scheduleNotificationAsync` cruza el límite JS → sistema operativo: no
-     * participa de una transacción SQLite. Si el segundo aviso falla, por
-     * ejemplo, debemos deshacer manualmente los IDs que el SO ya aceptó.
-     *
-     * `allSettled` hace la compensación "best effort": un error al cancelar
-     * un aviso no tapa el error original que explica por qué no se pudo crear
-     * el conjunto completo.
-     */
-    const Notifications = getNotifications();
-    const cancellationAttempts = scheduled
-      .flatMap(({ notificationId }) => (notificationId ? [notificationId] : []))
-      .map((notificationId) => Notifications?.cancelScheduledNotificationAsync(notificationId));
-
-    await Promise.allSettled(cancellationAttempts);
+    // El SO no participa del rollback SQLite. La compensación también puede
+    // fallar: retenemos esos IDs para limpiar sin tapar el error de programación.
+    await cancelRemindersAfterCommit(cancelReminders, scheduled, 'Programar avisos fallido');
     throw error;
   }
 }

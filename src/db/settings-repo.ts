@@ -1,4 +1,5 @@
 import { getDb } from '@/db/database';
+import type { EventExecutor } from '@/db/event-transaction';
 
 /**
  * Preferencias simples en formato clave-valor.
@@ -6,8 +7,8 @@ import { getDb } from '@/db/database';
  * (tema, hora por defecto de recordatorios, etc.).
  */
 
-export async function getSetting(key: string): Promise<string | null> {
-  const row = await getDb().getFirstAsync<{ value: string }>(
+export async function getSetting(key: string, db: Pick<EventExecutor, 'getFirstAsync'> = getDb()): Promise<string | null> {
+  const row = await db.getFirstAsync<{ value: string }>(
     'SELECT value FROM settings WHERE key = ?',
     key,
   );

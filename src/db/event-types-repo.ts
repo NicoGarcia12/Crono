@@ -1,9 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { BackupTypeConfig } from '@/backup/backup';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import { applyRemovals, writeFields } from '@/db/custom-fields-repo';
 import { getDb } from '@/db/database';
+import type { EventExecutor } from '@/db/event-transaction';
 import { parseCapabilities } from '@/db/json-columns';
 import type { BuiltinEventType, EventTypeMeta, NewEventType, RemovalPlan } from '@/types';
 
@@ -40,8 +40,8 @@ function toMeta(row: EventTypeRow): EventTypeMeta {
   };
 }
 
-export async function findAllEventTypes(): Promise<EventTypeMeta[]> {
-  const rows = await getDb().getAllAsync<EventTypeRow>(
+export async function findAllEventTypes(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<EventTypeMeta[]> {
+  const rows = await db.getAllAsync<EventTypeRow>(
     `SELECT ${SELECT_FIELDS} FROM event_types ORDER BY is_builtin DESC, id ASC`,
   );
   return rows.map(toMeta);
@@ -173,36 +173,6 @@ export async function deleteEventTypeWithEvents(id: number, key: string): Promis
 export async function deleteEventType(id: number): Promise<void> {
   const db = getDb();
   await db.withTransactionAsync(async () => deleteTypeRow(db, id));
-}
-
-/**
- * Restaura bases y tipos propios de un backup, conservando sus claves (los
- * eventos del archivo apuntan a ellas). Los que ya existen con esa clave no se
- * tocan; un tipo cuya base no existe se saltea. Todo en una transacción.
- */
-export async function importTypeConfig(config: BackupTypeConfig): Promise<void> {
-  const db = getDb();
-  await db.withTransactionAsync(async () => {
-    for (const base of config.bases) {
-      if (await db.getFirstAsync('SELECT 1 FROM event_bases WHERE key = ?', base.key)) continue;
-      const result = await db.runAsync(
-        'INSERT INTO event_bases (key, label, yearly, requires_time, capabilities, is_builtin) VALUES (?, ?, ?, ?, ?, 0)',
-        base.key, base.label, base.yearly ? 1 : 0, base.requiresTime ? 1 : 0, JSON.stringify(base.capabilities),
-      );
-      await writeFields(db, { column: 'base_id', id: result.lastInsertRowId }, base.fields);
-    }
-    for (const type of config.types) {
-      if (await db.getFirstAsync('SELECT 1 FROM event_types WHERE key = ?', type.key)) continue;
-      const base = await db.getFirstAsync<{ yearly: 0 | 1 }>('SELECT yearly FROM event_bases WHERE key = ?', type.baseKey);
-      if (!base) continue;
-      const result = await db.runAsync(
-        'INSERT INTO event_types (key, label, icon, color, default_yearly, is_builtin, base_key, extra_capabilities) ' +
-          'VALUES (?, ?, ?, ?, ?, 0, ?, ?)',
-        type.key, type.label, type.icon, type.color, base.yearly, type.baseKey, JSON.stringify(type.extraCapabilities),
-      );
-      await writeFields(db, { column: 'type_id', id: result.lastInsertRowId }, type.fields);
-    }
-  });
 }
 
 /**

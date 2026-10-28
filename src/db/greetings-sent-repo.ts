@@ -1,4 +1,5 @@
 import { getDb } from '@/db/database';
+import type { EventExecutor } from '@/db/event-transaction';
 import type { GreetingSent } from '@/types';
 
 /**
@@ -14,6 +15,11 @@ export async function findGreetingsSentByYear(year: number): Promise<GreetingSen
     `SELECT ${SELECT_FIELDS} FROM greetings_sent WHERE year = ?`,
     year,
   );
+}
+
+/** Todas las marcas de todos los años (para la copia de seguridad). */
+export async function findAllGreetingsSent(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<GreetingSent[]> {
+  return db.getAllAsync<GreetingSent>(`SELECT ${SELECT_FIELDS} FROM greetings_sent ORDER BY year ASC, id ASC`);
 }
 
 /** Marca (o desmarca) que ya saludé a la persona de ese evento en ese año. */

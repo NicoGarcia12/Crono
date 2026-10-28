@@ -1,12 +1,13 @@
 import { getDb } from '@/db/database';
+import type { EventExecutor } from '@/db/event-transaction';
 import type { NewNote, Note } from '@/types';
 
 /** Repositorio de notas personales. Mismo patrón que events-repo. */
 
 const SELECT_FIELDS = 'id, title, content, created_at AS createdAt, updated_at AS updatedAt';
 
-export async function findAllNotes(): Promise<Note[]> {
-  return getDb().getAllAsync<Note>(`SELECT ${SELECT_FIELDS} FROM notes ORDER BY updated_at DESC`);
+export async function findAllNotes(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<Note[]> {
+  return db.getAllAsync<Note>(`SELECT ${SELECT_FIELDS} FROM notes ORDER BY updated_at DESC, id DESC`);
 }
 
 export async function insertNote(data: NewNote): Promise<Note> {

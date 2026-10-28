@@ -1,5 +1,6 @@
 import { writeFields, applyRemovals } from '@/db/custom-fields-repo';
 import { getDb } from '@/db/database';
+import type { EventExecutor } from '@/db/event-transaction';
 import { parseCapabilities, parseOptions } from '@/db/json-columns';
 import {
   FIELD_KINDS,
@@ -26,8 +27,8 @@ interface EventBaseRow {
   isBuiltin: 0 | 1;
 }
 
-export async function findAllEventBases(): Promise<EventBase[]> {
-  const rows = await getDb().getAllAsync<EventBaseRow>(
+export async function findAllEventBases(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<EventBase[]> {
+  const rows = await db.getAllAsync<EventBaseRow>(
     'SELECT id, key, label, yearly, requires_time AS requiresTime, capabilities, is_builtin AS isBuiltin ' +
       'FROM event_bases ORDER BY is_builtin DESC, id ASC',
   );
@@ -128,8 +129,8 @@ interface CustomFieldRow {
   required: number;
 }
 
-export async function findAllCustomFields(): Promise<CustomField[]> {
-  const rows = await getDb().getAllAsync<CustomFieldRow>(
+export async function findAllCustomFields(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<CustomField[]> {
+  const rows = await db.getAllAsync<CustomFieldRow>(
     'SELECT id, base_id AS baseId, type_id AS typeId, label, kind, options, position, required ' +
       'FROM custom_fields ORDER BY position ASC, id ASC',
   );

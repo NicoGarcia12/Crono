@@ -1,4 +1,5 @@
 import { getDb } from '@/db/database';
+import type { EventExecutor } from '@/db/event-transaction';
 import type { Greeting } from '@/types';
 
 /**
@@ -16,6 +17,11 @@ export async function findGreetingsByYear(year: number): Promise<Greeting[]> {
     `SELECT ${SELECT_FIELDS} FROM greetings WHERE year = ? ORDER BY name COLLATE NOCASE`,
     year,
   );
+}
+
+/** Todos los saludos de todos los años (para la copia de seguridad), con su orden de carga. */
+export async function findAllGreetings(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<Greeting[]> {
+  return db.getAllAsync<Greeting>(`SELECT ${SELECT_FIELDS} FROM greetings ORDER BY year ASC, id ASC`);
 }
 
 /** Marca (o desmarca) que una persona de mi agenda me saludó ese año. */

@@ -5,7 +5,17 @@ export type EventExecutor = Pick<SQLiteDatabase, 'runAsync' | 'getFirstAsync' | 
 
 let writeTail: Promise<void> = Promise.resolve();
 
-/** La unidad de trabajo es dueña de la transacción; sus helpers reciben solo el ejecutor. */
+/**
+ * La unidad de trabajo es dueña de la transacción; sus helpers reciben solo el ejecutor.
+ *
+ * ATENCIÓN: en nativo el ejecutor es una conexión NUEVA (Expo `Transaction.createAsync`
+ * abre otra con `useNewConnection: true`; ni el código nativo ni el wrapper JS ejecutan
+ * `PRAGMA foreign_keys`) y SQLite arranca con las foreign keys APAGADAS. Dentro de la
+ * transacción tampoco se pueden activar (el PRAGMA es un no-op con BEGIN abierto). Por lo
+ * tanto ningún `ON DELETE CASCADE` / `SET NULL` ni chequeo de FK se dispara acá: todo
+ * borrado que pase por esta función debe eliminar sus filas hijas de forma explícita
+ * (ver `deleteEvent`). En web la conexión es la principal y sí tiene FK activas.
+ */
 export function withEventTransaction<T>(
   database: SQLiteDatabase,
   task: (transaction: EventExecutor) => Promise<T>,

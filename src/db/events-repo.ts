@@ -187,10 +187,36 @@ async function writeEvent(
   return { ...event, id: result.lastInsertRowId, reminders, tags };
 }
 
+/**
+ * Tablas que referencian `events(id)` (todas `ON DELETE CASCADE` en el esquema de
+ * `database.ts`; `greetings.event_id` es nullable, pero los saludos ligados a un
+ * evento caen con él: solo los anotados a mano tienen `event_id` NULL y no se tocan).
+ *
+ * Se borran a mano porque en nativo la transacción corre en una conexión NUEVA
+ * (`withExclusiveTransactionAsync`) que SQLite abre con `foreign_keys = OFF`: el
+ * `PRAGMA` de `initDatabase` es por conexión y, además, un `PRAGMA foreign_keys`
+ * dentro de una transacción es un no-op. Sin este borrado quedarían filas huérfanas
+ * y, como `events.id` no es AUTOINCREMENT, el próximo evento reutilizaría el id y
+ * heredaría avisos, etiquetas y valores ajenos. Si el esquema suma una tabla hija,
+ * agregarla acá (el harness `test-event-save.cjs` compara esta lista con el esquema).
+ */
+export const EVENT_CHILD_TABLES = [
+  'reminders',
+  'event_tags',
+  'event_field_values',
+  'gift_ideas',
+  'greetings',
+  'greetings_sent',
+] as const;
+
 export async function deleteEvent(id: number): Promise<void> {
   // En web el DELETE también debe esperar: si se ejecuta durante otro BEGIN,
   // su fulfilled podría publicarse antes de que un rollback lo deshaga.
   await withEventTransaction(getDb(), async (transaction) => {
+    // Hijos primero y todo en la misma transacción: o se va el evento completo o nada.
+    for (const table of EVENT_CHILD_TABLES) {
+      await transaction.runAsync(`DELETE FROM ${table} WHERE event_id = ?`, id);
+    }
     await transaction.runAsync('DELETE FROM events WHERE id = ?', id);
   });
 }

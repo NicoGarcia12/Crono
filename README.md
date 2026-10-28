@@ -110,10 +110,14 @@ El filtro de contactos por cuenta de Google usa un **módulo nativo propio** (`m
 | `npx tsc --noEmit` | Chequeo de tipos (TypeScript estricto) |
 | `npm test` | Tests unitarios con Jest |
 | `npm run test:watch` | Jest en modo watch |
+| `node --test scripts/test-migrations.cjs` | #36: migraciones de producción sobre SQLite real, fallos entre sentencias y recuperación tras interrupciones |
+| `node --test scripts/test-event-save.cjs` | #37: guardado atómico, rollback, reintento, concurrencia y coherencia con Redux sobre SQLite real |
 | `npm run e2e` | Tests end-to-end con Playwright sobre la versión web (levanta el servidor solo) |
 | `npm run build:apk` | Genera un APK instalable con EAS |
 
 La primera vez que corras los e2e instalá el navegador: `npx playwright install chromium`.
+
+Los harnesses #36 y #37 requieren Node.js 22.13+ de la rama 22 LTS (N-1) por `node:sqlite`. Sustituyen el puente Expo y, en #37, el scheduler nativo: no validan el upgrade de un APK instalado, la instalación limpia nativa ni la entrega de avisos del sistema operativo.
 
 ---
 
@@ -183,7 +187,9 @@ docs/identidad-visual.md    # Logo, isotipo y paleta de colores
 
 **Flujo de datos**: pantalla → `dispatch(thunk)` → repositorio SQLite (+ notificación) → Redux se actualiza → la pantalla se vuelve a dibujar. SQLite es la fuente de verdad y Redux es la copia en memoria, por eso no hace falta `redux-persist`.
 
-**Migraciones**: el esquema de la base se versiona en `src/db/database.ts`. Si cambiás tablas, agregá una migración nueva en vez de editar las existentes, así los celulares que ya tienen datos se actualizan sin perderlos.
+**Migraciones (#36)**: el esquema de la base se versiona en `src/db/database.ts`. Cada paso confirma sus cambios y `PRAGMA user_version` en la misma transacción; un fallo revierte ese paso y permite reintentarlo. Las migraciones legacy inspeccionan las columnas para retomar cambios ya confirmados por builds interrumpidos, sin resetear la base. La limpieza de datos no admitidos de v13 sigue siendo intencional. La conexión se publica solo al completar las migraciones. Para futuros cambios de tablas, agregá una migración nueva en vez de editar las existentes.
+
+**Guardado de eventos (#37)**: crear o editar guarda evento, recordatorios persistidos, etiquetas, campos personalizados y cambio de `isMine` como una sola unidad SQLite. Al editar, omitir `fieldValues` conserva los valores existentes; enviar `{}` los vacía; enviar valores reemplaza el conjunto, descartando vacíos pero conservando el contenido válido. Redux se actualiza tras el commit y mantiene una sola marca de cumpleaños propio. El borrado también comparte la cola de escrituras, necesaria en web para no mezclarse con un guardado que luego se revierta. La transacción no incluye al scheduler del sistema operativo: su reconciliación y compensación siguen pendientes en #39.
 
 ### Decisiones de diseño
 - **Sin servidor**: privacidad total y funciona sin conexión. La contracara es que los datos viven en el celular; para no perderlos está la copia de seguridad.

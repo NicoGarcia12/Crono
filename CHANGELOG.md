@@ -5,6 +5,14 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+### Fixed
+
+- **#36 — Migraciones SQLite**: cada paso confirma esquema, datos y versión juntos o se revierte; las migraciones legacy retoman columnas ya agregadas por versiones interrumpidas sin duplicarlas. Se mantiene la limpieza intencional de datos no admitidos de v13.
+- **#37 — Guardado de eventos**: crear o editar confirma evento, recordatorios persistidos, etiquetas, campos personalizados y la marca de cumpleaños propio en una sola transacción. Redux refleja el cambio de cumpleaños propio; el borrado comparte la cola de escrituras para no quedar dentro de un guardado fallido en web.
+- **#38 — Recurrencia del 29/2**: agenda, calendario, cuenta regresiva y cálculo de avisos comparten la fecha original inmutable: 28/2 en años no bisiestos y 29/2 en bisiestos, sin arrastrar marzo. Esto no resuelve el scheduler anual: un trigger `YEARLY` fijo no alterna esas fechas sin reprogramación; el contrato de mes, la reconciliación y la compensación de avisos siguen pendientes en #39.
+
 ## [1.0.0] - 2026-10-18
 
 Primera versión de Crono: una agenda personal para el celular, sin servidor ni cuenta, con los datos guardados solo en el dispositivo. Funciona en Android, iOS y web.

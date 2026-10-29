@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { describeRestore } from '@/backup/backup';
 import { notify } from '@/components/confirm';
 import { MyBirthdayCard } from '@/components/my-birthday-card';
 import { PhotoPicker } from '@/components/photo-picker';
@@ -97,12 +98,8 @@ export default function PerfilScreen() {
       const summary = await dispatch(restoreBackup()).unwrap();
       if (!summary) return; // el usuario canceló
 
-      const partes = [
-        `${summary.events} ${summary.events === 1 ? 'evento' : 'eventos'}`,
-        `${summary.notes} ${summary.notes === 1 ? 'nota' : 'notas'}`,
-      ];
-      const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
-      notify('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
+      const { title, message } = describeRestore(summary);
+      notify(title, message);
     } catch (error) {
       // Un string es un rechazo de parseBackup (archivo inválido). Cualquier otra
       // cosa es una falla al restaurar: se muestra su mensaje en vez de culpar al archivo.
@@ -193,7 +190,7 @@ export default function PerfilScreen() {
         icon="cloud-upload"
         color={colors.primary}
         title="Exportar copia de seguridad"
-        subtitle="Guardá un archivo con tus eventos y notas (Drive, WhatsApp, donde quieras)"
+        subtitle="Guardá un archivo con tus eventos, notas, tipos y saludos (Drive, WhatsApp, donde quieras). No incluye fotos ni ideas de regalo"
         onPress={handleExport}
       />
 

@@ -163,8 +163,8 @@ export async function applyRemovals(db: Executor, typeKeys: readonly string[], p
 }
 
 /** Todos los valores de campos, agrupados por evento. */
-export async function findAllFieldValues(): Promise<Record<number, FieldValues>> {
-  const rows = await getDb().getAllAsync<ValueRow>(
+export async function findAllFieldValues(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<Record<number, FieldValues>> {
+  const rows = await db.getAllAsync<ValueRow>(
     'SELECT event_id AS eventId, field_id AS fieldId, value FROM event_field_values',
   );
   const byEvent: Record<number, FieldValues> = {};

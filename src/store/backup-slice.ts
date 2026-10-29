@@ -1,80 +1,75 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 
 import {
-  backupFieldKey,
   backupFileName,
   buildBackup,
-  itemsToRestore,
   parseBackup,
   serializeBackup,
+  type BackupEvent,
+  type RestoreCounts,
+  type RestoreSummary,
 } from '@/backup/backup';
 import { pickTextFile, saveAndShare } from '@/backup/file-io';
-import * as eventTypesRepo from '@/db/event-types-repo';
-import * as greetingsRepo from '@/db/greetings-repo';
+import * as backupRepo from '@/db/backup-repo';
+import { cancelRemindersAfterCommit, requireReminderCleanup } from '@/notifications/cancel-after-commit';
+import { scheduleEventReminders } from '@/notifications/notifications';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
-import { addEvent } from '@/store/events-slice';
-import { addNote } from '@/store/notes-slice';
+import { loadEvents } from '@/store/events-slice';
+import { loadFieldValues } from '@/store/field-values-slice';
+import { loadGreetings } from '@/store/greetings-slice';
+import { loadGreetingsSent } from '@/store/greetings-sent-slice';
+import { loadNotes } from '@/store/notes-slice';
+import { loadSettings } from '@/store/settings-slice';
 import type { RootState } from '@/store';
-import type { FieldValues } from '@/types';
+import { enforceMineBirthday, type EventReminder, type NewEvent } from '@/types';
 
 /**
  * Exportar / restaurar la copia de seguridad.
  *
- * 💡 Aprendizaje: estos thunks NO tocan la BD directamente: reusan los thunks
- * que ya existen (addEvent programa los recordatorios, addNote persiste la nota).
- * Así la restauración deja el mismo estado que si hubieras cargado todo a mano.
+ * 💡 Aprendizaje: Redux es solo una copia en memoria (y perezosa) de lo que hay
+ * en SQLite. Por eso el backup se arma LEYENDO LA BASE (db/backup-repo.ts), no
+ * el estado: si no visitaste la pantalla de saludos, Redux no los tiene, pero
+ * SQLite sí. Al restaurar pasa lo mismo a la inversa: se escribe en SQLite en
+ * una sola transacción y recién después se recarga Redux desde la base.
  */
 
 /** Exporta todo a un archivo y abre la hoja de Compartir (o lo descarga, en web). */
-export const exportBackup = createAsyncThunk('backup/export', async (_: void, { getState }) => {
-  const state = getState() as RootState;
-  const backup = buildBackup(
-    state.events.items,
-    state.notes.items,
-    state.settings.displayName,
-    undefined,
-    state.greetings.items,
-    {
-      bases: state.eventBases.bases,
-      types: state.eventTypes.items,
-      fields: state.eventBases.fields,
-      values: state.fieldValues.byEvent,
-    },
-  );
+export const exportBackup = createAsyncThunk('backup/export', async () => {
+  const backup = buildBackup(await backupRepo.readBackupSnapshot());
 
   await saveAndShare(backupFileName(), serializeBackup(backup));
 
-  return { events: backup.events.length, notes: backup.notes.length };
+  return {
+    events: backup.events.length,
+    notes: backup.notes.length,
+    greetings: backup.greetings?.length ?? 0,
+    greetingsSent: backup.greetingsSent?.length ?? 0,
+  };
 });
 
-export interface RestoreSummary {
-  /** Cuántos se agregaron. */
-  events: number;
-  notes: number;
-  /** Cuántos ya estaban y se saltearon (no se duplican). */
-  skipped: number;
+/** Los avisos se programan con los mismos datos que usa guardar un evento a mano. */
+function toNewEvent({ ref: _ref, fieldValues: _fieldValues, ...event }: BackupEvent): NewEvent {
+  return enforceMineBirthday(event as NewEvent);
 }
 
-/**
- * Valores del archivo ('type:Qué llevar' → valor) traducidos a los ids de
- * campo de ESTE celular, según el tipo del evento. Los que no encuentran su
- * campo se descartan.
- */
-function resolveFieldValues(state: RootState, typeKey: string, byKey: Record<string, string>): FieldValues {
-  const type = state.eventTypes.items.find((t) => t.key === typeKey);
-  const base = state.eventBases.bases.find((b) => b.key === type?.baseKey);
-  const fields = state.eventBases.fields.filter(
-    (f) => (f.owner === 'base' && f.ownerId === base?.id) || (f.owner === 'type' && f.ownerId === type?.id),
-  );
-  return Object.fromEntries(
-    fields.flatMap((f) => (byKey[backupFieldKey(f)] !== undefined ? [[f.id, byKey[backupFieldKey(f)]]] : [])),
-  );
+/** Mensaje accionable: la restauración es atómica, así que lo previo siempre queda como estaba. */
+function restoreFailure(cause: unknown, cleanupPending: boolean): Error {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  const recovery = cleanupPending
+    ? 'No se modificó ningún dato en SQLite. Quedó limpieza de avisos pendiente: usá Reintentar limpieza antes de restaurar otra vez.'
+    : 'No se modificó ningún dato: podés volver a intentarlo.';
+  return new Error(`${detail}\n${recovery}`, { cause });
 }
 
 /**
  * Restaura desde un archivo elegido por el usuario. Devuelve null si canceló.
  * Lo que ya existe NO se duplica: se agrega solo lo que falta.
+ *
+ * Orden y garantías:
+ * 1. Se programan los avisos de los eventos que faltan (el SO no tiene rollback).
+ * 2. Se escribe TODO en una única transacción SQLite.
+ * 3. Si algo falla, SQLite revierte y se cancelan los avisos recién creados.
  */
 export const restoreBackup = createAsyncThunk<RestoreSummary | null, void, { state: RootState }>(
   'backup/restore',
@@ -84,31 +79,39 @@ export const restoreBackup = createAsyncThunk<RestoreSummary | null, void, { sta
 
     const parsed = parseBackup(raw);
     if (!parsed.ok) return rejectWithValue(parsed.error) as never;
+    const { backup, discarded } = parsed;
+    await requireReminderCleanup();
 
-    // Primero las bases y tipos propios: los eventos del archivo apuntan a ellos.
-    if (parsed.backup.typeConfig) {
-      await eventTypesRepo.importTypeConfig(parsed.backup.typeConfig);
-      await Promise.all([dispatch(loadEventBases()), dispatch(loadEventTypes())]);
+    const scheduled = new Map<number, EventReminder[]>();
+    let counts: RestoreCounts;
+    try {
+      for (const index of await backupRepo.findMissingEventIndexes(backup)) {
+        scheduled.set(index, await scheduleEventReminders(toNewEvent(backup.events[index])));
+      }
+      counts = await backupRepo.applyBackupRestore(backup, scheduled);
+    } catch (error) {
+      // La causa de SQLite se conserva, pero no prometemos rollback del SO
+      // cuando su cancelación todavía necesita intervención/reintento.
+      const cleanup = await cancelRemindersAfterCommit([...scheduled.values()].flat(), 'Restaurar copia fallida');
+      throw restoreFailure(error, cleanup.pendingIds.length > 0 || Boolean(cleanup.error || cleanup.storageError));
     }
 
-    const state = getState();
-    const { events, notes } = itemsToRestore(parsed.backup, state.events.items, state.notes.items);
-    const skipped =
-      parsed.backup.events.length - events.length + (parsed.backup.notes.length - notes.length);
+    // Ya está confirmado en SQLite: se recarga la copia en memoria desde la base.
+    const reloads = await Promise.all([
+      dispatch(loadEvents()),
+      dispatch(loadEventBases()),
+      dispatch(loadEventTypes()),
+      dispatch(loadFieldValues()),
+      dispatch(loadNotes()),
+      dispatch(loadSettings()),
+      dispatch(loadGreetings(getState().greetings.year)),
+      dispatch(loadGreetingsSent(getState().greetingsSent.year)),
+    ]);
 
-    // Secuencial: cada evento programa sus recordatorios al guardarse.
-    for (const { fieldValues, ...event } of events) {
-      // Resolver antes del INSERT evita un evento sin sus campos si falla guardarlos.
-      const values = fieldValues ? resolveFieldValues(getState(), event.type, fieldValues) : {};
-      await dispatch(addEvent({ ...event, fieldValues: values })).unwrap();
-    }
-    for (const note of notes) await dispatch(addNote(note)).unwrap();
-    // Los ids de eventos son locales al dispositivo de origen, por eso cada
-    // saludo se restaura como invitado y conserva sus datos significativos.
-    for (const greeting of parsed.backup.greetings ?? []) {
-      await greetingsRepo.insertGuest(greeting.year, greeting.name, greeting.phone, greeting.greeted === 1);
-    }
-
-    return { events: events.length, notes: notes.length, skipped };
+    return {
+      ...counts,
+      discarded: Object.values(discarded).reduce((sum, n) => sum + n, 0),
+      refreshFailed: reloads.some((result) => result.meta.requestStatus === 'rejected'),
+    };
   },
 );

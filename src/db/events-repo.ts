@@ -66,13 +66,13 @@ export function attachTags<T extends { id: number }>(events: T[], tagRows: Event
   return events.map((event) => ({ ...event, tags: byEvent.get(event.id) ?? [] }));
 }
 
-export async function findAllEvents(): Promise<EventItem[]> {
-  const db = getDb();
+/** `db` permite leer dentro de una transacción (snapshot del backup); por defecto, la conexión global. */
+export async function findAllEvents(db: EventExecutor = getDb()): Promise<EventItem[]> {
   const events = await db.getAllAsync<EventRow>(
     `SELECT id, title, type, date, time, description, yearly,
             contact_id AS contactId, phone, is_mine AS isMine, photo_uri AS photoUri,
             year_unknown AS yearUnknown
-     FROM events ORDER BY date ASC`,
+     FROM events ORDER BY date ASC, id ASC`,
   );
   const reminders = await db.getAllAsync<ReminderRow>(
     'SELECT event_id AS eventId, amount, unit, notification_id AS notificationId FROM reminders',
@@ -149,7 +149,7 @@ export async function updateEvent(
   );
 }
 
-async function writeEvent(
+export async function writeEvent(
   db: EventExecutor,
   data: NewEvent,
   reminders: EventReminder[],

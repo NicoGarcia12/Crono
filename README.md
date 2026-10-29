@@ -111,6 +111,7 @@ El filtro de contactos por cuenta de Google usa un **módulo nativo propio** (`m
 | `npm test` | Tests unitarios con Jest |
 | `npm run test:watch` | Jest en modo watch |
 | `npm run e2e` | Tests end-to-end con Playwright sobre la versión web (levanta el servidor solo) |
+| `node --test scripts/test-migrations.cjs` | #36: migraciones de producción sobre SQLite real, fallos entre sentencias y recuperación tras interrupciones |
 | `npm run build:apk` | Genera un APK instalable con EAS |
 
 La primera vez que corras los e2e instalá el navegador: `npx playwright install chromium`.
@@ -183,7 +184,7 @@ docs/identidad-visual.md    # Logo, isotipo y paleta de colores
 
 **Flujo de datos**: pantalla → `dispatch(thunk)` → repositorio SQLite (+ notificación) → Redux se actualiza → la pantalla se vuelve a dibujar. SQLite es la fuente de verdad y Redux es la copia en memoria, por eso no hace falta `redux-persist`.
 
-**Migraciones**: el esquema de la base se versiona en `src/db/database.ts`. Si cambiás tablas, agregá una migración nueva en vez de editar las existentes, así los celulares que ya tienen datos se actualizan sin perderlos.
+**Migraciones (#36)**: el esquema de la base se versiona en `src/db/database.ts`. Cada paso confirma sus cambios y `PRAGMA user_version` en la misma transacción; un fallo revierte ese paso y permite reintentarlo. Las migraciones legacy inspeccionan las columnas para retomar cambios ya confirmados por builds interrumpidos, sin resetear la base. La limpieza de datos no admitidos de v13 sigue siendo intencional. La conexión se publica solo al completar las migraciones. Para futuros cambios de tablas, agregá una migración nueva en vez de editar las existentes.
 
 ### Decisiones de diseño
 - **Sin servidor**: privacidad total y funciona sin conexión. La contracara es que los datos viven en el celular; para no perderlos está la copia de seguridad.

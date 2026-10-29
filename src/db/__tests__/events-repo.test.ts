@@ -1,12 +1,14 @@
 import type { SQLiteDatabase, SQLiteRunResult } from 'expo-sqlite';
 
-import { attachReminders, attachTags, insertEvent } from '@/db/events-repo';
+import { attachReminders, attachTags, deleteEvent, EVENT_CHILD_TABLES, insertEvent } from '@/db/events-repo';
 import { getDb } from '@/db/database';
 import type { NewEvent } from '@/types';
 
-// El repo importa la conexión SQLite (nativa); acá solo se testea la
-// función pura de agrupado, así que alcanza con mockear el módulo de BD.
+// Jest no inicia el módulo SQLite nativo; el doble permite observar cuándo
+// se escriben las filas dentro de la transacción del repositorio.
 jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
+// Estas pruebas no usan fotos: sin copias propias, la limpieza posterior no consulta SQLite.
+jest.mock('@/media/photos', () => ({ savedPhotos: () => [] }));
 
 const miCumple: NewEvent = {
   title: 'Mi cumpleaños',
@@ -77,16 +79,10 @@ describe('insertEvent', () => {
   it('mantiene un único cumpleaños propio cuando dos escrituras llegan en paralelo', async () => {
     const rows: Array<{ isMine: 0 | 1 }> = [];
     let clears = 0;
-    let releaseBothClears: (() => void) | undefined;
-    const bothClearsStarted = new Promise<void>((resolve) => {
-      releaseBothClears = resolve;
-    });
 
     const runAsync = async (query: string, ...params: unknown[]): Promise<SQLiteRunResult> => {
       if (query.startsWith('UPDATE events SET is_mine = 0')) {
         clears += 1;
-        if (clears === 2) releaseBothClears?.();
-        await bothClearsStarted;
         rows.forEach((row) => {
           row.isMine = 0;
         });
@@ -136,5 +132,73 @@ describe('insertEvent', () => {
     await Promise.all([insertEvent(miCumple, []), insertEvent({ ...miCumple, date: '1991-08-08' }, [])]);
 
     expect(rows.filter((row) => row.isMine === 1)).toHaveLength(1);
+    expect(clears).toBe(2);
+  });
+});
+
+describe('deleteEvent', () => {
+  // Cuadro del esquema (database.ts): tablas con `REFERENCES events(id) ON DELETE CASCADE`.
+  // La transacción exclusiva de nativo corre en una conexión nueva con foreign_keys = OFF,
+  // así que ninguna cascada ocurre: el repositorio tiene que borrar las hijas él mismo.
+  const hijas = ['reminders', 'event_tags', 'event_field_values', 'gift_ideas', 'greetings', 'greetings_sent'];
+
+  it('borra cada tabla hija y después el evento, todo dentro de la transacción exclusiva', async () => {
+    const log: string[] = [];
+    let inTransaction = false;
+    const mainConnectionRunAsync = jest.fn(async (_query: string, ..._params: unknown[]): Promise<SQLiteRunResult> => runResult());
+    const transactionRunAsync = async (query: string, ...params: unknown[]): Promise<SQLiteRunResult> => {
+      if (!inTransaction) throw new Error('escritura fuera de la transacción exclusiva');
+      log.push(`${query} <- ${JSON.stringify(params)}`);
+      return runResult();
+    };
+    const database = {
+      runAsync: mainConnectionRunAsync,
+      async withExclusiveTransactionAsync(
+        task: (transaction: { runAsync: typeof transactionRunAsync }) => Promise<void>,
+      ): Promise<void> {
+        inTransaction = true;
+        try {
+          await task({ runAsync: transactionRunAsync });
+        } finally {
+          inTransaction = false;
+        }
+      },
+    };
+    // REASON: el repositorio depende de una interfaz nativa grande; este fake sólo implementa
+    // la transacción exclusiva y la conexión principal que NO debe usarse para borrar.
+    jest.mocked(getDb).mockReturnValue(database as unknown as SQLiteDatabase);
+
+    await deleteEvent(42);
+
+    // El evento va al final; el orden entre hijas no importa (todas son ON DELETE CASCADE).
+    expect(log.at(-1)).toBe('DELETE FROM events WHERE id = ? <- [42]');
+    expect(log.slice(0, -1).sort()).toEqual(
+      hijas.map((tabla) => `DELETE FROM ${tabla} WHERE event_id = ? <- [42]`).sort(),
+    );
+    expect(mainConnectionRunAsync).not.toHaveBeenCalled();
+    expect([...EVENT_CHILD_TABLES].sort()).toEqual([...hijas].sort());
+  });
+
+  it('si falla un DELETE hijo, propaga el error y no llega a borrar el evento', async () => {
+    const log: string[] = [];
+    const failing = new Error('SQLITE_BUSY');
+    const transactionRunAsync = async (query: string, ..._params: unknown[]): Promise<SQLiteRunResult> => {
+      log.push(query);
+      if (query.startsWith('DELETE FROM gift_ideas')) throw failing;
+      return runResult();
+    };
+    const database = {
+      runAsync: transactionRunAsync,
+      async withExclusiveTransactionAsync(
+        task: (transaction: { runAsync: typeof transactionRunAsync }) => Promise<void>,
+      ): Promise<void> {
+        await task({ runAsync: transactionRunAsync });
+      },
+    };
+    // REASON: igual que arriba; sólo se necesita la transacción exclusiva.
+    jest.mocked(getDb).mockReturnValue(database as unknown as SQLiteDatabase);
+
+    await expect(deleteEvent(7)).rejects.toBe(failing);
+    expect(log.some((query) => query.startsWith('DELETE FROM events'))).toBe(false);
   });
 });

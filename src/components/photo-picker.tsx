@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { pickAndSavePhoto } from '@/media/photos';
+import { showError } from '@/components/confirm';
+import { pickPhoto } from '@/media/photos';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -13,20 +14,37 @@ import { useThemeColors } from '@/theme/use-theme';
 
 interface PhotoPickerProps {
   uri: string | null;
-  onChange: (uri: string | null) => void;
+  /**
+   * Recibe la foto elegida (URI temporal) o null para quitarla. Puede ser asíncrono: si
+   * rechaza, el selector avisa el error y la foto anterior queda como estaba.
+   */
+  onChange: (uri: string | null) => void | Promise<void>;
   accessibilityLabel: string;
-  /** Prefijo del nombre de archivo al guardar (distingue fotos de evento vs. de perfil). */
-  filePrefix: string;
   size?: number;
 }
 
-export function PhotoPicker({ uri, onChange, accessibilityLabel, filePrefix, size = 72 }: PhotoPickerProps) {
+export function PhotoPicker({ uri, onChange, accessibilityLabel, size = 72 }: PhotoPickerProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const busy = useRef(false);
 
   const pick = async () => {
-    const saved = await pickAndSavePhoto(filePrefix);
-    if (saved) onChange(saved);
+    // El selector sólo entrega la elección (URI temporal): copiar y guardar es del dueño de onChange.
+    const picked = await pickPhoto();
+    if (picked) await onChange(picked);
+  };
+
+  /** Un solo guardado a la vez; si falla se avisa en vez de dejar la promesa sin atender. */
+  const run = async (action: () => Promise<void>) => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      await action();
+    } catch (error: unknown) {
+      showError('No se pudo guardar la foto', error);
+    } finally {
+      busy.current = false;
+    }
   };
 
   return (
@@ -34,7 +52,7 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, filePrefix, siz
       <Pressable
         accessibilityLabel={accessibilityLabel}
         style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}
-        onPress={pick}
+        onPress={() => void run(pick)}
       >
         {uri ? (
           <Image source={{ uri }} style={[styles.image, { borderRadius: size / 2 }]} />
@@ -47,7 +65,7 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, filePrefix, siz
           accessibilityLabel={`Quitar foto`}
           style={styles.remove}
           hitSlop={8}
-          onPress={() => onChange(null)}
+          onPress={() => void run(async () => { await onChange(null); })}
         >
           <Ionicons name="close" size={14} color="#fff" />
         </Pressable>

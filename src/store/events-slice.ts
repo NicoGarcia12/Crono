@@ -3,7 +3,8 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import * as eventTypesRepo from '@/db/event-types-repo';
 import * as eventsRepo from '@/db/events-repo';
 import { loadEventTypes } from '@/store/event-types-slice';
-import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
+import { cancelRemindersAfterCommit, requireReminderCleanup } from '@/notifications/cancel-after-commit';
+import { scheduleEventReminders } from '@/notifications/notifications';
 import { enforceMineBirthday, type EventItem, type EventReminder, type NewEvent } from '@/types';
 
 /**
@@ -44,6 +45,7 @@ async function ensureBirthdayType(
 }
 
 export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { getState, dispatch }) => {
+  await requireReminderCleanup();
   const normalized = enforceMineBirthday(data);
   await ensureBirthdayType([normalized], getState, dispatch);
   // 1) Programar los avisos en el sistema, 2) guardar en SQLite con sus ids.
@@ -51,10 +53,9 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { 
   try {
     return await eventsRepo.insertEvent(normalized, reminders);
   } catch (error: unknown) {
-    // Expo programa en el SO fuera de la transacción de SQLite. Si SQLite
-    // rechaza el evento, cancelamos los ids recién creados para no dejarlos
-    // huérfanos. allSettled conserva el error de persistencia original.
-    await Promise.allSettled([cancelReminders(reminders)]);
+    // La compensación conserva sus IDs si el SO rechaza cancelar; el error
+    // de SQLite sigue siendo la causa de que no se haya guardado el evento.
+    await cancelRemindersAfterCommit(reminders, 'Crear evento fallido');
     throw error;
   }
 });
@@ -67,6 +68,7 @@ export const addEvent = createAsyncThunk('events/add', async (data: NewEvent, { 
 export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEvent[]>(
   'events/addContactBirthdays',
   async (entries: readonly NewEvent[], { getState, dispatch }) => {
+    await requireReminderCleanup();
     await ensureBirthdayType(entries, getState, dispatch);
     const scheduledReminders: EventReminder[][] = [];
     try {
@@ -75,10 +77,7 @@ export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEve
       }
       return await eventsRepo.insertContactBirthdays(entries, scheduledReminders);
     } catch (error: unknown) {
-      // SQLite revierte sus filas dentro de la transacción; este cleanup corre
-      // en JS para revertir el efecto externo de TODOS los avisos ya creados.
-      // allSettled conserva el error original aunque falle una cancelación.
-      await Promise.allSettled(scheduledReminders.map((reminders) => cancelReminders(reminders)));
+      await cancelRemindersAfterCommit(scheduledReminders.flat(), 'Importar cumpleaños fallido');
       throw error;
     }
   },
@@ -87,28 +86,40 @@ export const addContactBirthdays = createAsyncThunk<EventItem[], readonly NewEve
 export const editEvent = createAsyncThunk(
   'events/edit',
   async (payload: { id: number; data: NewEvent; previousReminders: EventReminder[] }) => {
+    await requireReminderCleanup();
     const normalized = enforceMineBirthday(payload.data);
     /**
-      * Primero pedimos los reemplazos al SO. A diferencia de SQLite, las
-      * notificaciones nativas no tienen rollback: con este orden, si programar
-      * falla los avisos anteriores siguen activos y el evento no se modifica.
-      */
+     * Orden: 1) programar los reemplazos, 2) persistir, 3) cancelar los anteriores.
+     * Las notificaciones nativas no tienen rollback, así que los avisos
+     * anteriores se cancelan RECIÉN cuando SQLite confirmó:
+     *  - si programar falla, nada cambió y los anteriores siguen activos;
+     *  - si persistir falla, SQLite hizo rollback del evento y de sus filas de
+     *    avisos (siguen apuntando a los ids anteriores, aún activos); sólo se
+     *    deshacen los reemplazos recién creados para que no queden huérfanos.
+     * Cancelar antes de persistir (el orden anterior) dejaba al evento sin
+     * avisos si el guardado fallaba: SQLite revertía, el SO no.
+     */
     const reminders = await scheduleEventReminders(normalized);
 
+    let saved: EventItem;
     try {
-      await cancelReminders(payload.previousReminders);
-      return await eventsRepo.updateEvent(payload.id, normalized, reminders);
+      saved = await eventsRepo.updateEvent(payload.id, normalized, reminders);
     } catch (error) {
-      // Si falla un paso posterior, no dejamos reemplazos huérfanos en el SO.
-      await Promise.allSettled([cancelReminders(reminders)]);
+      await cancelRemindersAfterCommit(reminders, 'Editar evento fallido');
       throw error;
     }
+
+    await cancelRemindersAfterCommit(payload.previousReminders, 'Editar evento');
+    return saved;
   },
 );
 
 export const removeEvent = createAsyncThunk('events/remove', async (event: EventItem) => {
-  await cancelReminders(event.reminders);
+  // Borrar primero en SQLite: si falla, los avisos del evento siguen activos y
+  // el evento sigue existiendo (antes se cancelaban antes de borrar y un fallo
+  // dejaba un evento vivo sin avisos). Con el borrado confirmado se cancelan.
   await eventsRepo.deleteEvent(event.id);
+  await cancelRemindersAfterCommit(event.reminders, 'Borrar evento');
   return event.id;
 });
 
@@ -129,12 +140,19 @@ const eventsSlice = createSlice({
         state.status = 'error';
       })
       .addCase(addEvent.fulfilled, (state, action) => {
+        // SQLite ya confirmó el cambio de dueño; Redux replica ambas marcas juntas.
+        if (action.payload.isMine === 1) {
+          for (const event of state.items) event.isMine = 0;
+        }
         state.items.push(action.payload);
       })
       .addCase(addContactBirthdays.fulfilled, (state, action) => {
         state.items.push(...action.payload);
       })
       .addCase(editEvent.fulfilled, (state, action) => {
+        if (action.payload.isMine === 1) {
+          for (const event of state.items) event.isMine = 0;
+        }
         const index = state.items.findIndex((e) => e.id === action.payload.id);
         if (index !== -1) state.items[index] = action.payload;
       })

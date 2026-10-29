@@ -1,5 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 
+import { getSetting, setSetting } from '@/db/settings-repo';
+import { retryPendingReminderCancellations } from '@/notifications/cancel-after-commit';
 import * as eventsRepo from '@/db/events-repo';
 import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
 import reducer, { addContactBirthdays } from '@/store/events-slice';
@@ -9,6 +11,8 @@ import type { EventItem, EventReminder, NewEvent } from '@/types';
 // orquestación del thunk que corre en el hilo de JavaScript.
 jest.mock('@/db/events-repo');
 jest.mock('@/notifications/notifications');
+jest.mock('@/db/settings-repo');
+jest.mock('@/components/confirm', () => ({ confirmAction: jest.fn().mockResolvedValue(false) }));
 
 const mockRepo = jest.mocked(eventsRepo);
 const mockSchedule = jest.mocked(scheduleEventReminders);
@@ -53,8 +57,13 @@ const brunoReminders: EventReminder[] = [{ amount: 1, unit: 'dias', notification
 const makeStore = () => configureStore({ reducer: { events: reducer } });
 
 describe('addContactBirthdays', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeEach(async () => {
+    jest.resetAllMocks();
+    jest.mocked(getSetting).mockResolvedValue(null);
+    jest.mocked(setSetting).mockResolvedValue(undefined);
+    mockCancel.mockResolvedValue(undefined);
+    await retryPendingReminderCancellations();
+    mockCancel.mockClear();
   });
 
   it('compensa todos los avisos programados si falla la transacción del lote', async () => {
@@ -65,8 +74,7 @@ describe('addContactBirthdays', () => {
     await store.dispatch(addContactBirthdays(birthdays));
 
     expect(mockRepo.insertContactBirthdays).toHaveBeenCalledWith(birthdays, [anaReminders, brunoReminders]);
-    expect(mockCancel).toHaveBeenCalledWith(anaReminders);
-    expect(mockCancel).toHaveBeenCalledWith(brunoReminders);
+    expect(mockCancel).toHaveBeenCalledWith([...anaReminders, ...brunoReminders]);
     expect(store.getState().events.items).toEqual([]);
   });
 

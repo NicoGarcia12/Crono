@@ -61,7 +61,10 @@ export async function setEventTags(
   names: readonly string[],
 ): Promise<Tag[]> {
   const normalized = normalizeNames(names);
-  const ids = await Promise.all(normalized.map((name) => getOrCreateTagId(db, name)));
+  // No lanzar escrituras hermanas: un rechazo debe llegar después de que todas
+  // las consultas previas terminaron, antes de que el dueño haga rollback.
+  const ids: number[] = [];
+  for (const name of normalized) ids.push(await getOrCreateTagId(db, name));
 
   await db.runAsync('DELETE FROM event_tags WHERE event_id = ?', eventId);
   for (const id of ids) {

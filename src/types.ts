@@ -226,6 +226,8 @@ export interface Greeting {
 export type NewEvent = Omit<EventItem, 'id' | 'reminders' | 'tags'> & {
   reminders: ReminderInput[];
   tags: string[];
+  /** Se reemplazan junto con el evento; omitirlos al editar conserva los existentes. {} los vacía. */
+  fieldValues?: FieldValues;
 };
 
 /**

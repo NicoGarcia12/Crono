@@ -34,9 +34,9 @@ interface EventFormProps {
   /** Evento existente al editar; undefined al crear. */
   initial?: EventItem;
   submitLabel: string;
-  // Recibe el evento y los valores de sus campos personalizados (solo los del tipo elegido).
+  // Un solo payload: el evento y sus campos se confirman en la misma transacción.
   // Si la promesa falla, el error se muestra arriba del botón y se puede reintentar.
-  onSubmit: (data: NewEvent, fieldValues: FieldValues) => Promise<void>;
+  onSubmit: (data: NewEvent) => Promise<void>;
 }
 
 export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
@@ -140,7 +140,8 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
         tags,
         photoUri,
         yearUnknown: hasAge && yearUnknown ? 1 : 0,
-      }, values);
+        fieldValues: values,
+      });
     } catch (error: unknown) {
       setSubmitError(`No se pudo guardar: ${errorMessage(error)}`);
     } finally {
@@ -153,7 +154,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       <PhotoPicker
         uri={photoUri}
         onChange={setPhotoUri}
-        filePrefix="evento"
+        // Borrador: la URI del selector es temporal; se copia recién al guardar el evento.
         accessibilityLabel="Elegir foto del evento"
       />
 

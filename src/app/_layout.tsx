@@ -1,16 +1,18 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 import { Provider } from 'react-redux';
 
-import { errorMessage } from '@/components/confirm';
+import { confirmAction, errorMessage } from '@/components/confirm';
 import { DialogHost } from '@/components/dialog-host';
 import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
+import { cleanupPhotosWithNotice } from '@/db/photos-repo';
 import { requestNotificationPermission } from '@/notifications/notifications';
+import { reconcileReminders } from '@/notifications/reconcile';
 import { store, useAppSelector } from '@/store';
 import { loadEventBases } from '@/store/event-bases-slice';
 import { loadEventTypes } from '@/store/event-types-slice';
@@ -54,6 +56,30 @@ export function shouldRelock(backgroundedAt: number | null, now: number): boolea
   return backgroundedAt !== null && now - backgroundedAt > LOCK_GRACE_MS;
 }
 
+// Incluye el diálogo en el single-flight: StrictMode no abre dos reintentos.
+let reminderRecoveryInFlight: Promise<void> | null = null;
+function recoverReminders(): Promise<void> {
+  reminderRecoveryInFlight ??= (async () => {
+    for (;;) {
+      let problem: string | null = null;
+      try {
+        const report = await reconcileReminders();
+        if (report.status !== 'current' && report.status !== 'unavailable') {
+          // La próxima edición debe cancelar los IDs actuales, no los del arranque.
+          await store.dispatch(loadEvents()).unwrap();
+        }
+        if (report.status === 'incomplete') {
+          problem = 'No se pudo completar la actualización o limpieza de avisos. Los anteriores pueden seguir apareciendo. Podés reintentar sin cerrar la app.';
+        }
+      } catch (error: unknown) {
+        problem = `No se pudieron recuperar los avisos: ${errorMessage(error)}`;
+      }
+      if (!problem || !await confirmAction('Avisos pendientes', problem, 'Reintentar avisos')) return;
+    }
+  })().finally(() => { reminderRecoveryInFlight = null; });
+  return reminderRecoveryInFlight;
+}
+
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -73,6 +99,12 @@ export default function RootLayout() {
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
       await requestNotificationPermission();
+      // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.
+      // Nunca rechaza: si falla, avisa y no bloquea el arranque.
+      void cleanupPhotosWithNotice();
+      // No esperamos la respuesta del diálogo antes de montar DialogHost:
+      // hacerlo bloquearía el arranque sin mostrar el botón de recuperación.
+      void recoverReminders();
     }
 
     bootstrap()
@@ -104,6 +136,9 @@ export default function RootLayout() {
 /** Encadena bloqueo → primer uso → app. Vive dentro del Provider para poder usar Redux. */
 function Gates() {
   const [unlocked, setUnlocked] = useState(false);
+  // Una referencia estable evita volver a abrir el prompt nativo por un render
+  // del gate (por ejemplo, al cambiar el tema mientras la app sigue bloqueada).
+  const handleUnlock = useCallback(() => setUnlocked(true), []);
   const displayName = useAppSelector((state) => state.settings.displayName);
   const { name: themeName, colors } = useTheme();
 
@@ -134,7 +169,7 @@ function Gates() {
     return (
       <>
         {statusBar}
-        <LockScreen onUnlock={() => setUnlocked(true)} />
+        <LockScreen onUnlock={handleUnlock} />
         <DialogHost />
       </>
     );

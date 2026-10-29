@@ -18,6 +18,12 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Node 24 es LTS N-1; el corte no instala dependencias ni dispara EAS.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff
 
@@ -58,13 +64,12 @@ jobs:
             git cliff --tag ${{ steps.version.outputs.next }} --output CHANGELOG.md
           fi
 
-      - name: Bump package.json version(s)
-        run: |
-          for pkg in package.json; do
-            if [ -f "$pkg" ]; then
-              (cd "$(dirname "$pkg")" && npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version)
-            fi
-          done
+      # Una sola operación sincroniza package, lock y la versión visible de Expo.
+      # El contador nativo sigue siendo REMOTE y sólo avanza al construir con EAS.
+      - name: Sync release versions
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: npm run release:version -- "$RELEASE_VERSION"
 
       - name: Commit release changes
         run: |

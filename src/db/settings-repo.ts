@@ -15,12 +15,17 @@ export async function getSetting(key: string, db: Pick<EventExecutor, 'getFirstA
   return row?.value ?? null;
 }
 
-export async function setSetting(key: string, value: string): Promise<void> {
+/** Escribe dentro de una transacción ya abierta (no vuelve a entrar en la cola de escrituras). */
+export async function writeSetting(db: Pick<EventExecutor, 'runAsync'>, key: string, value: string): Promise<void> {
   // UPSERT: inserta o actualiza si la clave ya existe.
-  await withEventTransaction(getDb(), (db) => db.runAsync(
+  await db.runAsync(
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     key,
     value,
-  ), 'primary');
+  );
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  await withEventTransaction(getDb(), (db) => writeSetting(db, key, value), 'primary');
 }

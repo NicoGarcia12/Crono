@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
+import * as photosRepo from '@/db/photos-repo';
 import * as settingsRepo from '@/db/settings-repo';
 import { THEME_PREFERENCES, type ThemePreference } from '@/theme/theme';
 
@@ -36,10 +37,13 @@ export const loadSettings = createAsyncThunk('settings/load', async () => {
   return { displayName, themePreference, photoUri: photoUri || null };
 });
 
-export const savePhotoUri = createAsyncThunk('settings/savePhotoUri', async (uri: string | null) => {
-  await settingsRepo.setSetting('photoUri', uri ?? '');
-  return uri;
-});
+/**
+ * Recibe la foto ELEGIDA (URI temporal del selector) o null para quitarla. El repositorio
+ * la copia y publica la referencia; el estado sólo cambia con la URI ya persistida.
+ */
+export const savePhotoUri = createAsyncThunk('settings/savePhotoUri', (selectedUri: string | null) =>
+  photosRepo.saveProfilePhoto(selectedUri),
+);
 
 export const saveThemePreference = createAsyncThunk(
   'settings/saveTheme',

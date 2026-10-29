@@ -9,6 +9,8 @@ import {
 import type { NewEventType, RemovalPlan } from '@/types';
 
 jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
+// Estas pruebas no usan fotos: sin copias propias, la limpieza posterior no consulta SQLite.
+jest.mock('@/media/photos', () => ({ savedPhotos: () => [] }));
 
 /** Fake mínimo de SQLite: registra cada sentencia y responde lo que el repo consulta. */
 function fakeDb() {

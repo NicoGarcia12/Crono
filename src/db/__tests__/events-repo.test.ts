@@ -7,6 +7,8 @@ import type { NewEvent } from '@/types';
 // Jest no inicia el módulo SQLite nativo; el doble permite observar cuándo
 // se escriben las filas dentro de la transacción del repositorio.
 jest.mock('@/db/database', () => ({ getDb: jest.fn() }));
+// Estas pruebas no usan fotos: sin copias propias, la limpieza posterior no consulta SQLite.
+jest.mock('@/media/photos', () => ({ savedPhotos: () => [] }));
 
 const miCumple: NewEvent = {
   title: 'Mi cumpleaños',

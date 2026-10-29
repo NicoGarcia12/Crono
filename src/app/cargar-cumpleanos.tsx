@@ -110,10 +110,11 @@ export default function CargarCumpleanosScreen() {
     case 'unavailable':
       return (
         <Centered icon="phone-portrait">
-          <Text style={styles.title}>Disponible solo en el celular</Text>
+          <Text style={styles.title}>La importación requiere la app instalada</Text>
           <Text style={styles.message}>
-            La agenda de contactos no existe en el navegador. Abrí Crono en tu teléfono para usar
-            esta función.
+            Crono web no puede leer los contactos del dispositivo, aunque abras el navegador en
+            tu teléfono. Para importarlos, usá la app instalada en Android o iOS. En web podés
+            crear cumpleaños manualmente desde Agenda → +.
           </Text>
         </Centered>
       );

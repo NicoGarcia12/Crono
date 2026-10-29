@@ -117,8 +117,7 @@ export default function PerfilScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <PhotoPicker
         uri={photoUri}
-        onChange={(uri) => void dispatch(savePhotoUri(uri))}
-        filePrefix="perfil"
+        onChange={async (uri) => { await dispatch(savePhotoUri(uri)).unwrap(); }}
         accessibilityLabel="Elegir foto de perfil"
         size={88}
       />
@@ -163,6 +162,7 @@ export default function PerfilScreen() {
 
       <Pressable
         style={styles.actionCard}
+        accessibilityRole="button"
         accessibilityLabel="Cargar cumpleaños de contactos"
         onPress={() => router.push('/cargar-cumpleanos')}
       >
@@ -172,7 +172,9 @@ export default function PerfilScreen() {
         <View style={styles.actionBody}>
           <Text style={styles.actionTitle}>Cargar cumpleaños de contactos</Text>
           <Text style={styles.actionSubtitle}>
-            Elegí a quiénes de tu agenda querés cargarles el cumpleaños
+            {Platform.OS === 'web'
+              ? 'La importación requiere la app instalada en Android o iOS. En web podés crear cumpleaños desde Agenda → +'
+              : 'Elegí a quiénes de tu agenda querés cargarles el cumpleaños'}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
@@ -190,7 +192,9 @@ export default function PerfilScreen() {
         icon="cloud-upload"
         color={colors.primary}
         title="Exportar copia de seguridad"
-        subtitle="Guardá un archivo con tus eventos, notas, tipos y saludos (Drive, WhatsApp, donde quieras). No incluye fotos ni ideas de regalo"
+        subtitle={Platform.OS === 'web'
+          ? 'Descargá un archivo con tus eventos, notas, tipos y saludos. No incluye fotos ni ideas de regalo'
+          : 'Guardá un archivo con tus eventos, notas, tipos y saludos (Drive, WhatsApp, donde quieras). No incluye fotos ni ideas de regalo'}
         onPress={handleExport}
       />
 
@@ -198,7 +202,9 @@ export default function PerfilScreen() {
         icon="cloud-download"
         color={colors.success}
         title="Restaurar desde un archivo"
-        subtitle="Traé tu agenda desde una copia. No se duplica lo que ya tenés"
+        subtitle={Platform.OS === 'web'
+          ? 'Elegí una copia guardada en tu equipo. No se duplica lo que ya tenés'
+          : 'Traé tu agenda desde una copia. No se duplica lo que ya tenés'}
         onPress={handleRestore}
       />
 
@@ -234,13 +240,31 @@ export default function PerfilScreen() {
             ? 'La versión web no tiene bloqueo local: cualquier persona con acceso a este navegador puede ver tus datos.'
             : 'La app pide la huella, cara o credencial de tu celular al abrirse y al volver después de más de 2 minutos fuera. Sin credencial del sistema, necesitás configurar una para entrar.'}
         />
-        <InfoRow icon="phone-portrait" text="Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor." />
-        <InfoRow icon="notifications" text="Los recordatorios son notificaciones locales: funcionan sin internet, incluso con la app cerrada." />
+        {Platform.OS === 'ios' ? (
+          <InfoRow
+            icon="information-circle"
+            text="Para probar Face ID, usá un development build o la app instalada de Crono: Expo Go en iOS no lo admite."
+          />
+        ) : null}
+        <InfoRow
+          icon="phone-portrait"
+          text={Platform.OS === 'web'
+            ? 'Tus datos se guardan en este navegador. No se suben a un servidor ni se sincronizan con tu celular. Exportá una copia antes de borrar los datos del sitio.'
+            : 'Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor.'}
+        />
+        {remindersAvailable ? (
+          <InfoRow
+            icon="notifications"
+            text="Si autorizás las notificaciones, los recordatorios locales pueden avisarte sin internet y con la app cerrada."
+          />
+        ) : null}
         {!remindersAvailable ? (
           <InfoRow
             icon="warning"
             danger
-            text="Estás en Expo Go: los recordatorios no se disparan acá. Instalá la app (APK) para recibirlos completos."
+            text={Platform.OS === 'web'
+              ? 'Crono web no envía recordatorios. Podés guardar anticipaciones como referencia. Para recibir avisos, usá la app instalada en Android o iOS y creá o editá allí tus eventos.'
+              : 'Esta versión de Crono no programa recordatorios en Expo Go para Android. Usá un development build o la app instalada, permití las notificaciones y creá o editá allí tus eventos.'}
           />
         ) : null}
       </View>
@@ -262,7 +286,7 @@ function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <Pressable style={styles.actionCard} accessibilityLabel={title} onPress={onPress}>
+    <Pressable style={styles.actionCard} accessibilityRole="button" accessibilityLabel={title} onPress={onPress}>
       <View style={[styles.actionIcon, { backgroundColor: `${color}22` }]}>
         <Ionicons name={icon} size={22} color={color} />
       </View>

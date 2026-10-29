@@ -154,7 +154,7 @@ export function EventForm({ initial, submitLabel, onSubmit }: EventFormProps) {
       <PhotoPicker
         uri={photoUri}
         onChange={setPhotoUri}
-        filePrefix="evento"
+        // Borrador: la URI del selector es temporal; se copia recién al guardar el evento.
         accessibilityLabel="Elegir foto del evento"
       />
 

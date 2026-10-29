@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { REMINDER_PRESETS, REMINDER_UNIT_LABELS } from '@/constants/event-types';
 import { remindersAvailable } from '@/notifications/notifications';
@@ -47,13 +47,15 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
 
   return (
     <View style={styles.container}>
-      {/* En Expo Go (Android) y en web no hay scheduler nativo: se pueden
-          armar los avisos igual, pero no van a disparar hasta instalar el APK. */}
+      {/* Guardar anticipaciones no significa programarlas: web no tiene scheduler
+          nativo y Crono también lo desactiva en Expo Go Android. No hay sincronización. */}
       {!remindersAvailable ? (
         <View style={styles.unavailableNotice}>
           <Ionicons name="warning" size={16} color={colors.danger} />
           <Text style={styles.unavailableText}>
-            En Expo Go los recordatorios no se disparan. Instalá la app para recibirlos.
+            {Platform.OS === 'web'
+              ? 'Crono web no envía recordatorios. Estas anticipaciones se guardan como referencia. Para recibir avisos, usá la app instalada en Android o iOS y creá o editá allí el evento.'
+              : 'Esta versión de Crono no programa recordatorios en Expo Go para Android. Usá un development build o la app instalada, permití las notificaciones y creá o editá allí el evento.'}
           </Text>
         </View>
       ) : null}

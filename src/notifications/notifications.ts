@@ -16,12 +16,10 @@ import { reminderDate } from '@/utils/reminders';
  *  - Locales: la propia app le pide al sistema operativo "avisame a tal hora".
  *    Funcionan sin conexión y aunque la app esté cerrada. Son las que usamos.
  *
- * ⚠️ Limitación de Expo Go en Android (SDK 53+): el módulo expo-notifications
- * lanza un error apenas se importa, porque intenta registrar push tokens
- * (funcionalidad quitada de Expo Go). Por eso acá NO lo importamos arriba del
- * archivo: lo cargamos de forma diferida con require() y lo salteamos por
- * completo cuando corremos dentro de Expo Go en Android. En la app instalada
- * de verdad (development build / APK) los recordatorios funcionan normal.
+ * Crono desactiva este módulo en Expo Go Android y lo carga de forma diferida
+ * en los demás entornos nativos. Es una restricción de esta app, no del SDK:
+ * SDK 57 admite notificaciones locales en Expo Go; sólo push remoto requiere
+ * un development build. La ayuda debe describir el guard que realmente usamos.
  */
 
 type NotificationsModule = typeof import('expo-notifications');
@@ -31,8 +29,8 @@ const isExpoGoAndroid =
   Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 /**
- * Entornos sin notificaciones programadas: Expo Go Android (push removido en
- * SDK 53+) y web (el navegador no tiene el scheduler nativo de expo-notifications).
+ * Entornos deshabilitados por Crono: Expo Go Android y web.
+ * El navegador no tiene el scheduler nativo de expo-notifications.
  */
 const notificationsUnavailable = isExpoGoAndroid || Platform.OS === 'web';
 

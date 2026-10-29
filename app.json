@@ -24,7 +24,8 @@
         "android.permission.USE_FINGERPRINT"
       ],
       "blockedPermissions": [
-        "android.permission.WRITE_CONTACTS"
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -65,7 +66,8 @@
         "expo-image-picker",
         {
           "photosPermission": "Crono accede a tus fotos solo para elegir la que quieras usar.",
-          "cameraPermission": "Crono usa la cámara solo si elegís sacar una foto nueva."
+          "cameraPermission": "Crono usa la cámara solo si elegís sacar una foto nueva.",
+          "microphonePermission": false
         }
       ],
       "expo-font",

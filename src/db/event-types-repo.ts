@@ -4,6 +4,7 @@ import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
 import { applyRemovals, writeFields } from '@/db/custom-fields-repo';
 import { getDb } from '@/db/database';
 import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
+import { withPhotoTransaction } from '@/db/photos-repo';
 import { parseCapabilities } from '@/db/json-columns';
 import type { BuiltinEventType, EventTypeMeta, NewEventType, RemovalPlan } from '@/types';
 
@@ -157,10 +158,11 @@ export async function deleteEventTypeMovingEvents(
 /**
  * Borra un tipo junto con todos sus eventos (recordatorios, etiquetas, ideas
  * de regalo y valores caen por ON DELETE CASCADE). Los avisos del sistema se
- * cancelan antes, en el thunk, porque no tienen rollback.
+ * cancelan antes, en el thunk, porque no tienen rollback. Las fotos propias que
+ * queden sin referencia se borran tras el commit.
  */
 export async function deleteEventTypeWithEvents(id: number, key: string): Promise<void> {
-  await withEventTransaction(getDb(), async (db) => {
+  await withPhotoTransaction(async (db) => {
     await db.runAsync('DELETE FROM events WHERE type = ?', key);
     await deleteTypeRow(db, id);
   }, 'primary');

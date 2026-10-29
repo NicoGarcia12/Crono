@@ -10,6 +10,7 @@ import { DialogHost } from '@/components/dialog-host';
 import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
+import { cleanupPhotosWithNotice } from '@/db/photos-repo';
 import { requestNotificationPermission } from '@/notifications/notifications';
 import { reconcileReminders } from '@/notifications/reconcile';
 import { store, useAppSelector } from '@/store';
@@ -98,6 +99,9 @@ export default function RootLayout() {
       ]);
       // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
       await requestNotificationPermission();
+      // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.
+      // Nunca rechaza: si falla, avisa y no bloquea el arranque.
+      void cleanupPhotosWithNotice();
       // No esperamos la respuesta del diálogo antes de montar DialogHost:
       // hacerlo bloquearía el arranque sin mostrar el botón de recuperación.
       void recoverReminders();

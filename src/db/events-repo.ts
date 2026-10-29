@@ -1,6 +1,7 @@
 import { getDb } from '@/db/database';
 import { writeEventFieldValues } from '@/db/custom-fields-repo';
 import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
+import { persistPhoto, withPhotoTransaction } from '@/db/photos-repo';
 import * as tagsRepo from '@/db/tags-repo';
 import type * as SQLite from 'expo-sqlite';
 import type {
@@ -83,9 +84,24 @@ export async function findAllEvents(db: EventExecutor = getDb()): Promise<EventI
   return attachTags(attachReminders(events, reminders), tagRows);
 }
 
+/**
+ * Una foto elegida se copia dentro de la transacción, antes del INSERT/UPDATE: si la copia
+ * rechaza, SQLite no se toca y el evento conserva su foto anterior. Una foto propia ya
+ * guardada se reutiliza sin copiar.
+ */
+async function writeEventWithPhoto(
+  db: EventExecutor,
+  data: NewEvent,
+  reminders: EventReminder[],
+  existingId: number | null,
+): Promise<EventItem> {
+  const photoUri = await persistPhoto(data.photoUri, 'evento');
+  return writeEvent(db, { ...data, photoUri }, reminders, existingId);
+}
+
 export async function insertEvent(data: NewEvent, reminders: EventReminder[]): Promise<EventItem> {
-  return withEventTransaction(getDb(), (transaction) =>
-    writeEvent(transaction, enforceMineBirthday(data), reminders, null),
+  return withPhotoTransaction((transaction) =>
+    writeEventWithPhoto(transaction, enforceMineBirthday(data), reminders, null),
   );
 }
 
@@ -144,8 +160,8 @@ export async function updateEvent(
   data: NewEvent,
   reminders: EventReminder[],
 ): Promise<EventItem> {
-  return withEventTransaction(getDb(), (transaction) =>
-    writeEvent(transaction, enforceMineBirthday(data), reminders, id),
+  return withPhotoTransaction((transaction) =>
+    writeEventWithPhoto(transaction, enforceMineBirthday(data), reminders, id),
   );
 }
 
@@ -212,7 +228,7 @@ export const EVENT_CHILD_TABLES = [
 export async function deleteEvent(id: number): Promise<void> {
   // En web el DELETE también debe esperar: si se ejecuta durante otro BEGIN,
   // su fulfilled podría publicarse antes de que un rollback lo deshaga.
-  await withEventTransaction(getDb(), async (transaction) => {
+  await withPhotoTransaction(async (transaction) => {
     // Hijos primero y todo en la misma transacción: o se va el evento completo o nada.
     for (const table of EVENT_CHILD_TABLES) {
       await transaction.runAsync(`DELETE FROM ${table} WHERE event_id = ?`, id);

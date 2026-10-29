@@ -71,6 +71,7 @@ describe('<EventForm />', () => {
       tags: [],
       photoUri: null,
       yearUnknown: 0,
+      fieldValues: {},
     });
   });
 
@@ -136,7 +137,7 @@ describe('<EventForm />', () => {
     expect(screen.queryByText('Cita médica')).toBeNull();
 
     await fireEvent.press(screen.getByText('Guardar'));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'evento' }), {});
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ type: 'evento', fieldValues: {} }));
   });
 
   it('mi cumpleaños conserva su propio tipo aunque se toque otro', async () => {
@@ -249,7 +250,7 @@ describe('<EventForm />', () => {
       await fireEvent.press(screen.getByLabelText('Qué llevar: Pelota'));
       await fireEvent.press(screen.getByText('Guardar'));
 
-      expect(onSubmit.mock.calls[0]?.[1]).toEqual({ 1: '["Agua","Pelota"]' });
+      expect(onSubmit.mock.calls[0]?.[0].fieldValues).toEqual({ 1: '["Agua","Pelota"]' });
     });
 
     it('un campo obligatorio de la base no deja guardar vacío', async () => {
@@ -297,7 +298,50 @@ describe('<EventForm />', () => {
 
       expect(screen.getByDisplayValue('4')).toBeTruthy();
       await fireEvent.press(screen.getByText('Guardar'));
-      expect(onSubmit.mock.calls[0]?.[1]).toEqual({ 3: '4' });
+      expect(onSubmit.mock.calls[0]?.[0].fieldValues).toEqual({ 3: '4' });
+    });
+
+    it('mantiene los campos y permite reintentar el mismo guardado rechazado', async () => {
+      const final: EventItem = { ...miCumple, id: 30, title: 'Final', type: 'torneo', isMine: 0, yearly: 0 };
+      const onSubmit = jest.fn().mockRejectedValueOnce(new Error('SQLite sin espacio')).mockResolvedValueOnce(undefined);
+      await renderWithStore(<EventForm initial={final} submitLabel="Guardar" onSubmit={onSubmit} />, {
+        fields, types: [torneo], fieldValues: { 30: { 1: '["Agua"]', 3: '0' } },
+      });
+
+      await fireEvent.press(screen.getByText('Guardar'));
+      expect(screen.getByText('No se pudo guardar: SQLite sin espacio')).toBeTruthy();
+      expect(screen.getByDisplayValue('0')).toBeTruthy();
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit).toHaveBeenCalledTimes(2);
+      expect(onSubmit.mock.calls[1]).toEqual(onSubmit.mock.calls[0]);
+      expect(onSubmit.mock.calls[1][0].fieldValues).toEqual({ 1: '["Agua"]', 3: '0' });
+      expect(screen.queryByText('No se pudo guardar: SQLite sin espacio')).toBeNull();
+    });
+
+    it('conserva capacidades válidas y campos de base y tipo en un tipo propio', async () => {
+      const combinado: EventTypeMeta = {
+        ...torneo, baseKey: 'cumpleanos', extraCapabilities: [],
+      };
+      const propios: CustomField[] = [
+        ...fields.filter((field) => field.owner === 'type'),
+        { id: 4, owner: 'base', ownerId: 2, label: 'Dato base', kind: 'texto', options: [], position: 0, required: true },
+      ];
+      const initial: EventItem = {
+        ...miCumple, id: 30, title: 'Combinado', type: 'torneo', isMine: 0,
+        phone: '+5491112345678', photoUri: 'file:///foto.jpg', yearUnknown: 1,
+      };
+      const onSubmit = jest.fn().mockResolvedValue(undefined);
+      await renderWithStore(<EventForm initial={initial} submitLabel="Guardar" onSubmit={onSubmit} />, {
+        types: [combinado], fields: propios, fieldValues: { 30: { 1: '["Agua"]', 3: '0', 4: 'Base válida' } },
+      });
+
+      await fireEvent.press(screen.getByText('Guardar'));
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+        type: 'torneo', yearly: 1, yearUnknown: 1, phone: initial.phone, photoUri: initial.photoUri,
+        fieldValues: { 1: '["Agua"]', 3: '0', 4: 'Base válida' },
+      }));
     });
   });
 });

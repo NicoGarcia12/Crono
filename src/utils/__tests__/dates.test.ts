@@ -1,5 +1,6 @@
 import {
   ageThisYear,
+  annualOccurrence,
   capitalize,
   countdownLabel,
   dateToIso,
@@ -50,6 +51,23 @@ describe('dateToIso / dateToTime', () => {
   });
 });
 
+describe('annualOccurrence', () => {
+  it.each<[number, string]>([
+    [2027, '2027-02-28'],
+    [2028, '2028-02-29'],
+    [2100, '2100-02-28'],
+    [2400, '2400-02-29'],
+  ])('proyecta el 29/2 en %i sin desbordar a marzo', (year, expected) => {
+    const original = toLocalDate('2000-02-29', '18:45');
+    const occurrence = annualOccurrence(original, year);
+
+    expect(dateToIso(occurrence)).toBe(expected);
+    expect(dateToTime(occurrence)).toBe('18:45');
+    expect(dateToIso(original)).toBe('2000-02-29');
+    expect(dateToTime(original)).toBe('18:45');
+  });
+});
+
 describe('nextOccurrence', () => {
   const from = new Date(2026, 6, 11, 12, 0); // 11 de julio de 2026, mediodía
 
@@ -84,6 +102,44 @@ describe('nextOccurrence', () => {
   it('evento anual de HOY con hora que ya pasó: rota al año siguiente', () => {
     const next = nextOccurrence({ date: '1990-07-11', time: '09:00', yearly: 1 }, from);
     expect(dateToIso(next)).toBe('2027-07-11');
+  });
+
+  it.each([
+    ['2027-02-27', '2027-02-28'],
+    ['2027-02-28', '2027-02-28'],
+    ['2027-03-01', '2028-02-29'],
+    ['2027-12-31', '2028-02-29'],
+    ['2028-01-01', '2028-02-29'],
+    ['2028-02-28', '2028-02-29'],
+    ['2028-02-29', '2028-02-29'],
+    ['2028-03-01', '2029-02-28'],
+    ['2029-02-28', '2029-02-28'],
+    ['2029-03-01', '2030-02-28'],
+  ])('29/2 sin hora desde %s: próxima ocurrencia %s', (today, expected) => {
+    const event = Object.freeze({ date: '2000-02-29', time: null, yearly: 1 });
+
+    const next = nextOccurrence(event, toLocalDate(today, '23:59'));
+
+    expect(dateToIso(next)).toBe(expected);
+    expect(event.date).toBe('2000-02-29');
+  });
+
+  it.each([
+    ['2027-02-28', '09:59', '2027-02-28'],
+    ['2027-02-28', '10:00', '2027-02-28'],
+    ['2027-02-28', '10:01', '2028-02-29'],
+    ['2028-02-28', '10:01', '2028-02-29'],
+    ['2028-02-29', '09:59', '2028-02-29'],
+    ['2028-02-29', '10:00', '2028-02-29'],
+    ['2028-02-29', '10:01', '2029-02-28'],
+  ])('29/2 a las 10:00 desde %s %s: próxima ocurrencia %s', (today, time, expected) => {
+    const next = nextOccurrence(
+      { date: '2000-02-29', time: '10:00', yearly: 1 },
+      toLocalDate(today, time),
+    );
+
+    expect(dateToIso(next)).toBe(expected);
+    expect(dateToTime(next)).toBe('10:00');
   });
 });
 

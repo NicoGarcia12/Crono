@@ -8,8 +8,9 @@ describe('initDatabase', () => {
   it('reanuda v3→v4 desde el fixture que ya tiene contact_id y completa phone antes de finalizar las migraciones', async () => {
     const columns = new Set(['contact_id']);
     let userVersion = 3;
-    const database: Pick<SQLite.SQLiteDatabase, 'execAsync' | 'getFirstAsync' | 'withTransactionAsync'> = {
+    const database: Pick<SQLite.SQLiteDatabase, 'execAsync' | 'getFirstAsync' | 'getAllAsync' | 'withTransactionAsync'> = {
       getFirstAsync: jest.fn(async () => ({ user_version: userVersion })),
+      getAllAsync: jest.fn().mockImplementation(async () => [...columns].map((name) => ({ name }))),
       execAsync: jest.fn(async (sql: string) => {
         if (sql.includes('ADD COLUMN contact_id') && columns.has('contact_id')) {
           throw new Error('duplicate column name: contact_id');
@@ -19,7 +20,7 @@ describe('initDatabase', () => {
         const version = /PRAGMA user_version = (\d+)/.exec(sql);
         if (version) userVersion = Number(version[1]);
       }),
-      // v12 corre en transacción; el fixture solo ejecuta el callback.
+      // La migración inspecciona el esquema antes de agregar columnas.
       withTransactionAsync: jest.fn(async (task: () => Promise<void>) => task()),
     };
     jest

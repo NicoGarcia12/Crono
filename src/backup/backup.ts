@@ -66,7 +66,7 @@ export interface BackupTypeConfig {
  * Un evento del backup. Los valores de sus campos van por clave
  * 'base:Obra social' / 'type:Qué llevar', porque los ids son de ESTE celular.
  */
-export type BackupEvent = NewEvent & { fieldValues?: Record<string, string> };
+export type BackupEvent = Omit<NewEvent, 'fieldValues'> & { fieldValues?: Record<string, string> };
 
 export interface BackupFile {
   app: 'crono';

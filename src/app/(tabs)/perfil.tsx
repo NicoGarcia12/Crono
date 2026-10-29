@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { describeRestore } from '@/backup/backup';
 import { notify } from '@/components/confirm';
@@ -228,7 +228,12 @@ export default function PerfilScreen() {
       </View>
 
       <View style={styles.infoCard}>
-        <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
+        <InfoRow
+          icon="lock-closed"
+          text={Platform.OS === 'web'
+            ? 'La versión web no tiene bloqueo local: cualquier persona con acceso a este navegador puede ver tus datos.'
+            : 'La app pide la huella, cara o credencial de tu celular al abrirse y al volver después de más de 2 minutos fuera. Sin credencial del sistema, necesitás configurar una para entrar.'}
+        />
         <InfoRow icon="phone-portrait" text="Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor." />
         <InfoRow icon="notifications" text="Los recordatorios son notificaciones locales: funcionan sin internet, incluso con la app cerrada." />
         {!remindersAvailable ? (

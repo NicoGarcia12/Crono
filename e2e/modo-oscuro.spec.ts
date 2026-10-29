@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
  */
 test('cambia a modo oscuro y lo recuerda al recargar', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();
   await expect(page.getByText('Todavía no hay nada agendado')).toBeVisible();
@@ -34,6 +35,7 @@ test('cambia a modo oscuro y lo recuerda al recargar', async ({ page }) => {
 
   // Al recargar sigue en oscuro (la preferencia se guardó en la base).
   await page.reload();
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
   await expect(page.getByText('Todavía no hay nada agendado')).toBeVisible();
   expect(await fondoAgenda()).toBe(oscuro);
 });

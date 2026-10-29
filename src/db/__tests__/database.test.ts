@@ -3,7 +3,6 @@ import type * as SQLite from 'expo-sqlite';
 import * as SQLiteModule from 'expo-sqlite';
 
 jest.mock('expo-sqlite', () => ({ openDatabaseAsync: jest.fn() }));
-jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 describe('initDatabase', () => {
   it('reanuda v3→v4 desde el fixture que ya tiene contact_id y completa phone antes de finalizar las migraciones', async () => {

@@ -6,6 +6,7 @@ import { expect, test } from '@playwright/test';
  */
 test('el cumpleaños con teléfono ofrece saludar por WhatsApp', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
 
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();
@@ -34,6 +35,7 @@ test('el cumpleaños con teléfono ofrece saludar por WhatsApp', async ({ page }
 
 test('un evento sin teléfono no muestra el botón', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
 
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();

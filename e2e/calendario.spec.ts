@@ -26,6 +26,7 @@ test('el evento creado aparece en el calendario y se puede navegar', async ({ pa
   const dayLabel = calendarDayLabel(today);
 
   await page.goto('/');
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
 
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();

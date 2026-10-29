@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 /** El buscador filtra la agenda (sin tildes) y el detalle muestra la cuenta regresiva. */
 test('busca eventos y muestra la cuenta regresiva en el detalle', async ({ page }) => {
   await page.goto('/');
+  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
   await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
   await page.getByText('Empezar').click();
 

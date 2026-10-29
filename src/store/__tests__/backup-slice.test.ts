@@ -24,6 +24,7 @@ jest.mock('@/backup/file-io');
 jest.mock('@/db/events-repo');
 jest.mock('@/db/greetings-repo');
 jest.mock('@/db/notes-repo');
+jest.mock('@/db/settings-repo');
 jest.mock('@/notifications/notifications');
 
 const mockPick = jest.mocked(pickTextFile);

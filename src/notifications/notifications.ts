@@ -3,6 +3,7 @@ import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
+import { cancelRemindersAfterCommit } from '@/notifications/cancellation-recovery';
 import type { EventReminder, NewEvent, ReminderInput, ReminderUnit } from '@/types';
 import { nextOccurrence } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
@@ -120,11 +121,29 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Versión del contrato con el que se programan los avisos en el SO. Sube cada
+ * vez que cambia lo que ve el scheduler nativo para un mismo evento, de modo
+ * que `reconcileReminders` pueda reprogramar lo que quedó bajo un contrato viejo.
+ *
+ *  - 1 (implícito: BD sin marca): el trigger YEARLY mandaba `month` 1-12. Expo 57
+ *    exige 0-11 (como `Date.getMonth()`), así que octubre salía como noviembre,
+ *    diciembre lanzaba RangeError y enero 31 lanzaba "día 31 de febrero".
+ *  - 2: `month` 0-11 (docs: https://docs.expo.dev/versions/v57.0.0/sdk/notifications/#yearlytriggerinput).
+ */
+export const REMINDER_CONTRACT_VERSION = 2;
+
+/** Lo único que el scheduler necesita de un evento: sirve tanto para un NewEvent como para una fila de BD. */
+export type SchedulableEvent = Pick<
+  NewEvent,
+  'title' | 'type' | 'date' | 'time' | 'description' | 'yearly' | 'reminders'
+>;
+
+/**
  * Programa TODOS los avisos de un evento (uno por cada anticipación elegida)
  * y devuelve la lista con sus ids de notificación, lista para persistir.
  * En entornos sin notificaciones, los ids quedan en null.
  */
-export async function scheduleEventReminders(event: NewEvent): Promise<EventReminder[]> {
+export async function scheduleEventReminders(event: SchedulableEvent): Promise<EventReminder[]> {
   const scheduled: EventReminder[] = [];
   try {
     for (const reminder of event.reminders) {
@@ -132,21 +151,9 @@ export async function scheduleEventReminders(event: NewEvent): Promise<EventRemi
     }
     return scheduled;
   } catch (error) {
-    /**
-     * `scheduleNotificationAsync` cruza el límite JS → sistema operativo: no
-     * participa de una transacción SQLite. Si el segundo aviso falla, por
-     * ejemplo, debemos deshacer manualmente los IDs que el SO ya aceptó.
-     *
-     * `allSettled` hace la compensación "best effort": un error al cancelar
-     * un aviso no tapa el error original que explica por qué no se pudo crear
-     * el conjunto completo.
-     */
-    const Notifications = getNotifications();
-    const cancellationAttempts = scheduled
-      .flatMap(({ notificationId }) => (notificationId ? [notificationId] : []))
-      .map((notificationId) => Notifications?.cancelScheduledNotificationAsync(notificationId));
-
-    await Promise.allSettled(cancellationAttempts);
+    // El SO no participa del rollback SQLite. La compensación también puede
+    // fallar: retenemos esos IDs para limpiar sin tapar el error de programación.
+    await cancelRemindersAfterCommit(cancelReminders, scheduled, 'Programar avisos fallido');
     throw error;
   }
 }
@@ -156,7 +163,7 @@ export async function scheduleEventReminders(event: NewEvent): Promise<EventRemi
  * cancelarla después) o null si no corresponde o el entorno no soporta
  * notificaciones (Expo Go en Android, web).
  */
-async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<string | null> {
+async function scheduleOne(event: SchedulableEvent, reminder: ReminderInput): Promise<string | null> {
   const Notifications = getNotifications();
   if (!Notifications) return null;
 
@@ -177,11 +184,13 @@ async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<st
 
   if (event.yearly) {
     // Trigger YEARLY: el sistema repite el aviso cada año en ese día/mes/hora.
+    // OJO: Expo 57 usa los rangos de `Date` (enero = 0), igual que getMonth().
+    // Sumarle 1 (como en el contrato 1) corría octubre a noviembre y rompía diciembre.
     return Notifications.scheduleNotificationAsync({
       content,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.YEARLY,
-        month: reminderAt.getMonth() + 1, // expo-notifications usa meses 1-12
+        month: reminderAt.getMonth(),
         day: reminderAt.getDate(),
         hour: reminderAt.getHours(),
         minute: reminderAt.getMinutes(),

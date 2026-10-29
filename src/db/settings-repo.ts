@@ -1,4 +1,5 @@
 import { getDb } from '@/db/database';
+import { withEventTransaction } from '@/db/event-transaction';
 
 /**
  * Preferencias simples en formato clave-valor.
@@ -16,10 +17,10 @@ export async function getSetting(key: string): Promise<string | null> {
 
 export async function setSetting(key: string, value: string): Promise<void> {
   // UPSERT: inserta o actualiza si la clave ya existe.
-  await getDb().runAsync(
+  await withEventTransaction(getDb(), (db) => db.runAsync(
     `INSERT INTO settings (key, value) VALUES (?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     key,
     value,
-  );
+  ), 'primary');
 }

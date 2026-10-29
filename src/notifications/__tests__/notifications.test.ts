@@ -82,12 +82,34 @@ describe('scheduleEventReminders', () => {
     await scheduleEventReminders(original);
 
     expect(mockScheduleNotificationAsync).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      trigger: expect.objectContaining({ type: 'yearly', day, hour, minute: 0 }),
+      trigger: expect.objectContaining({ type: 'yearly', month: 1, day, hour, minute: 0 }),
     }));
     expect(mockScheduleNotificationAsync).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      trigger: expect.objectContaining({ type: 'yearly', day: previousDay, hour, minute: 0 }),
+      trigger: expect.objectContaining({ type: 'yearly', month: 1, day: previousDay, hour, minute: 0 }),
     }));
     expect(original.date).toBe('2000-02-29');
+  });
+
+  /**
+   * Contrato de Expo 57 (YearlyTriggerInput): `month` usa los rangos de Date,
+   * enero = 0. Se compara contra getMonth() de la fecha esperada del aviso.
+   */
+  it.each([
+    { date: '2000-01-31', reminders: [{ amount: 0, unit: 'minutos' as const }], month: 0, day: 31 },
+    { date: '2000-12-15', reminders: [{ amount: 0, unit: 'minutos' as const }], month: 11, day: 15 },
+    { date: '2000-10-15', reminders: [{ amount: 0, unit: 'minutos' as const }], month: 9, day: 15 },
+    { date: '2000-01-05', reminders: [{ amount: 1, unit: 'semanas' as const }], month: 11, day: 29 },
+    { date: '2000-03-31', reminders: [{ amount: 1, unit: 'meses' as const }], month: 1, day: 28 },
+    { date: '2000-12-31', reminders: [{ amount: 1, unit: 'meses' as const }], month: 10, day: 30 },
+  ])('programa $date con month 0-11 (mes $month, día $day)', async ({ date, reminders, month, day }) => {
+    jest.setSystemTime(new Date(2027, 0, 1));
+    mockScheduleNotificationAsync.mockResolvedValue('notif-anual');
+
+    await scheduleEventReminders({ ...evento, date, time: '10:00', yearly: 1, reminders });
+
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: expect.objectContaining({ type: 'yearly', month, day, hour: 10, minute: 0 }),
+    }));
   });
 });
 

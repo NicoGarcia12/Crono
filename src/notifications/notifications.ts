@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
 import type { EventReminder, NewEvent, ReminderInput, ReminderUnit } from '@/types';
-import { toLocalDate } from '@/utils/dates';
+import { nextOccurrence } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
 
 /**
@@ -160,7 +160,9 @@ async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<st
   const Notifications = getNotifications();
   if (!Notifications) return null;
 
-  const occurrence = toLocalDate(event.date, event.time ?? '09:00');
+  const occurrence = nextOccurrence(event);
+  // Sin hora sigue siendo un evento de día completo; las 09:00 solo fijan la hora del aviso.
+  if (!event.time) occurrence.setHours(9, 0, 0, 0);
   // Momento del aviso: la fecha del evento menos la anticipación elegida
   // (los meses se restan por calendario, ver utils/reminders).
   const reminderAt = reminderDate(occurrence, reminder);

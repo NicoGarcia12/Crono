@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido, saltarRecorrido } from './primer-uso';
+
 /**
  * Flujo crítico de Crono: primer uso → crear un evento → verlo en la agenda.
  * En web se acepta explícitamente continuar sin bloqueo del sistema antes de
@@ -15,6 +17,7 @@ test.describe('Crear evento (flujo crítico)', () => {
     await expect(nameInput).toBeVisible();
     await nameInput.fill('Nico');
     await page.getByText('Empezar').click();
+    await saltarRecorrido(page);
 
     // 2) Agenda vacía
     await expect(page.getByText('Todavía no hay nada agendado')).toBeVisible();
@@ -38,10 +41,7 @@ test.describe('Crear evento (flujo crítico)', () => {
 
   test('no deja crear un evento sin título', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-
-    await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-    await page.getByText('Empezar').click();
+    await empezarSinRecorrido(page);
     await page.getByLabel('Agregar evento').click();
 
     // Sin título, el botón está deshabilitado: tocarlo no navega ni crea nada.

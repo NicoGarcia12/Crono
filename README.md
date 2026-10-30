@@ -17,6 +17,7 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 - En el detalle de cada evento se ve una **cuenta regresiva** ("faltan 12 días").
 - **Buscador** que filtra eventos y notas por texto.
 - **Etiquetas** propias para clasificar eventos y filtrar la agenda.
+- **Recorrido guiado** la primera vez que entrás: resalta el buscador, los filtros, la lista, el botón **+** y cada pestaña, y termina con los límites de los avisos y de la privacidad. Se puede saltar (en web, también con Escape; el foco de teclado no sale del recorrido mientras está abierto), aparece una sola vez (también al actualizar desde una versión anterior) y se vuelve a ver desde el **?** de Perfil.
 
 ### Calendario
 - Pestaña **Calendario** con vista **mensual** y **semanal**, navegable hacia atrás y adelante.
@@ -48,9 +49,11 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 
 ### Perfil
 - Nombre y **foto de perfil** del usuario (se pide el nombre en el primer uso).
+- Botón **?** para volver a ver el recorrido guiado de la app.
+- **Avisos** (solo donde hay recordatorios): muestra si el permiso de notificaciones está activado, si todavía se puede pedir o si quedó bloqueado en los ajustes del sistema. Tocándola se activan los avisos: explica para qué sirven y pide el permiso, o abre los ajustes del celular si el sistema ya no deja preguntar. Se actualiza al volver a la pantalla o a la app.
 - **Mi cumpleaños**: muestra qué edad cumplís este año y la lista **¿Quién me saludó?**, que junta las personas de tu agenda y las que anotes a mano. Arranca limpia cada año sin borrar los anteriores.
 - **Modo oscuro**: automático (sigue al sistema), claro u oscuro.
-- **Copia de seguridad**: exporta desde SQLite el nombre de perfil, los eventos (con sus avisos, etiquetas y campos), las notas, los tipos propios y las personalizaciones de los tipos de fábrica, los saludos de todos los años y las marcas **¿Ya lo saludé?**. Al restaurar agrega lo que falta sin pisar los datos locales coincidentes. Las fotos y las ideas de regalo no viajan en el backup.
+- **Copia de seguridad**: exporta desde SQLite el nombre de perfil, los eventos (con sus avisos, etiquetas y campos), las notas, los tipos propios y las personalizaciones de los tipos de fábrica, los saludos de todos los años y las marcas **¿Ya lo saludé?**. Al restaurar agrega lo que falta sin pisar los datos locales coincidentes. Las fotos y las ideas de regalo no viajan en el backup. El archivo es legible y no tiene contraseña: antes de exportar, la app avisa que cualquiera que lo tenga puede leerlo y pide confirmación.
 - Acceso al editor de **Tipos de evento**.
 
 ### Notas
@@ -58,8 +61,9 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 
 ### Seguridad y privacidad
 - En Android/iOS, la app se **bloquea** con la credencial del teléfono. Si la dejás en segundo plano más de **2 minutos**, se vuelve a bloquear. En web muestra una advertencia y pide continuar explícitamente, pero no hay bloqueo local.
-- Los datos viven en una base **SQLite local**, del dispositivo o navegador actual; no se mandan a ningún servidor.
-- Los permisos (contactos, fotos, cámara) se piden solo cuando usás la función que los necesita.
+- Los datos viven en una base **SQLite local**, del dispositivo o navegador actual; Crono no los manda a ningún servidor. Lo que exportes o compartas sale del dispositivo, y en Android/iOS la copia de seguridad del sistema puede incluir los datos de la app (en Android, `android.allowBackup` queda en su valor por defecto de Expo, `true`).
+- Donde hay recordatorios (Android/iOS, salvo Expo Go Android), el permiso de notificaciones se pide después de la bienvenida (al tocar **Empezar**), tras un aviso que explica para qué sirven; ya no se pide al abrir la app. Quien actualiza conserva el permiso que haya dado antes, y cualquiera puede activarlos después desde **Perfil → Avisos**. Si lo negás, la app funciona igual sin avisos. Los avisos dependen del permiso y de la configuración del sistema: no conviene usar Crono como único recordatorio para algo importante.
+- Los demás permisos (contactos, fotos, cámara) se piden solo cuando usás la función que los necesita.
 
 ---
 
@@ -184,6 +188,7 @@ src/
 ├── store/                  # Redux Toolkit: un slice por entidad + hooks tipados
 ├── notifications/          # Programar y cancelar recordatorios
 ├── backup/                 # Exportar e importar la copia de seguridad (versión nativa y web)
+├── onboarding/             # Pasos y registro de elementos del recorrido guiado
 ├── contacts/               # Lectura y filtro de contactos para importar cumpleaños
 ├── greetings/              # Lógica de "¿Quién me saludó?"
 ├── media/                  # Fotos de perfil y de eventos

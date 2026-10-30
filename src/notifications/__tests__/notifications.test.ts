@@ -1,14 +1,30 @@
-import { cancelReminders, scheduleEventReminders } from '@/notifications/notifications';
+import { Platform } from 'react-native';
+
+import {
+  cancelReminders,
+  getNotificationPermissionState,
+  requestNotificationPermission,
+  scheduleEventReminders,
+  setupNotificationChannel,
+} from '@/notifications/notifications';
 import type { EventReminder, NewEvent } from '@/types';
+
+type PermissionResponse = { status: 'granted' | 'denied' | 'undetermined'; canAskAgain?: boolean };
 
 const mockScheduleNotificationAsync = jest.fn<Promise<string>, [unknown]>();
 const mockCancelScheduledNotificationAsync = jest.fn<Promise<void>, [string]>();
+const mockSetNotificationChannelAsync = jest.fn<Promise<unknown>, [string, unknown]>();
+const mockGetPermissionsAsync = jest.fn<Promise<PermissionResponse>, []>();
+const mockRequestPermissionsAsync = jest.fn<Promise<PermissionResponse>, []>();
 
 jest.mock('expo-notifications', () => ({
   AndroidImportance: { HIGH: 4 },
   SchedulableTriggerInputTypes: { DATE: 'date', YEARLY: 'yearly' },
   scheduleNotificationAsync: mockScheduleNotificationAsync,
   cancelScheduledNotificationAsync: mockCancelScheduledNotificationAsync,
+  setNotificationChannelAsync: mockSetNotificationChannelAsync,
+  getPermissionsAsync: mockGetPermissionsAsync,
+  requestPermissionsAsync: mockRequestPermissionsAsync,
   setNotificationHandler: jest.fn(),
 }));
 
@@ -128,5 +144,117 @@ describe('cancelReminders', () => {
     // `allSettled` evita que el segundo aviso quede huérfano por el fallo del primero.
     expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('notif-con-error');
     expect(mockCancelScheduledNotificationAsync).toHaveBeenCalledWith('notif-limpiado');
+  });
+});
+
+/**
+ * CRONO44: el canal Android se sigue creando en el arranque (instalaciones
+ * existentes no pierden avisos), pero el permiso ya no se pide ahí sino
+ * después de la bienvenida. Por eso son dos funciones separadas.
+ */
+describe('setupNotificationChannel', () => {
+  const originalOS = Platform.OS;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSetNotificationChannelAsync.mockResolvedValue(null);
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'undetermined' });
+    mockRequestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+  });
+
+  afterEach(() => {
+    Platform.OS = originalOS;
+  });
+
+  it('en Android crea el canal "recordatorios"', async () => {
+    Platform.OS = 'android';
+
+    await setupNotificationChannel();
+
+    expect(mockSetNotificationChannelAsync).toHaveBeenCalledWith(
+      'recordatorios',
+      expect.objectContaining({ name: 'Recordatorios' }),
+    );
+  });
+
+  it('en Android no pide el permiso de notificaciones', async () => {
+    Platform.OS = 'android';
+
+    await setupNotificationChannel();
+
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('en iOS no crea canales ni pide permiso', async () => {
+    Platform.OS = 'ios';
+
+    await setupNotificationChannel();
+
+    expect(mockSetNotificationChannelAsync).not.toHaveBeenCalled();
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('requestNotificationPermission', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('pide el permiso si todavía no fue concedido', async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'undetermined' });
+    mockRequestPermissionsAsync.mockResolvedValue({ status: 'granted' });
+
+    await expect(requestNotificationPermission()).resolves.toBe(true);
+    expect(mockRequestPermissionsAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('no vuelve a pedirlo si ya está concedido', async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'granted' });
+
+    await expect(requestNotificationPermission()).resolves.toBe(true);
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * CRONO44 ronda 2: la fila "Avisos" de Perfil necesita saber si el permiso
+ * está concedido, si todavía se puede pedir o si el SO lo bloqueó (solo
+ * queda ir a los ajustes del sistema).
+ */
+describe('getNotificationPermissionState', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("con el permiso concedido devuelve 'granted'", async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'granted', canAskAgain: true });
+
+    await expect(getNotificationPermissionState()).resolves.toBe('granted');
+  });
+
+  it("sin responder todavía devuelve 'askable'", async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'undetermined', canAskAgain: true });
+
+    await expect(getNotificationPermissionState()).resolves.toBe('askable');
+  });
+
+  it("denegado pero con canAskAgain devuelve 'askable'", async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'denied', canAskAgain: true });
+
+    await expect(getNotificationPermissionState()).resolves.toBe('askable');
+  });
+
+  it("denegado sin canAskAgain devuelve 'blocked'", async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'denied', canAskAgain: false });
+
+    await expect(getNotificationPermissionState()).resolves.toBe('blocked');
+  });
+
+  it('consultar el estado nunca dispara el pedido de permiso', async () => {
+    mockGetPermissionsAsync.mockResolvedValue({ status: 'undetermined', canAskAgain: true });
+
+    await getNotificationPermissionState();
+
+    expect(mockRequestPermissionsAsync).not.toHaveBeenCalled();
   });
 });

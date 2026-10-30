@@ -1,14 +1,28 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput } from 'react-native';
 
+import { showError } from '@/components/confirm';
+import { remindersAvailable } from '@/notifications/notifications';
+import { explainAndRequestNotificationPermission } from '@/notifications/permission-prompt';
 import { useAppDispatch } from '@/store';
 import { saveDisplayName } from '@/store/settings-slice';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
+/** Dónde quedan los datos según la plataforma: en web no hay "celular". */
+const WELCOME_SUBTITLE =
+  Platform.OS === 'web'
+    ? 'Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado en este navegador.'
+    : 'Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado en tu celular.';
+
 /**
  * Bienvenida del primer uso: pide el nombre del usuario y lo guarda en SQLite.
  * Solo se muestra una vez (mientras displayName sea null).
+ *
+ * Si el entorno programa recordatorios, antes de guardar el nombre explica para
+ * qué sirven los avisos y pide el permiso del sistema (CRONO44). El nombre se
+ * guarda al final porque guardarlo desmonta esta pantalla y muestra la Agenda
+ * con el recorrido: así el recorrido no arranca con un diálogo encima.
  */
 export function NameSetup() {
   const colors = useThemeColors();
@@ -16,8 +30,29 @@ export function NameSetup() {
 
   const dispatch = useAppDispatch();
   const [name, setName] = useState('');
+  // Evita repetir el diálogo/permiso si se toca "Empezar" dos veces seguidas.
+  const [starting, setStarting] = useState(false);
+  // Si guardar el nombre falla, el reintento solo vuelve a guardar: el permiso ya se explicó y se pidió.
+  const permissionAsked = useRef(false);
 
-  const canSave = name.trim().length > 0;
+  const canSave = name.trim().length > 0 && !starting;
+
+  const start = async () => {
+    if (!canSave) return;
+    setStarting(true);
+    if (remindersAvailable && !permissionAsked.current) {
+      permissionAsked.current = true;
+      await explainAndRequestNotificationPermission();
+    }
+    try {
+      // unwrap(): sin él, un thunk rechazado no lanza y el fallo pasaba en silencio.
+      await dispatch(saveDisplayName(name)).unwrap();
+    } catch (error) {
+      showError('No se pudo guardar tu nombre', error);
+      // La pantalla sigue montada: se habilita "Empezar" para reintentar.
+      setStarting(false);
+    }
+  };
 
   return (
     // KeyboardAvoidingView corre el contenido hacia arriba cuando aparece el teclado (necesario en iOS).
@@ -36,10 +71,7 @@ export function NameSetup() {
         accessibilityLabel="Crono"
       />
       <Text style={styles.title}>¡Bienvenido a Crono!</Text>
-      <Text style={styles.subtitle}>
-        Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado
-        solo en tu celular.
-      </Text>
+      <Text style={styles.subtitle}>{WELCOME_SUBTITLE}</Text>
       <TextInput
         style={styles.input}
         placeholder="¿Cómo te llamás?"
@@ -48,12 +80,14 @@ export function NameSetup() {
         onChangeText={setName}
         autoFocus
         returnKeyType="done"
-        onSubmitEditing={() => canSave && dispatch(saveDisplayName(name))}
+        onSubmitEditing={() => void start()}
       />
       <Pressable
         style={[styles.button, !canSave && styles.buttonDisabled]}
         disabled={!canSave}
-        onPress={() => dispatch(saveDisplayName(name))}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !canSave }}
+        onPress={() => void start()}
       >
         <Text style={styles.buttonText}>Empezar</Text>
       </Pressable>

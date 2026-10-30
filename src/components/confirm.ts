@@ -83,9 +83,13 @@ export function confirmAction(title: string, message: string, confirmLabel: stri
   ]);
 }
 
-/** Aviso informativo con un solo botón. */
-export function notify(title: string, message: string): void {
-  void showDialog(title, message, [{ label: 'Entendido', style: 'default', value: true }]);
+/**
+ * Aviso informativo con un solo botón. La Promise se resuelve al cerrarlo, así
+ * quien necesite seguir recién después (ej. pedir un permiso) puede `await`-earla;
+ * quien no, la ignora con `void`.
+ */
+export async function notify(title: string, message: string): Promise<void> {
+  await showDialog(title, message, [{ label: 'Entendido', style: 'default', value: true }]);
 }
 
 /**
@@ -102,7 +106,7 @@ export function errorMessage(error: unknown): string {
 
 /** Avisa que algo falló, igual en el celular y en web. */
 export function showError(title: string, error: unknown): void {
-  notify(title, errorMessage(error));
+  void notify(title, errorMessage(error));
 }
 
 /** "Afecta a 3 eventos: 3 ideas de regalo y 2 valores de «Obra social»." */

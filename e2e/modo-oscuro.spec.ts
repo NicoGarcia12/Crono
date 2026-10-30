@@ -1,14 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * El tema se elige en Perfil y queda guardado: al recargar la app sigue igual.
  * Comprobamos el color de fondo real de la pantalla, no solo que el chip esté activo.
  */
 test('cambia a modo oscuro y lo recuerda al recargar', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
   await expect(page.getByText('Todavía no hay nada agendado')).toBeVisible();
 
   const fondoAgenda = () =>

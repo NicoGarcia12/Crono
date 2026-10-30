@@ -7,6 +7,8 @@ import { EventCard } from '@/components/event-card';
 import { SearchField } from '@/components/search-field';
 import { FALLBACK_EVENT_TYPE_META } from '@/constants/event-types';
 import { useEventTypesList } from '@/constants/use-event-types';
+import { useTourTarget } from '@/onboarding/tour-context';
+import { TOUR_TARGETS } from '@/onboarding/tour-steps';
 import { useAppSelector } from '@/store';
 import type { EventType } from '@/types';
 import { isUpcoming, nextOccurrence } from '@/utils/dates';
@@ -29,6 +31,13 @@ export default function AgendaScreen() {
   const [filter, setFilter] = useState<EventType | 'todos'>('todos');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  // Elementos que el recorrido de primer uso resalta (CRONO44). Fuera del recorrido no hacen nada.
+  const searchTarget = useTourTarget(TOUR_TARGETS.search);
+  const typeFiltersTarget = useTourTarget(TOUR_TARGETS.typeFilters);
+  const tagFiltersTarget = useTourTarget(TOUR_TARGETS.tagFilters);
+  const listTarget = useTourTarget(TOUR_TARGETS.list);
+  const addTarget = useTourTarget(TOUR_TARGETS.add);
 
   const typeLabel = useMemo(() => {
     const byKey = new Map(eventTypes.map((t) => [t.key, t.label]));
@@ -57,15 +66,18 @@ export default function AgendaScreen() {
 
   return (
     <View style={styles.container}>
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        label="Buscar eventos"
-        placeholder="Buscar por nombre, tipo o descripción…"
-      />
+      {/* View propio alrededor del buscador: es lo que mide el recorrido. */}
+      <View {...searchTarget}>
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          label="Buscar eventos"
+          placeholder="Buscar por nombre, tipo o descripción…"
+        />
+      </View>
 
       {/* Filtros por tipo */}
-      <View style={styles.filterRow}>
+      <View {...typeFiltersTarget} style={styles.filterRow}>
         <FilterChip label="Todos" active={filter === 'todos'} color={colors.contrast} onPress={() => setFilter('todos')} />
         {eventTypes.map((meta) => (
           <FilterChip
@@ -80,7 +92,7 @@ export default function AgendaScreen() {
 
       {/* Filtro por etiqueta, solo si hay alguna creada. */}
       {availableTags.length > 0 ? (
-        <View style={styles.filterRow}>
+        <View {...tagFiltersTarget} style={styles.filterRow}>
           <FilterChip
             label="Todas las etiquetas"
             active={tagFilter === null}
@@ -99,37 +111,41 @@ export default function AgendaScreen() {
         </View>
       ) : null}
 
-      {/* FlatList virtualiza: solo renderiza lo visible (nunca ScrollView + map para listas). */}
-      <FlatList
-        data={sorted}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <Pressable onPress={() => router.push({ pathname: '/evento/[id]', params: { id: String(item.id) } })}>
-            <EventCard event={item} />
-          </Pressable>
-        )}
-        contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color={colors.textSubtle} />
-            <Text style={styles.emptyTitle}>
-              {query
-                ? 'Sin resultados'
-                : filter === 'todos'
-                  ? 'Todavía no hay nada agendado'
-                  : 'Nada agendado de este tipo'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {query
-                ? `No encontramos nada que coincida con “${query}”.`
-                : 'Tocá el botón + para agregar tu primer evento.'}
-            </Text>
-          </View>
-        }
-      />
+      {/* FlatList virtualiza: solo renderiza lo visible (nunca ScrollView + map para listas).
+          El View que la envuelve es el área que resalta el recorrido (lista o estado vacío). */}
+      <View {...listTarget} style={styles.listArea}>
+        <FlatList
+          data={sorted}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) => (
+            <Pressable onPress={() => router.push({ pathname: '/evento/[id]', params: { id: String(item.id) } })}>
+              <EventCard event={item} />
+            </Pressable>
+          )}
+          contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.listContent}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color={colors.textSubtle} />
+              <Text style={styles.emptyTitle}>
+                {query
+                  ? 'Sin resultados'
+                  : filter === 'todos'
+                    ? 'Todavía no hay nada agendado'
+                    : 'Nada agendado de este tipo'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {query
+                  ? `No encontramos nada que coincida con “${query}”.`
+                  : 'Tocá el botón + para agregar tu primer evento.'}
+              </Text>
+            </View>
+          }
+        />
+      </View>
 
       {/* FAB: botón flotante de acción, patrón clásico de mobile. */}
       <Pressable
+        {...addTarget}
         style={styles.fab}
         accessibilityLabel="Agregar evento"
         onPress={() => router.push('/evento/nuevo')}
@@ -164,6 +180,7 @@ function FilterChip({ label, color, active, onPress }: FilterChipProps) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+  listArea: { flex: 1 },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -1,17 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { describeRestore } from '@/backup/backup';
-import { notify } from '@/components/confirm';
+import { confirmAction, notify, showError } from '@/components/confirm';
 import { MyBirthdayCard } from '@/components/my-birthday-card';
 import { PhotoPicker } from '@/components/photo-picker';
-import { remindersAvailable } from '@/notifications/notifications';
+import {
+  getNotificationPermissionState,
+  remindersAvailable,
+  type NotificationPermissionState,
+} from '@/notifications/notifications';
+import { explainAndRequestNotificationPermission } from '@/notifications/permission-prompt';
 import { useAppDispatch, useAppSelector } from '@/store';
 import { exportBackup, restoreBackup } from '@/store/backup-slice';
 import { addEvent, editEvent } from '@/store/events-slice';
-import { saveDisplayName, savePhotoUri, saveThemePreference } from '@/store/settings-slice';
+import {
+  restartOnboardingTour,
+  saveDisplayName,
+  savePhotoUri,
+  saveThemePreference,
+} from '@/store/settings-slice';
 import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
 import { MY_BIRTHDAY_TYPE_KEY } from '@/types';
 import { useThemeColors } from '@/theme/use-theme';
@@ -86,11 +96,26 @@ export default function PerfilScreen() {
   };
 
   const handleExport = async () => {
+    // Se pregunta cada vez, antes de abrir Compartir / descargar: el archivo es JSON
+    // legible, sin contraseña, y puede terminar en cualquier lado.
+    const accepted = await confirmAction(
+      'Tu copia se puede leer',
+      'Tu copia va a ser accesible para cualquiera que la tenga: el archivo no tiene contraseña. ' +
+        'Guardala en un lugar privado y no la mandes por chat ni la adjuntes en un reporte.',
+      'Exportar',
+    );
+    if (!accepted) return;
     try {
       await dispatch(exportBackup()).unwrap();
     } catch {
       notify('No se pudo exportar', 'Intentá de nuevo en un momento.');
     }
+  };
+
+  /** "?" → vuelve a abrir el recorrido guiado, que vive en Agenda. */
+  const handleShowTour = () => {
+    void dispatch(restartOnboardingTour());
+    router.navigate('/');
   };
 
   const handleRestore = async () => {
@@ -193,8 +218,8 @@ export default function PerfilScreen() {
         color={colors.primary}
         title="Exportar copia de seguridad"
         subtitle={Platform.OS === 'web'
-          ? 'Descargá un archivo con tus eventos, notas, tipos y saludos. No incluye fotos ni ideas de regalo'
-          : 'Guardá un archivo con tus eventos, notas, tipos y saludos (Drive, WhatsApp, donde quieras). No incluye fotos ni ideas de regalo'}
+          ? 'Descargá un archivo con tus eventos, notas, tipos y saludos. Cualquiera que lo tenga puede leerlo: guardalo en un lugar privado y no lo mandes por chat. No incluye fotos ni ideas de regalo'
+          : 'Guardá un archivo con tus eventos, notas, tipos y saludos. Cualquiera que lo tenga puede leerlo: guardalo en un lugar privado y no lo mandes por chat. No incluye fotos ni ideas de regalo'}
         onPress={handleExport}
       />
 
@@ -207,6 +232,9 @@ export default function PerfilScreen() {
           : 'Traé tu agenda desde una copia. No se duplica lo que ya tenés'}
         onPress={handleRestore}
       />
+
+      {/* Solo donde Crono programa recordatorios (no en web ni en Expo Go Android). */}
+      {remindersAvailable ? <NotificationsRow /> : null}
 
       {/* Tema: automático (sigue al celular), claro u oscuro. */}
       <View style={styles.themeCard}>
@@ -250,12 +278,12 @@ export default function PerfilScreen() {
           icon="phone-portrait"
           text={Platform.OS === 'web'
             ? 'Tus datos se guardan en este navegador. No se suben a un servidor ni se sincronizan con tu celular. Exportá una copia antes de borrar los datos del sitio.'
-            : 'Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor.'}
+            : 'Tus datos se guardan en este celular (SQLite local) y Crono no los sube a ningún servidor. Lo que exportes o compartas sale del celular, y la copia de seguridad del sistema puede incluir los datos de la app.'}
         />
         {remindersAvailable ? (
           <InfoRow
             icon="notifications"
-            text="Si autorizás las notificaciones, los recordatorios locales pueden avisarte sin internet y con la app cerrada."
+            text="Si autorizás las notificaciones, los recordatorios locales pueden avisarte sin internet y con la app cerrada. Igual dependen del permiso y de la configuración del celular: no uses Crono como único aviso para algo importante."
           />
         ) : null}
         {!remindersAvailable ? (
@@ -268,7 +296,109 @@ export default function PerfilScreen() {
           />
         ) : null}
       </View>
+
+      {/* Va al final para quedar por encima del resto; se ubica arriba a la derecha. */}
+      <Pressable
+        style={({ pressed }) => [styles.helpButton, pressed && styles.helpButtonPressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Ver recorrido de la app"
+        hitSlop={8}
+        onPress={handleShowTour}
+      >
+        <Ionicons name="help-circle-outline" size={30} color={colors.primary} />
+      </Pressable>
     </ScrollView>
+  );
+}
+
+/** Qué dice la fila "Avisos" según el permiso (el label es lo que lee el lector de pantalla). */
+const PERMISSION_COPY: Record<NotificationPermissionState, { subtitle: string; label: string }> = {
+  granted: {
+    subtitle: 'Activados. Crono puede avisarte de tus eventos aunque la app esté cerrada.',
+    label: 'Avisos: activados',
+  },
+  askable: {
+    subtitle: 'Sin permiso todavía. Tocá para permitir que Crono te avise de tus eventos.',
+    label: 'Avisos: sin permiso todavía. Tocá para permitirlos',
+  },
+  blocked: {
+    subtitle: 'Bloqueados en los ajustes del celular. Tocá para abrirlos y permitir las notificaciones de Crono.',
+    label: 'Avisos: bloqueados en los ajustes del celular. Tocá para abrirlos',
+  },
+};
+
+/**
+ * Fila "Avisos" (CRONO44): el permiso de notificaciones ya no se pide al abrir
+ * la app, así que quien actualizó o lo negó necesita un lugar para activarlo.
+ *  - Se puede pedir → el mismo diálogo explicativo de la bienvenida y el pedido.
+ *  - Bloqueado (el SO ya no pregunta) → abre los ajustes del sistema.
+ *  - Concedido → solo informa.
+ *
+ * 💡 Aprendizaje: el permiso puede cambiar fuera de Crono (en Ajustes), así que
+ * se vuelve a leer al entrar a la pantalla (`useFocusEffect`) y cuando la app
+ * vuelve a primer plano (`AppState` → 'active').
+ */
+function NotificationsRow() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [permission, setPermission] = useState<NotificationPermissionState | null>(null);
+
+  // useCallback: useFocusEffect exige una función estable (si no, correría en cada render).
+  const refresh = useCallback(() => {
+    getNotificationPermissionState()
+      .then(setPermission)
+      .catch((error: unknown) => console.warn('No se pudo leer el permiso de notificaciones', error));
+  }, []);
+
+  useFocusEffect(refresh);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refresh();
+    });
+    return () => subscription.remove(); // cleanup obligatorio de listeners nativos
+  }, [refresh]);
+
+  const handlePress = async () => {
+    if (permission === 'blocked') {
+      try {
+        await Linking.openSettings();
+      } catch (error) {
+        showError('No se pudieron abrir los ajustes', error);
+      }
+      return;
+    }
+    if (permission === 'askable') {
+      await explainAndRequestNotificationPermission();
+      refresh();
+    }
+  };
+
+  const actionable = permission === 'askable' || permission === 'blocked';
+  const copy = permission
+    ? PERMISSION_COPY[permission]
+    : { subtitle: 'Revisando el permiso…', label: 'Avisos: revisando el permiso' };
+  const iconColor =
+    permission === 'granted' ? colors.success : permission === 'blocked' ? colors.danger : colors.primary;
+
+  return (
+    <Pressable
+      style={styles.actionCard}
+      accessibilityRole="button"
+      accessibilityLabel={copy.label}
+      accessibilityState={{ disabled: !actionable }}
+      disabled={!actionable}
+      onPress={() => void handlePress()}
+    >
+      <View style={[styles.actionIcon, { backgroundColor: `${iconColor}22` }]}>
+        <Ionicons name={permission === 'granted' ? 'notifications' : 'notifications-off'} size={22} color={iconColor} />
+      </View>
+      <View style={styles.actionBody}>
+        <Text style={styles.actionTitle}>Avisos</Text>
+        <Text style={styles.actionSubtitle}>{copy.subtitle}</Text>
+      </View>
+      {actionable ? <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} /> : null}
+    </Pressable>
   );
 }
 
@@ -323,6 +453,17 @@ const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
   content: { alignItems: 'center', padding: 24, gap: 16 },
+  helpButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  helpButtonPressed: { backgroundColor: c.surfaceAlt },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { fontSize: 24, fontWeight: '700', color: c.text },
   editRow: { flexDirection: 'row', gap: 8, alignItems: 'center', alignSelf: 'stretch' },

@@ -7,6 +7,17 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+
+- **Recorrido de primer uso (CRONO44)**: después de la bienvenida, un recorrido guiado sobre Agenda oscurece la pantalla y resalta el buscador, los filtros por tipo y por etiqueta (si hay), la lista o su estado vacío, el botón **+** y cada pestaña (Agenda, Calendario, Notas, Perfil), con indicador "N de M" y botones Saltar, Anterior, Siguiente y Terminar. El último paso explica que los avisos dependen del permiso y del sistema, y que los datos quedan en el dispositivo salvo lo que se exporte, se comparta o copie el backup del sistema. Los pasos cuyo elemento no está en pantalla se omiten, y el recorrido aparece recién cuando están medidos (con un tope de tiempo), así el "N de M" no salta. Saltar o Terminar lo cierran para siempre; aparece una vez también al actualizar, y Perfil suma un botón **?** para volver a verlo. Funciona en web y nativo, con safe areas, tema claro/oscuro y lectores de pantalla. En web, lo de abajo queda `inert`, Tab y Shift+Tab no sacan el foco del recorrido y Escape equivale a Saltar.
+- **Avisos en Perfil (CRONO44)**: nueva fila "Avisos" (solo donde hay recordatorios) que muestra si el permiso está activado, si todavía se puede pedir o si quedó bloqueado en el sistema. Si se puede pedir, muestra la misma explicación que la bienvenida y pide el permiso; si está bloqueado, abre los ajustes del celular. Se actualiza al volver a la pantalla o a la app. Así quienes actualizan o negaron el permiso pueden activar los avisos.
+
+### Changed
+
+- **Permiso de avisos (CRONO44)**: ya no se pide al abrir la app. Al tocar **Empezar** en la bienvenida, un aviso explica para qué sirven los recordatorios y que dependen del permiso del sistema, y recién después se pide el permiso; si se niega o falla, el nombre se guarda igual. Si guardar el nombre falla, se muestra el error y el reintento no repite la explicación ni el pedido. El canal Android "Recordatorios" se sigue creando en el arranque para no afectar los avisos existentes; si el sistema falla al crearlo, se registra y la app arranca igual. En web y Expo Go Android no hay aviso ni pedido.
+- **Aviso al exportar (CRONO44)**: antes de abrir Compartir o descargar, Perfil pide confirmar que la copia va a ser accesible para cualquiera que la tenga y sugiere guardarla en un lugar privado. La tarjeta deja de sugerir Drive o WhatsApp y aclara que el archivo es legible, que no conviene mandarlo por chat y que no incluye fotos ni ideas de regalo.
+- **Textos de privacidad (CRONO44)**: Perfil aclara que lo exportado o compartido sale del celular, que la copia de seguridad del sistema puede incluir los datos de la app y que Crono no debería ser el único aviso para algo importante. La bienvenida en web dice que los datos se guardan en este navegador.
+
 ### Fixed
 
 - **Notas (CRONO42)**: crear y editar esperan la confirmación del guardado y bloquean envíos duplicados. Si falla, el formulario conserva el texto, muestra el error y permite reintentar. Borrar también espera la confirmación real, avisa si falla y no puede ejecutarse al mismo tiempo que guardar.

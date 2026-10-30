@@ -1,14 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * Mi cumpleaños se carga en el Perfil, y solo desde ahí se llega a la lista
  * de quién me saludó ese año (es algo mío, no del evento).
  */
 test('carga mi cumpleaños desde el perfil y registra quién me saludó', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
 
   const crearCumple = async (nombre: string, fecha: string) => {
     await page.getByLabel('Agregar evento').click();

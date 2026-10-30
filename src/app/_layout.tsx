@@ -11,7 +11,7 @@ import { LockScreen } from '@/components/lock-screen';
 import { NameSetup } from '@/components/name-setup';
 import { initDatabase } from '@/db/database';
 import { cleanupPhotosWithNotice } from '@/db/photos-repo';
-import { requestNotificationPermission } from '@/notifications/notifications';
+import { setupNotificationChannel } from '@/notifications/notifications';
 import { reconcileReminders } from '@/notifications/reconcile';
 import { store, useAppSelector } from '@/store';
 import { loadEventBases } from '@/store/event-bases-slice';
@@ -32,8 +32,9 @@ import { useTheme } from '@/theme/use-theme';
  * Orden de arranque:
  *  1. Abrir/migrar SQLite y cargar datos a Redux (mientras, se ve el splash).
  *  2. Pedir desbloqueo con la huella/PIN del sistema (LockScreen).
- *  3. Si es el primer uso, pedir el nombre (NameSetup).
- *  4. Mostrar la app (tabs).
+ *  3. Si es el primer uso, pedir el nombre (NameSetup). Ahí, después de la
+ *     bienvenida, se explica y se pide el permiso de avisos.
+ *  4. Mostrar la app (tabs), con el recorrido guiado si todavía no se cerró.
  */
 
 // Mantener el splash nativo visible hasta que la BD esté lista.
@@ -97,8 +98,15 @@ export default function RootLayout() {
         store.dispatch(loadFieldValues()).unwrap(),
         store.dispatch(loadNotes()).unwrap(),
       ]);
-      // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
-      await requestNotificationPermission();
+      // Solo el canal Android (los avisos existentes lo necesitan). El permiso ya no se pide
+      // acá: NameSetup lo pide después de explicar para qué sirve (CRONO44).
+      // Si el SO falla al crear el canal, se registra y la app arranca igual: no es motivo
+      // para dejar a nadie sin acceso a su agenda.
+      try {
+        await setupNotificationChannel();
+      } catch (error) {
+        console.warn('No se pudo crear el canal de notificaciones', error);
+      }
       // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.
       // Nunca rechaza: si falla, avisa y no bloquea el arranque.
       void cleanupPhotosWithNotice();

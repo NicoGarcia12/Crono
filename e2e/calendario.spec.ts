@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 function localIso(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -26,10 +28,7 @@ test('el evento creado aparece en el calendario y se puede navegar', async ({ pa
   const dayLabel = calendarDayLabel(today);
 
   await page.goto('/');
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
 
   // Creamos un evento para hoy, que es el período inicial del calendario.
   await page.getByLabel('Agregar evento').click();

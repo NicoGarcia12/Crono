@@ -1,11 +1,11 @@
-import type * as Toolkit from '@reduxjs/toolkit';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import type * as ReactModule from 'react';
-import { AppState, Linking, type AppStateStatus } from 'react-native';
+import type * as Toolkit from "@reduxjs/toolkit";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
+import type * as ReactModule from "react";
+import { AppState, Linking, type AppStateStatus } from "react-native";
 
-import PerfilScreen from '@/app/(tabs)/perfil';
-import { notify } from '@/components/confirm';
-import { renderWithStore } from '@/test-utils';
+import PerfilScreen from "@/app/(tabs)/perfil";
+import { notify } from "@/components/confirm";
+import { renderWithStore } from "@/test-utils";
 
 /**
  * Fila "Avisos" de Perfil (CRONO44, ronda 2): deja activar los avisos a quien
@@ -16,7 +16,7 @@ import { renderWithStore } from '@/test-utils';
  * Se refresca cuando la app vuelve a primer plano. Oculta sin recordatorios.
  */
 
-type PermissionState = 'granted' | 'askable' | 'blocked';
+type PermissionState = "granted" | "askable" | "blocked";
 
 let mockRemindersAvailable = true;
 const mockGetPermissionState = jest.fn<Promise<PermissionState>, []>();
@@ -26,34 +26,44 @@ const mockRequestPermission = jest.fn<Promise<boolean>, []>();
 // con el spread, Babel arma el objeto con `_objectSpread`, que evalúa el getter una sola
 // vez al crear el mock (cuando `mockRemindersAvailable` todavía no tiene valor) y lo
 // congela en `undefined`. Así la fila nunca aparecía, aunque el test pusiera `true`.
-jest.mock('@/notifications/notifications', () =>
+jest.mock("@/notifications/notifications", () =>
   Object.defineProperty(
     {
-      ...jest.requireActual<object>('@/notifications/notifications'),
+      ...jest.requireActual<object>("@/notifications/notifications"),
       getNotificationPermissionState: () => mockGetPermissionState(),
       requestNotificationPermission: () => mockRequestPermission(),
     },
-    'remindersAvailable',
+    "remindersAvailable",
     { get: () => mockRemindersAvailable, enumerable: true },
   ),
 );
-jest.mock('expo-router', () => ({
-  useRouter: () => ({ push: jest.fn(), navigate: jest.fn(), replace: jest.fn() }),
+jest.mock("expo-router", () => ({
+  useRouter: () => ({
+    push: jest.fn(),
+    navigate: jest.fn(),
+    replace: jest.fn(),
+  }),
   // Pantalla siempre "enfocada": el efecto corre al montar.
   useFocusEffect: (effect: ReactModule.EffectCallback) =>
-    jest.requireActual<typeof ReactModule>('react').useEffect(effect, [effect]),
+    jest.requireActual<typeof ReactModule>("react").useEffect(effect, [effect]),
 }));
-jest.mock('@/components/confirm', () => ({ confirmAction: jest.fn(), notify: jest.fn() }));
-jest.mock('@/db/settings-repo');
-jest.mock('@/store/backup-slice', () => {
-  const { createAsyncThunk } = jest.requireActual<typeof Toolkit>('@reduxjs/toolkit');
+jest.mock("@/components/confirm", () => ({
+  confirmAction: jest.fn(),
+  notify: jest.fn(),
+}));
+jest.mock("@/db/settings-repo");
+jest.mock("@/store/backup-slice", () => {
+  const { createAsyncThunk } =
+    jest.requireActual<typeof Toolkit>("@reduxjs/toolkit");
   return {
-    exportBackup: createAsyncThunk('backup/export', async () => undefined),
-    restoreBackup: createAsyncThunk('backup/restore', async () => null),
+    exportBackup: createAsyncThunk("backup/export", async () => undefined),
+    restoreBackup: createAsyncThunk("backup/restore", async () => null),
   };
 });
-jest.mock('@/components/photo-picker', () => ({ PhotoPicker: () => null }));
-jest.mock('@/components/my-birthday-card', () => ({ MyBirthdayCard: () => null }));
+jest.mock("@/components/photo-picker", () => ({ PhotoPicker: () => null }));
+jest.mock("@/components/my-birthday-card", () => ({
+  MyBirthdayCard: () => null,
+}));
 
 const mockNotify = jest.mocked(notify);
 const mockAddAppStateListener = jest.mocked(AppState.addEventListener);
@@ -64,11 +74,11 @@ const FILA_AVISOS = /^Avisos/;
 const FILA_ACTIVADOS = /^Avisos.*\bactivados\b/i;
 const FILA_BLOQUEADOS = /^Avisos.*bloquead/i;
 
-const fila = (name: RegExp) => screen.findByRole('button', { name });
+const fila = (name: RegExp) => screen.findByRole("button", { name });
 
 async function renderPerfil() {
   await renderWithStore(<PerfilScreen />, {
-    settings: { displayName: 'Nico', loaded: true, onboardingTourDone: true },
+    settings: { displayName: "Nico", loaded: true, onboardingTourOpen: false },
   });
 }
 
@@ -81,73 +91,73 @@ async function esperarEstadoLeido() {
 /** Dispara los listeners de AppState que registró la pantalla. */
 async function volverAPrimerPlano() {
   const listeners = mockAddAppStateListener.mock.calls
-    .filter(([type]) => type === 'change')
+    .filter(([type]) => type === "change")
     .map(([, listener]) => listener as (state: AppStateStatus) => void);
   await act(async () => {
-    listeners.forEach((listener) => listener('active'));
+    listeners.forEach((listener) => listener("active"));
   });
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockRemindersAvailable = true;
-  mockGetPermissionState.mockResolvedValue('granted');
+  mockGetPermissionState.mockResolvedValue("granted");
   mockRequestPermission.mockResolvedValue(true);
   mockNotify.mockResolvedValue(undefined);
   mockOpenSettings.mockResolvedValue(undefined);
 });
 
-describe('<PerfilScreen /> fila Avisos: estado', () => {
+describe("<PerfilScreen /> fila Avisos: estado", () => {
   it('con el permiso concedido muestra "Activados"', async () => {
-    mockGetPermissionState.mockResolvedValue('granted');
+    mockGetPermissionState.mockResolvedValue("granted");
     await renderPerfil();
 
     expect(await fila(FILA_ACTIVADOS)).toBeTruthy();
   });
 
-  it('si el sistema lo bloqueó, lo indica como bloqueado', async () => {
-    mockGetPermissionState.mockResolvedValue('blocked');
+  it("si el sistema lo bloqueó, lo indica como bloqueado", async () => {
+    mockGetPermissionState.mockResolvedValue("blocked");
     await renderPerfil();
 
     expect(await fila(FILA_BLOQUEADOS)).toBeTruthy();
   });
 
-  it('si se puede pedir, aparece sin decir activados ni bloqueados', async () => {
-    mockGetPermissionState.mockResolvedValue('askable');
+  it("si se puede pedir, aparece sin decir activados ni bloqueados", async () => {
+    mockGetPermissionState.mockResolvedValue("askable");
     await renderPerfil();
     await fila(FILA_AVISOS);
     await esperarEstadoLeido();
 
     expect([
-      screen.queryByRole('button', { name: FILA_ACTIVADOS }),
-      screen.queryByRole('button', { name: FILA_BLOQUEADOS }),
+      screen.queryByRole("button", { name: FILA_ACTIVADOS }),
+      screen.queryByRole("button", { name: FILA_BLOQUEADOS }),
     ]).toEqual([null, null]);
   });
 
-  it('sin recordatorios disponibles (web / Expo Go Android) no aparece', async () => {
+  it("sin recordatorios disponibles (web / Expo Go Android) no aparece", async () => {
     mockRemindersAvailable = false;
     await renderPerfil();
     await act(async () => undefined);
 
-    expect(screen.queryByRole('button', { name: FILA_AVISOS })).toBeNull();
+    expect(screen.queryByRole("button", { name: FILA_AVISOS })).toBeNull();
   });
 
-  it('se refresca cuando la app vuelve a primer plano', async () => {
-    mockGetPermissionState.mockResolvedValue('blocked');
+  it("se refresca cuando la app vuelve a primer plano", async () => {
+    mockGetPermissionState.mockResolvedValue("blocked");
     await renderPerfil();
     await fila(FILA_BLOQUEADOS);
 
     // El usuario lo habilitó desde los ajustes del celular y volvió a Crono.
-    mockGetPermissionState.mockResolvedValue('granted');
+    mockGetPermissionState.mockResolvedValue("granted");
     await volverAPrimerPlano();
 
     expect(await fila(FILA_ACTIVADOS)).toBeTruthy();
   });
 });
 
-describe('<PerfilScreen /> fila Avisos: al tocar', () => {
+describe("<PerfilScreen /> fila Avisos: al tocar", () => {
   it("con 'askable' muestra el diálogo explicativo", async () => {
-    mockGetPermissionState.mockResolvedValue('askable');
+    mockGetPermissionState.mockResolvedValue("askable");
     await renderPerfil();
     await esperarEstadoLeido();
 
@@ -157,7 +167,7 @@ describe('<PerfilScreen /> fila Avisos: al tocar', () => {
   });
 
   it("con 'askable' pide el permiso recién al cerrar el diálogo", async () => {
-    mockGetPermissionState.mockResolvedValue('askable');
+    mockGetPermissionState.mockResolvedValue("askable");
     // El diálogo queda abierto hasta que el test lo resuelve (como tocar "Entendido").
     const dialogo = Promise.withResolvers<void>();
     mockNotify.mockReturnValue(dialogo.promise);
@@ -174,7 +184,7 @@ describe('<PerfilScreen /> fila Avisos: al tocar', () => {
   });
 
   it("con 'blocked' abre los ajustes del sistema", async () => {
-    mockGetPermissionState.mockResolvedValue('blocked');
+    mockGetPermissionState.mockResolvedValue("blocked");
     await renderPerfil();
 
     await fireEvent.press(await fila(FILA_BLOQUEADOS));
@@ -183,17 +193,20 @@ describe('<PerfilScreen /> fila Avisos: al tocar', () => {
   });
 
   it("con 'blocked' no muestra el diálogo ni pide el permiso", async () => {
-    mockGetPermissionState.mockResolvedValue('blocked');
+    mockGetPermissionState.mockResolvedValue("blocked");
     await renderPerfil();
 
     await fireEvent.press(await fila(FILA_BLOQUEADOS));
     await waitFor(() => expect(mockOpenSettings).toHaveBeenCalled());
 
-    expect([mockNotify.mock.calls.length, mockRequestPermission.mock.calls.length]).toEqual([0, 0]);
+    expect([
+      mockNotify.mock.calls.length,
+      mockRequestPermission.mock.calls.length,
+    ]).toEqual([0, 0]);
   });
 
   it("con 'granted' no pide nada ni abre ajustes", async () => {
-    mockGetPermissionState.mockResolvedValue('granted');
+    mockGetPermissionState.mockResolvedValue("granted");
     await renderPerfil();
 
     await fireEvent.press(await fila(FILA_ACTIVADOS));

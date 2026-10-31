@@ -11,19 +11,22 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 ## Qué hace la app
 
 ### Agenda
+
 - Pestaña **Agenda** con todos los eventos próximos ordenados por fecha; los que ya pasaron se ocultan solos.
 - Cada evento tiene título, fecha, hora opcional, descripción, tipo, etiquetas y foto.
 - Los eventos anuales (cumpleaños, aniversarios, festivos) se repiten cada año automáticamente.
 - En el detalle de cada evento se ve una **cuenta regresiva** ("faltan 12 días").
 - **Buscador** que filtra eventos y notas por texto.
 - **Etiquetas** propias para clasificar eventos y filtrar la agenda.
-- **Recorrido guiado** la primera vez que entrás: resalta el buscador, los filtros, la lista, el botón **+** y cada pestaña, y termina con los límites de los avisos y de la privacidad. Se puede saltar (en web, también con Escape; el foco de teclado no sale del recorrido mientras está abierto), aparece una sola vez (también al actualizar desde una versión anterior) y se vuelve a ver desde el **?** de Perfil.
+- **Recorrido guiado** opcional la primera vez que entrás: Agenda muestra primero **Antes de empezar** (los límites de los avisos y de la privacidad) y pregunta si querés el recorrido; si aceptás, resalta el buscador, los filtros, la lista, el botón **+** y cada pestaña, y termina en Perfil. Se puede rechazar o saltar (en web, también con Escape; el foco de teclado no sale de la tarjeta ni del recorrido mientras están abiertos). La tarjeta aparece una sola vez (también al actualizar desde una versión anterior): queda vista apenas se muestra, aunque cierres la app sin responder. El recorrido se vuelve a ver desde el **?** de Perfil, directo y sin la tarjeta, solo en esa sesión.
 
 ### Calendario
+
 - Pestaña **Calendario** con vista **mensual** y **semanal**, navegable hacia atrás y adelante.
 - Marca los días con eventos y muestra los cumpleaños y aniversarios del mes.
 
 ### Tipos de evento
+
 - Vienen 5 tipos de fábrica: **Evento**, **Cumpleaños**, **Aniversario**, **Día festivo** y **Cita médica**.
 - Se pueden **crear tipos propios** y editar nombre, ícono y color de cualquiera (incluso los de fábrica).
 - Cada tipo parte de una **base** que define cómo se comporta (si se repite cada año, si la hora es obligatoria) y se le pueden sumar **funciones**:
@@ -36,6 +39,7 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 - Al borrar un tipo, sus eventos se mueven al tipo que elijas; nada se pierde.
 
 ### Recordatorios
+
 - Cada evento puede tener **varios avisos**: en el momento, 1 hora antes, 1 día antes, 1 semana antes, o uno **a medida** (número + unidad).
 - Las notificaciones son humanas: llevan el emoji del tipo en el título ("🎂 Cumple de Ana") y dicen el tiempo relativo ("Es mañana", "Es en 3 días").
 - Si los recordatorios no están disponibles (web o Expo Go para Android, por una restricción de Crono), la app lo avisa en vez de prometer notificaciones.
@@ -43,11 +47,13 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 - Si el sistema no puede cancelar avisos, aparece **Reintentar limpieza**. Si tampoco se pudo guardar esa limpieza pendiente, no cierres la app antes de reintentar.
 
 ### Cumpleaños
+
 - **Importar cumpleaños desde los contactos** del celular: lista los contactos con teléfono de tu cuenta de Google (Android) o iCloud/Google (iOS), permite editar el nombre antes de guardar y marca los que ya están cargados.
 - Botón **Saludar por WhatsApp** en cumpleaños y aniversarios.
 - **Ideas de regalo** por persona.
 
 ### Perfil
+
 - Nombre y **foto de perfil** del usuario (se pide el nombre en el primer uso).
 - Botón **?** para volver a ver el recorrido guiado de la app.
 - **Avisos** (solo donde hay recordatorios): muestra si el permiso de notificaciones está activado, si todavía se puede pedir o si quedó bloqueado en los ajustes del sistema. Tocándola se activan los avisos: explica para qué sirven y pide el permiso, o abre los ajustes del celular si el sistema ya no deja preguntar. Se actualiza al volver a la pantalla o a la app.
@@ -57,9 +63,11 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 - Acceso al editor de **Tipos de evento**.
 
 ### Notas
+
 - Pestaña **Notas** para apuntes rápidos, con crear, editar y borrar.
 
 ### Seguridad y privacidad
+
 - En Android/iOS, la app se **bloquea** con la credencial del teléfono. Si la dejás en segundo plano más de **2 minutos**, se vuelve a bloquear. En web muestra una advertencia y pide continuar explícitamente, pero no hay bloqueo local.
 - Los datos viven en una base **SQLite local**, del dispositivo o navegador actual; Crono no los manda a ningún servidor. Lo que exportes o compartas sale del dispositivo, y en Android/iOS la copia de seguridad del sistema puede incluir los datos de la app (en Android, `android.allowBackup` queda en su valor por defecto de Expo, `true`).
 - Donde hay recordatorios (Android/iOS, salvo Expo Go Android), el permiso de notificaciones se pide después de la bienvenida (al tocar **Empezar**), tras un aviso que explica para qué sirven; ya no se pide al abrir la app. Quien actualiza conserva el permiso que haya dado antes, y cualquiera puede activarlos después desde **Perfil → Avisos**. Si lo negás, la app funciona igual sin avisos. Los avisos dependen del permiso y de la configuración del sistema: no conviene usar Crono como único recordatorio para algo importante.
@@ -70,6 +78,7 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 ## Levantarla en local
 
 ### Requisitos
+
 - **Node.js 22** (es la versión que usa CI) y npm.
 - **Git**.
 - Para probar en el celular: la app **Expo Go** (Play Store / App Store) compatible con **Expo SDK 57**.
@@ -96,12 +105,12 @@ Cualquier cambio que guardes en `src/` se recarga solo en el celular o el navega
 
 ### Qué funciona en cada entorno
 
-| Función | Expo Go | Web | APK / development build |
-| --- | --- | --- | --- |
-| Agenda, calendario, notas, tipos, backup | ✅ | ✅ | ✅ |
-| Bloqueo con credencial del sistema | Según la credencial disponible; Face ID iOS requiere development build | Advertencia + continuar sin bloqueo | Credencial del sistema |
-| Recordatorios (notificaciones) | Desactivados en Crono Android; disponibles en iOS con permiso | No disponibles | Con permiso del sistema |
-| Importar contactos | ✅ (sin filtro por cuenta en Android) | ❌ | ✅ |
+| Función                                  | Expo Go                                                                | Web                                 | APK / development build |
+| ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------- | ----------------------- |
+| Agenda, calendario, notas, tipos, backup | ✅                                                                     | ✅                                  | ✅                      |
+| Bloqueo con credencial del sistema       | Según la credencial disponible; Face ID iOS requiere development build | Advertencia + continuar sin bloqueo | Credencial del sistema  |
+| Recordatorios (notificaciones)           | Desactivados en Crono Android; disponibles en iOS con permiso          | No disponibles                      | Con permiso del sistema |
+| Importar contactos                       | ✅ (sin filtro por cuenta en Android)                                  | ❌                                  | ✅                      |
 
 El filtro de contactos por cuenta de Google usa un **módulo nativo propio** (`modules/crono-contact-accounts`, en Kotlin). Expo Go no lo incluye; si no está, la app simplemente no filtra.
 
@@ -109,22 +118,22 @@ SDK 57 admite notificaciones **locales** en Expo Go; lo retirado en Android es e
 
 ### Scripts
 
-| Comando | Qué hace |
-| --- | --- |
-| `npm start` | Levanta el servidor de desarrollo de Expo |
-| `npm run android` / `npm run ios` | Abre la app en el emulador o simulador |
-| `npm run web` | Abre la app en el navegador |
-| `npm run lint` | ESLint con la config de Expo |
-| `npx tsc --noEmit` | Chequeo de tipos (TypeScript estricto) |
-| `npm test` | Tests unitarios con Jest |
-| `npm run test:watch` | Jest en modo watch |
-| `npm run e2e` | Tests end-to-end con Playwright sobre la versión web (levanta el servidor solo) |
-| `node --test scripts/test-migrations.cjs` | #36: migraciones de producción sobre SQLite real, fallos entre sentencias y recuperación tras interrupciones |
-| `node --test scripts/test-event-save.cjs` | #37: guardado atómico, rollback, reintento, concurrencia y coherencia con Redux sobre SQLite real |
-| `node --test scripts/test-reminders.cjs` | #39: avisos anuales, reconciliación, compensación y reintento de cancelaciones con SQLite real y el validador de Expo |
-| `node --test scripts/test-backup.cjs` | #41: snapshot SQLite, roundtrip, restauración atómica, reimportación, vínculos y concurrencia de escrituras |
-| `npm run build:apk` | Genera una preview APK con EAS e incrementa el número de build remoto (consume cuota; requiere autorización) |
-| `npm run release:version -- X.Y.Z` | Sincroniza package, lock y la versión visible Expo; lo usa el corte automatizado, no genera tags ni builds |
+| Comando                                   | Qué hace                                                                                                              |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `npm start`                               | Levanta el servidor de desarrollo de Expo                                                                             |
+| `npm run android` / `npm run ios`         | Abre la app en el emulador o simulador                                                                                |
+| `npm run web`                             | Abre la app en el navegador                                                                                           |
+| `npm run lint`                            | ESLint con la config de Expo                                                                                          |
+| `npx tsc --noEmit`                        | Chequeo de tipos (TypeScript estricto)                                                                                |
+| `npm test`                                | Tests unitarios con Jest                                                                                              |
+| `npm run test:watch`                      | Jest en modo watch                                                                                                    |
+| `npm run e2e`                             | Tests end-to-end con Playwright sobre la versión web (levanta el servidor solo)                                       |
+| `node --test scripts/test-migrations.cjs` | #36: migraciones de producción sobre SQLite real, fallos entre sentencias y recuperación tras interrupciones          |
+| `node --test scripts/test-event-save.cjs` | #37: guardado atómico, rollback, reintento, concurrencia y coherencia con Redux sobre SQLite real                     |
+| `node --test scripts/test-reminders.cjs`  | #39: avisos anuales, reconciliación, compensación y reintento de cancelaciones con SQLite real y el validador de Expo |
+| `node --test scripts/test-backup.cjs`     | #41: snapshot SQLite, roundtrip, restauración atómica, reimportación, vínculos y concurrencia de escrituras           |
+| `npm run build:apk`                       | Genera una preview APK con EAS e incrementa el número de build remoto (consume cuota; requiere autorización)          |
+| `npm run release:version -- X.Y.Z`        | Sincroniza package, lock y la versión visible Expo; lo usa el corte automatizado, no genera tags ni builds            |
 
 La primera vez que corras los e2e instalá el navegador: `npx playwright install chromium`.
 
@@ -144,11 +153,11 @@ El build corre en la nube de [EAS](https://expo.dev/accounts/nicogarcia12/projec
 
 Perfiles en `eas.json`:
 
-| Perfil | Genera | Para qué |
-| --- | --- | --- |
-| `preview` | APK; `versionCode` remoto creciente | Instalar directo y probar actualizaciones sin desinstalar |
-| `development` | APK (dev client) | Desarrollar con los módulos nativos (contactos, notificaciones) |
-| `production` | AAB | Publicar en Play Store (a futuro) |
+| Perfil        | Genera                              | Para qué                                                        |
+| ------------- | ----------------------------------- | --------------------------------------------------------------- |
+| `preview`     | APK; `versionCode` remoto creciente | Instalar directo y probar actualizaciones sin desinstalar       |
+| `development` | APK (dev client)                    | Desarrollar con los módulos nativos (contactos, notificaciones) |
+| `production`  | AAB                                 | Publicar en Play Store (a futuro)                               |
 
 El corte de release mantiene `package.json.version` y `app.json.expo.version` iguales. `preview` y `production` incrementan los números de build en EAS; no hay contador local en Git. Para identificar cada APK por SHA, versión, perfil, ID y `versionCode`, verificar firma/permisos y probar dos previews conservando datos, seguí [RELEASING.md](RELEASING.md). Cámara y galería conservan sus permisos; Crono no pide micrófono en sus nuevos binarios (Expo Go usa su propio manifest).
 
@@ -158,16 +167,16 @@ El corte de release mantiene `package.json.version` y `app.json.expo.version` ig
 
 ### Stack
 
-| Capa | Tecnología |
-| --- | --- |
-| Framework | React Native 0.86 + Expo SDK 57 (managed) |
-| Navegación | Expo Router (rutas basadas en archivos) |
+| Capa          | Tecnología                                           |
+| ------------- | ---------------------------------------------------- |
+| Framework     | React Native 0.86 + Expo SDK 57 (managed)            |
+| Navegación    | Expo Router (rutas basadas en archivos)              |
 | Base de datos | expo-sqlite (en web, SQLite compilado a WebAssembly) |
-| Estado global | Redux Toolkit |
-| Bloqueo | expo-local-authentication |
-| Recordatorios | expo-notifications (locales, sin internet) |
-| Lenguaje | TypeScript estricto, con React Compiler activado |
-| Tests | Jest + React Native Testing Library, Playwright |
+| Estado global | Redux Toolkit                                        |
+| Bloqueo       | expo-local-authentication                            |
+| Recordatorios | expo-notifications (locales, sin internet)           |
+| Lenguaje      | TypeScript estricto, con React Compiler activado     |
+| Tests         | Jest + React Native Testing Library, Playwright      |
 
 ### Estructura
 
@@ -218,6 +227,7 @@ La restauración confirma todos sus datos en una única transacción SQLite y re
 Reimportar el mismo archivo es idempotente mientras se mantengan las claves de identidad: título/tipo/fecha para eventos, título/contenido para notas y año/nombre/teléfono para saludos; las marcas enlazadas se reconocen por evento/año. Se conservan los datos locales coincidentes, las personalizaciones locales de tipos, el nombre ya cargado y la marca de cumpleaños propio. Si cambiás una clave de identidad, otra importación puede agregar el original: no hay identidad global por UUID. Los vínculos v2 se resuelven también contra eventos ya existentes; si falta el evento, el saludo queda como invitado y la marca sin vínculo se omite. Las fotos y las ideas de regalo locales no se modifican.
 
 ### Decisiones de diseño
+
 - **Sin servidor**: funciona sin conexión; los datos viven en el dispositivo o navegador actual. Para no perderlos, exportá una copia antes de borrar la app o los datos del sitio.
 - **Bloqueo del sistema en vez de contraseña propia**: una app no puede leer el PIN del teléfono, así que delega en la biometría/PIN del sistema operativo.
 - **Tipos por funciones, no por nombre**: el código pregunta "¿este tipo tiene la función WhatsApp?" en vez de "¿es un cumpleaños?". Así un tipo propio como "Cumple de mascota" se comporta igual que uno de fábrica.

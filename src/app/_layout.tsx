@@ -1,26 +1,26 @@
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, StyleSheet, Text, View } from 'react-native';
-import { Provider } from 'react-redux';
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, StyleSheet, Text, View } from "react-native";
+import { Provider } from "react-redux";
 
-import { confirmAction, errorMessage } from '@/components/confirm';
-import { DialogHost } from '@/components/dialog-host';
-import { LockScreen } from '@/components/lock-screen';
-import { NameSetup } from '@/components/name-setup';
-import { initDatabase } from '@/db/database';
-import { cleanupPhotosWithNotice } from '@/db/photos-repo';
-import { requestNotificationPermission } from '@/notifications/notifications';
-import { reconcileReminders } from '@/notifications/reconcile';
-import { store, useAppSelector } from '@/store';
-import { loadEventBases } from '@/store/event-bases-slice';
-import { loadEventTypes } from '@/store/event-types-slice';
-import { loadEvents } from '@/store/events-slice';
-import { loadFieldValues } from '@/store/field-values-slice';
-import { loadNotes } from '@/store/notes-slice';
-import { loadSettings } from '@/store/settings-slice';
-import { useTheme } from '@/theme/use-theme';
+import { confirmAction, errorMessage } from "@/components/confirm";
+import { DialogHost } from "@/components/dialog-host";
+import { LockScreen } from "@/components/lock-screen";
+import { NameSetup } from "@/components/name-setup";
+import { initDatabase } from "@/db/database";
+import { cleanupPhotosWithNotice } from "@/db/photos-repo";
+import { setupNotificationChannel } from "@/notifications/notifications";
+import { reconcileReminders } from "@/notifications/reconcile";
+import { store, useAppSelector } from "@/store";
+import { loadEventBases } from "@/store/event-bases-slice";
+import { loadEventTypes } from "@/store/event-types-slice";
+import { loadEvents } from "@/store/events-slice";
+import { loadFieldValues } from "@/store/field-values-slice";
+import { loadNotes } from "@/store/notes-slice";
+import { loadSettings } from "@/store/settings-slice";
+import { useTheme } from "@/theme/use-theme";
 
 /**
  * Layout raíz de la app (Expo Router).
@@ -32,8 +32,10 @@ import { useTheme } from '@/theme/use-theme';
  * Orden de arranque:
  *  1. Abrir/migrar SQLite y cargar datos a Redux (mientras, se ve el splash).
  *  2. Pedir desbloqueo con la huella/PIN del sistema (LockScreen).
- *  3. Si es el primer uso, pedir el nombre (NameSetup).
- *  4. Mostrar la app (tabs).
+ *  3. Si es el primer uso, pedir el nombre (NameSetup). Ahí, después de la
+ *     bienvenida, se explica y se pide el permiso de avisos.
+ *  4. Mostrar la app (tabs). La primera vez, Agenda muestra la tarjeta inicial
+ *     del recorrido guiado ("Antes de empezar" + si se lo quiere ver).
  */
 
 // Mantener el splash nativo visible hasta que la BD esté lista.
@@ -52,7 +54,10 @@ SplashScreen.preventAutoHideAsync();
 const LOCK_GRACE_MS = 2 * 60 * 1000;
 
 /** Puro para poder testear la decisión sin simular AppState real. */
-export function shouldRelock(backgroundedAt: number | null, now: number): boolean {
+export function shouldRelock(
+  backgroundedAt: number | null,
+  now: number,
+): boolean {
   return backgroundedAt !== null && now - backgroundedAt > LOCK_GRACE_MS;
 }
 
@@ -64,19 +69,30 @@ function recoverReminders(): Promise<void> {
       let problem: string | null = null;
       try {
         const report = await reconcileReminders();
-        if (report.status !== 'current' && report.status !== 'unavailable') {
+        if (report.status !== "current" && report.status !== "unavailable") {
           // La próxima edición debe cancelar los IDs actuales, no los del arranque.
           await store.dispatch(loadEvents()).unwrap();
         }
-        if (report.status === 'incomplete') {
-          problem = 'No se pudo completar la actualización o limpieza de avisos. Los anteriores pueden seguir apareciendo. Podés reintentar sin cerrar la app.';
+        if (report.status === "incomplete") {
+          problem =
+            "No se pudo completar la actualización o limpieza de avisos. Los anteriores pueden seguir apareciendo. Podés reintentar sin cerrar la app.";
         }
       } catch (error: unknown) {
         problem = `No se pudieron recuperar los avisos: ${errorMessage(error)}`;
       }
-      if (!problem || !await confirmAction('Avisos pendientes', problem, 'Reintentar avisos')) return;
+      if (
+        !problem ||
+        !(await confirmAction(
+          "Avisos pendientes",
+          problem,
+          "Reintentar avisos",
+        ))
+      )
+        return;
     }
-  })().finally(() => { reminderRecoveryInFlight = null; });
+  })().finally(() => {
+    reminderRecoveryInFlight = null;
+  });
   return reminderRecoveryInFlight;
 }
 
@@ -97,8 +113,15 @@ export default function RootLayout() {
         store.dispatch(loadFieldValues()).unwrap(),
         store.dispatch(loadNotes()).unwrap(),
       ]);
-      // El permiso de notificaciones se pide una vez; si lo niega, la app funciona igual (sin avisos).
-      await requestNotificationPermission();
+      // Solo el canal Android (los avisos existentes lo necesitan). El permiso ya no se pide
+      // acá: NameSetup lo pide después de explicar para qué sirve (CRONO44).
+      // Si el SO falla al crear el canal, se registra y la app arranca igual: no es motivo
+      // para dejar a nadie sin acceso a su agenda.
+      try {
+        await setupNotificationChannel();
+      } catch (error) {
+        console.warn("No se pudo crear el canal de notificaciones", error);
+      }
       // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.
       // Nunca rechaza: si falla, avisa y no bloquea el arranque.
       void cleanupPhotosWithNotice();
@@ -147,12 +170,12 @@ function Gates() {
   // nativos que cuentan como "background" un instante— no piden desbloqueo de nuevo.
   const backgroundedAtRef = useRef<number | null>(null);
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background') {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
         backgroundedAtRef.current = Date.now();
         return;
       }
-      if (state === 'active') {
+      if (state === "active") {
         const backgroundedAt = backgroundedAtRef.current;
         backgroundedAtRef.current = null;
         if (shouldRelock(backgroundedAt, Date.now())) setUnlocked(false);
@@ -162,7 +185,9 @@ function Gates() {
   }, []);
 
   // La barra de estado (hora, batería) necesita íconos claros sobre fondo oscuro.
-  const statusBar = <StatusBar style={themeName === 'oscuro' ? 'light' : 'dark'} />;
+  const statusBar = (
+    <StatusBar style={themeName === "oscuro" ? "light" : "dark"} />
+  );
 
   // Los diálogos propios (confirm.ts) se muestran desde acá en cualquier etapa.
   if (!unlocked) {
@@ -196,17 +221,29 @@ function Gates() {
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="evento/nuevo" options={{ title: 'Nuevo evento', presentation: 'modal' }} />
-        <Stack.Screen name="evento/[id]" options={{ title: 'Editar evento' }} />
-        <Stack.Screen name="nota/nueva" options={{ title: 'Nueva nota', presentation: 'modal' }} />
-        <Stack.Screen name="nota/[id]" options={{ title: 'Editar nota' }} />
+        <Stack.Screen
+          name="evento/nuevo"
+          options={{ title: "Nuevo evento", presentation: "modal" }}
+        />
+        <Stack.Screen name="evento/[id]" options={{ title: "Editar evento" }} />
+        <Stack.Screen
+          name="nota/nueva"
+          options={{ title: "Nueva nota", presentation: "modal" }}
+        />
+        <Stack.Screen name="nota/[id]" options={{ title: "Editar nota" }} />
         <Stack.Screen
           name="cargar-cumpleanos"
-          options={{ title: 'Cargar cumpleaños', presentation: 'modal' }}
+          options={{ title: "Cargar cumpleaños", presentation: "modal" }}
         />
-        <Stack.Screen name="saludos" options={{ title: '¿Quién me saludó?' }} />
-        <Stack.Screen name="regalos/[eventId]" options={{ title: 'Ideas de regalo' }} />
-        <Stack.Screen name="tipos-evento" options={{ title: 'Tipos de evento' }} />
+        <Stack.Screen name="saludos" options={{ title: "¿Quién me saludó?" }} />
+        <Stack.Screen
+          name="regalos/[eventId]"
+          options={{ title: "Ideas de regalo" }}
+        />
+        <Stack.Screen
+          name="tipos-evento"
+          options={{ title: "Tipos de evento" }}
+        />
       </Stack>
       <DialogHost />
     </>
@@ -214,7 +251,13 @@ function Gates() {
 }
 
 const styles = StyleSheet.create({
-  errorContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
-  errorTitle: { fontSize: 18, fontWeight: '700', color: '#c0392b' },
-  errorDetail: { fontSize: 13, color: '#666', textAlign: 'center' },
+  errorContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    gap: 8,
+  },
+  errorTitle: { fontSize: 18, fontWeight: "700", color: "#c0392b" },
+  errorDetail: { fontSize: 13, color: "#666", textAlign: "center" },
 });

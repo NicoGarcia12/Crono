@@ -1,15 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * Un cumpleaños con teléfono ofrece saludar por WhatsApp desde su detalle,
  * con el link de wa.me y el saludo ya escrito.
  */
 test('el cumpleaños con teléfono ofrece saludar por WhatsApp', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
 
   // Cumpleaños con teléfono.
   await page.getByLabel('Agregar evento').click();
@@ -35,10 +34,7 @@ test('el cumpleaños con teléfono ofrece saludar por WhatsApp', async ({ page }
 
 test('un evento sin teléfono no muestra el botón', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
 
   await page.getByLabel('Agregar evento').click();
   await page.getByPlaceholder('Ej: Cumpleaños de mamá').fill('Cena con amigos');

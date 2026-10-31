@@ -98,24 +98,64 @@ function getNotifications(): NotificationsModule | null {
   return cachedModule;
 }
 
-/** Pide permiso al usuario (Android 13+ y iOS lo exigen). Devuelve true si lo dio. */
+/**
+ * Crea el canal Android "Recordatorios" sin pedir ningún permiso. Va en el
+ * arranque de la app: los avisos ya programados por instalaciones existentes
+ * apuntan a este canal, así que tiene que existir siempre.
+ *
+ * 💡 Aprendizaje: Android agrupa las notificaciones en "canales" que el usuario
+ * configura desde Ajustes. Crear el canal es idempotente (llamarlo de nuevo no
+ * duplica nada) y, como Crono apunta a Android 13+, no dispara el diálogo del
+ * permiso: ese lo pedimos nosotros cuando tiene sentido (después de la bienvenida).
+ * iOS no tiene canales.
+ */
+export async function setupNotificationChannel(): Promise<void> {
+  // Platform.OS se lee al llamar (no al cargar el módulo) para respetar el SO real.
+  if (Platform.OS !== 'android') return;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  await Notifications.setNotificationChannelAsync('recordatorios', {
+    name: 'Recordatorios',
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+}
+
+/**
+ * Pide permiso al usuario (Android 13+ y iOS lo exigen). Devuelve true si lo dio.
+ * Si ya estaba concedido no vuelve a preguntar. El canal Android ya lo creó
+ * `setupNotificationChannel` en el arranque.
+ */
 export async function requestNotificationPermission(): Promise<boolean> {
   const Notifications = getNotifications();
   if (!Notifications) return false;
-
-  if (Platform.OS === 'android') {
-    // Android agrupa las notificaciones en "canales" configurables por el usuario.
-    await Notifications.setNotificationChannelAsync('recordatorios', {
-      name: 'Recordatorios',
-      importance: Notifications.AndroidImportance.HIGH,
-    });
-  }
 
   const current = await Notifications.getPermissionsAsync();
   if (current.status === 'granted') return true;
 
   const requested = await Notifications.requestPermissionsAsync();
   return requested.status === 'granted';
+}
+
+/**
+ * Estado del permiso, para la fila "Avisos" de Perfil:
+ *  - 'granted': concedido.
+ *  - 'askable': nunca respondido, o negado pero el SO deja volver a preguntar.
+ *  - 'blocked': negado y el SO ya no muestra el diálogo (`canAskAgain` false):
+ *    solo se puede activar desde los ajustes del sistema.
+ * Sin módulo de notificaciones (web, Expo Go Android) no hay nada que pedir: 'blocked'.
+ *
+ * 💡 Aprendizaje: `getPermissionsAsync` solo consulta, nunca muestra nada al usuario.
+ */
+export type NotificationPermissionState = 'granted' | 'askable' | 'blocked';
+
+export async function getNotificationPermissionState(): Promise<NotificationPermissionState> {
+  const Notifications = getNotifications();
+  if (!Notifications) return 'blocked';
+
+  const current = await Notifications.getPermissionsAsync();
+  if (current.status === 'granted') return 'granted';
+  return current.canAskAgain ? 'askable' : 'blocked';
 }
 
 /**

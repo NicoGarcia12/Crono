@@ -1,15 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * Ciclo completo de la copia de seguridad: exportar un evento, empezar de cero
  * (contexto nuevo = base vacía) y restaurarlo desde el archivo exportado.
  */
 test('exporta la agenda y la restaura en un celular vacío', async ({ page, context }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
 
   await page.getByLabel('Agregar evento').click();
   await page.getByPlaceholder('Ej: Cumpleaños de mamá').fill('Cumple de mamá');
@@ -20,9 +20,11 @@ test('exporta la agenda y la restaura en un celular vacío', async ({ page, cont
 
   // Exportar: en web se descarga el archivo.
   await page.getByText('Perfil').click();
+  await page.getByLabel('Exportar copia de seguridad').click();
+  // Antes de descargar, Crono avisa que cualquiera con el archivo puede leerlo (CRONO44).
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByLabel('Exportar copia de seguridad').click(),
+    page.getByRole('button', { name: 'Exportar', exact: true }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/^crono-backup-\d{4}-\d{2}-\d{2}\.json$/);
 
@@ -34,9 +36,7 @@ test('exporta la agenda y la restaura en un celular vacío', async ({ page, cont
   // "Otro celular": página nueva con la base vacía (otro contexto de navegador).
   const otro = await context.browser()!.newPage();
   await otro.goto('http://localhost:8082/');
-  await otro.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-  await otro.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await otro.getByText('Empezar').click();
+  await empezarSinRecorrido(otro);
   await expect(otro.getByText('Todavía no hay nada agendado')).toBeVisible();
 
   // Restaurar desde el archivo descargado (el selector de archivos del navegador).

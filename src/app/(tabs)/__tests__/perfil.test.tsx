@@ -1,10 +1,12 @@
 import type * as Toolkit from "@reduxjs/toolkit";
 import type * as ReactModule from "react";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { Platform } from "react-native";
 
 import PerfilScreen from "@/app/(tabs)/perfil";
-import { confirmAction } from "@/components/confirm";
+import { confirmAction, showError } from "@/components/confirm";
 import { setSetting } from "@/db/settings-repo";
+import { reportUnavailable } from "@/platform/runtime";
 import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
 
 /**
@@ -13,12 +15,17 @@ import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
  *    abrir Compartir/descargar; cancelar no exporta.
  *  - El botón "?" ("Ver recorrido de la app") lleva a Agenda con el recorrido abierto
  *    solo para esta sesión: no escribe '0' en SQLite.
+ *  - La UI es la misma en web y en el celular: importar contactos muestra la
+ *    misma tarjeta, y donde no se puede (web) lo reporta el servicio de
+ *    capacidades (error en pantalla + log), sin copy alternativo.
  */
 
 const mockPush = jest.fn<void, [string]>();
 const mockNavigate = jest.fn<void, [string]>();
 const mockReplace = jest.fn<void, [string]>();
 const mockExport = jest.fn<Promise<void>, []>();
+/** Simula el entorno: true = app instalada (hay agenda de contactos), false = web. */
+let mockContactsAvailable = true;
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({
@@ -33,11 +40,19 @@ jest.mock("expo-router", () => ({
 jest.mock("@/components/confirm", () => ({
   confirmAction: jest.fn(),
   notify: jest.fn(),
+  showError: jest.fn(),
 }));
 // La fila "Avisos" consulta el permiso al montar: acá no importa, queda fijo en concedido.
 jest.mock("@/notifications/notifications", () => ({
   ...jest.requireActual<object>("@/notifications/notifications"),
   getNotificationPermissionState: jest.fn().mockResolvedValue("granted"),
+}));
+// El servicio real mira Platform/Constants; acá se fija sólo `contacts` y el resto se da por
+// disponible (`remindersAvailable` se calcula al cargar notifications, antes de que exista el flag).
+jest.mock("@/platform/runtime", () => ({
+  ...jest.requireActual<object>("@/platform/runtime"),
+  isAvailable: (capability: string) => capability !== "contacts" || mockContactsAvailable,
+  reportUnavailable: jest.fn(),
 }));
 jest.mock("@/db/settings-repo");
 // El thunk real abre Compartir / descarga un archivo: se reemplaza por uno que solo registra la llamada.
@@ -56,7 +71,10 @@ jest.mock("@/components/my-birthday-card", () => ({
 }));
 
 const mockConfirm = jest.mocked(confirmAction);
+const mockShowError = jest.mocked(showError);
 const mockSetSetting = jest.mocked(setSetting);
+const mockReportUnavailable = jest.mocked(reportUnavailable);
+const originalOS = Platform.OS;
 
 /** Agenda es la ruta índice del grupo (tabs): '/', '/(tabs)' o '/(tabs)/index' llevan ahí. */
 const AGENDA_HREF = /^\/(\(tabs\)(\/index)?)?$/;
@@ -76,8 +94,13 @@ const tocarExportar = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockContactsAvailable = true;
   mockExport.mockResolvedValue(undefined);
   mockSetSetting.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  Platform.OS = originalOS;
 });
 
 describe("<PerfilScreen /> exportar copia", () => {
@@ -160,5 +183,40 @@ describe("<PerfilScreen /> ver recorrido de la app", () => {
         expect.arrayContaining([expect.stringMatching(AGENDA_HREF)]),
       );
     });
+  });
+});
+
+describe("<PerfilScreen /> cargar cumpleaños de contactos", () => {
+  const tocarImportar = () =>
+    fireEvent.press(
+      screen.getByRole("button", { name: "Cargar cumpleaños de contactos" }),
+    );
+
+  it("en el celular abre la pantalla de importación", async () => {
+    await renderPerfil();
+
+    await tocarImportar();
+
+    expect(mockPush).toHaveBeenCalledWith("/cargar-cumpleanos");
+    expect(mockReportUnavailable).not.toHaveBeenCalled();
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it("en web muestra la misma tarjeta y, al tocarla, lo reporta como acción no disponible", async () => {
+    // Entorno web completo: la capacidad falta y el SO oculta la fila iOS de Face ID.
+    Platform.OS = "web";
+    mockContactsAvailable = false;
+    await renderPerfil();
+
+    // Mismo subtítulo que en el celular: nada de "navegador" ni "app instalada".
+    expect(
+      screen.getByText("Elegí a quiénes de tu agenda querés cargarles el cumpleaños"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/navegador|app instalada|versión web/i)).toBeNull();
+
+    await tocarImportar();
+
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReportUnavailable).toHaveBeenCalledWith("contacts", "No se pudo importar");
   });
 });

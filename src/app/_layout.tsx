@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Platform, StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, Text, View } from "react-native";
 import { Provider } from "react-redux";
 
 import { confirmAction, errorMessage } from "@/components/confirm";
@@ -13,6 +13,7 @@ import { initDatabase } from "@/db/database";
 import { cleanupPhotosWithNotice } from "@/db/photos-repo";
 import { setupNotificationChannel } from "@/notifications/notifications";
 import { reconcileReminders } from "@/notifications/reconcile";
+import { RUNTIME_CAPABILITIES, isAvailable, logUnavailable } from "@/platform/runtime";
 import { store, useAppSelector } from "@/store";
 import { loadEventBases } from "@/store/event-bases-slice";
 import { loadEventTypes } from "@/store/event-types-slice";
@@ -122,12 +123,10 @@ export default function RootLayout() {
       } catch (error) {
         console.warn("No se pudo crear el canal de notificaciones", error);
       }
-      // En web la UI es la misma que en mobile (sin copies alternativos): las diferencias
-      // reales se informan una sola vez por consola, al arrancar, y no se muestran al usuario.
-      if (Platform.OS === "web") {
-        console.info(
-          "Crono web: no se programan recordatorios ni hay bloqueo local; los datos quedan en este navegador.",
-        );
+      // La UI es la misma en web, Expo Go y app instalada (sin copies alternativos): lo que
+      // este entorno no cumple se informa una sola vez por consola, al arrancar, y no al usuario.
+      for (const capability of RUNTIME_CAPABILITIES) {
+        if (!isAvailable(capability)) logUnavailable(capability);
       }
       // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.
       // Nunca rechaza: si falla, avisa y no bloquea el arranque.

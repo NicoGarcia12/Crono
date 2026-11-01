@@ -55,6 +55,6 @@ test('carga mi cumpleaños desde el perfil y registra quién me saludó', async 
 
   // Al recargar, los saludos siguen guardados.
   await page.reload();
-  await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
+  await page.getByRole('button', { name: 'Desbloquear' }).click();
   await expect(page.getByText('Te saludaron 2 de 3')).toBeVisible();
 });

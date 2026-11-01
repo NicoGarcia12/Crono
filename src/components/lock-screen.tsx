@@ -1,6 +1,7 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { isAvailable, logUnavailable } from '@/platform/runtime';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -25,10 +26,13 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
   const [authenticating, setAuthenticating] = useState(false);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
-  const isWeb = Platform.OS === 'web';
+  // Donde no hay credencial del sistema que consultar (web) la UI es la misma que en el
+  // celular: la diferencia se informa por consola al tocar Desbloquear. Se consulta al
+  // renderizar (no al cargar el módulo) para respetar el entorno real.
+  const localLockAvailable = isAvailable('localLock');
 
   const authenticate = useCallback(async (): Promise<void> => {
-    if (Platform.OS === 'web' || inFlightRef.current) return;
+    if (!localLockAvailable || inFlightRef.current) return;
     inFlightRef.current = true;
     setAuthenticating(true);
     setMessage(null);
@@ -68,6 +72,12 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
       inFlightRef.current = false;
       if (mountedRef.current) setAuthenticating(false);
     }
+  }, [localLockAvailable, onUnlock]);
+
+  /** Acción del usuario que este entorno no puede cumplir: se avisa por consola y se sigue. */
+  const unlockWithoutLock = useCallback((): void => {
+    logUnavailable('localLock');
+    onUnlock();
   }, [onUnlock]);
 
   useEffect(() => {
@@ -89,23 +99,16 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
         accessibilityRole="image"
         accessibilityLabel="Crono"
       />
-      <Text style={styles.title}>
-        {isWeb ? 'Crono web no tiene bloqueo local' : 'Crono está bloqueada'}
-      </Text>
-      {isWeb ? (
-        <Text style={styles.message}>
-          En esta versión web no se solicita el PIN, la huella ni la cara del dispositivo.
-          Si continuás, cualquier persona con acceso a este navegador puede ver tus datos.
-        </Text>
-      ) : message ? <Text style={styles.message}>{message}</Text> : null}
+      <Text style={styles.title}>Crono está bloqueada</Text>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: authenticating, busy: authenticating }}
         disabled={authenticating}
         style={styles.button}
-        onPress={isWeb ? onUnlock : authenticate}
+        onPress={localLockAvailable ? authenticate : unlockWithoutLock}
       >
-        <Text style={styles.buttonText}>{isWeb ? 'Continuar sin bloqueo' : 'Desbloquear'}</Text>
+        <Text style={styles.buttonText}>Desbloquear</Text>
       </Pressable>
     </View>
   );

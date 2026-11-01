@@ -134,12 +134,19 @@ describe("<PerfilScreen /> fila Avisos: estado", () => {
     ]).toEqual([null, null]);
   });
 
-  it("sin recordatorios disponibles (web / Expo Go Android) no aparece", async () => {
+  it("sin recordatorios disponibles (web / Expo Go Android) no aparece y el aviso es el mismo", async () => {
     mockRemindersAvailable = false;
     await renderPerfil();
     await act(async () => undefined);
 
     expect(screen.queryByRole("button", { name: FILA_AVISOS })).toBeNull();
+    // Un solo texto, sea por build (Expo Go Android) o por web: la causa va al log, no a la UI.
+    expect(
+      screen.getByText(
+        "Esta versión no programa recordatorios. Las anticipaciones se guardan como referencia.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/navegador|Crono web|versión web/)).toBeNull();
   });
 
   it("se refresca cuando la app vuelve a primer plano", async () => {

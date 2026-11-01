@@ -4,15 +4,15 @@ import { empezarSinRecorrido, rechazarRecorrido } from "./primer-uso";
 
 /**
  * Flujo crítico de Crono: primer uso → crear un evento → verlo en la agenda.
- * En web se acepta explícitamente continuar sin bloqueo del sistema antes de
- * mostrar la bienvenida cuando la BD todavía no tiene nombre guardado.
+ * La pantalla de bloqueo es la misma que en el celular: en web, "Desbloquear"
+ * sigue de largo (no hay credencial del sistema) y lo deja anotado en consola.
  */
 test.describe("Crear evento (flujo crítico)", () => {
   test("primer uso: pide el nombre, crea un evento y persiste tras recargar", async ({
     page,
   }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Continuar sin bloqueo" }).click();
+    await page.getByRole("button", { name: "Desbloquear" }).click();
 
     // 1) Primer uso: pantalla de bienvenida
     const nameInput = page.getByPlaceholder("¿Cómo te llamás?");
@@ -37,7 +37,7 @@ test.describe("Crear evento (flujo crítico)", () => {
 
     // 5) Persistencia: al recargar, el evento sigue (SQLite, no estado en memoria)
     await page.reload();
-    await page.getByRole("button", { name: "Continuar sin bloqueo" }).click();
+    await page.getByRole("button", { name: "Desbloquear" }).click();
     await expect(page.getByText("Cena con amigos")).toBeVisible();
     // Y ya no vuelve a pedir el nombre
     await expect(page.getByPlaceholder("¿Cómo te llamás?")).toHaveCount(0);

@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { showError } from '@/components/confirm';
 import { pickPhoto } from '@/media/photos';
+import { isAvailable, reportUnavailable } from '@/platform/runtime';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -30,9 +31,17 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, size = 72 }: Ph
 
   const pick = async () => {
     // El selector sólo entrega la elección (URI temporal): copiar y guardar es del dueño de onChange.
-    // En web `pickPhoto` rechaza con un mensaje claro: el botón es el mismo, la acción avisa.
     const picked = await pickPhoto();
     if (picked) await onChange(picked);
+  };
+
+  /** Donde no hay selector (web) el botón es el mismo: tocarlo avisa en vez de abrir nada. */
+  const handlePick = () => {
+    if (!isAvailable('photos')) {
+      reportUnavailable('photos', 'No se pudo elegir la foto');
+      return;
+    }
+    void run('No se pudo elegir la foto', pick);
   };
 
   /** Un solo guardado a la vez; si falla se avisa en vez de dejar la promesa sin atender. */
@@ -53,7 +62,7 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, size = 72 }: Ph
       <Pressable
         accessibilityLabel={accessibilityLabel}
         style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}
-        onPress={() => void run('No se pudo elegir la foto', pick)}
+        onPress={handlePick}
       >
         {uri ? (
           <Image source={{ uri }} style={[styles.image, { borderRadius: size / 2 }]} />

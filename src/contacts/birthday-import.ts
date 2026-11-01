@@ -1,6 +1,7 @@
 import * as Contacts from 'expo-contacts';
 import { Platform } from 'react-native';
 
+import { isAvailable } from '@/platform/runtime';
 import type { EventItem, NewEvent } from '@/types';
 
 import { fetchAllowedContactIds } from './account-filter';
@@ -167,11 +168,11 @@ export type FetchContactsResult =
 
 /**
  * Pide el permiso de contactos (recién acá, no al abrir la app) y devuelve
- * los contactos de las cuentas propias (ver `account-filter`). En web no existe
- * la agenda de contactos.
+ * los contactos de las cuentas propias (ver `account-filter`). Donde no hay
+ * agenda del sistema (web) devuelve `unavailable` sin pedir permiso.
  */
 export async function fetchContacts(existingEvents: EventItem[]): Promise<FetchContactsResult> {
-  if (Platform.OS === 'web') return { status: 'unavailable' };
+  if (!isAvailable('contacts')) return { status: 'unavailable' };
 
   const { status } = await Contacts.requestPermissionsAsync();
   if (status !== 'granted') return { status: 'denied' };

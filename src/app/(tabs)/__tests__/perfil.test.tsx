@@ -6,6 +6,7 @@ import { Platform } from "react-native";
 import PerfilScreen from "@/app/(tabs)/perfil";
 import { confirmAction, showError } from "@/components/confirm";
 import { setSetting } from "@/db/settings-repo";
+import { reportUnavailable } from "@/platform/runtime";
 import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
 
 /**
@@ -15,13 +16,16 @@ import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
  *  - El botón "?" ("Ver recorrido de la app") lleva a Agenda con el recorrido abierto
  *    solo para esta sesión: no escribe '0' en SQLite.
  *  - La UI es la misma en web y en el celular: importar contactos muestra la
- *    misma tarjeta, y donde no se puede (web) avisa con un error + log.
+ *    misma tarjeta, y donde no se puede (web) lo reporta el servicio de
+ *    capacidades (error en pantalla + log), sin copy alternativo.
  */
 
 const mockPush = jest.fn<void, [string]>();
 const mockNavigate = jest.fn<void, [string]>();
 const mockReplace = jest.fn<void, [string]>();
 const mockExport = jest.fn<Promise<void>, []>();
+/** Simula el entorno: true = app instalada (hay agenda de contactos), false = web. */
+let mockContactsAvailable = true;
 
 jest.mock("expo-router", () => ({
   useRouter: () => ({
@@ -43,6 +47,13 @@ jest.mock("@/notifications/notifications", () => ({
   ...jest.requireActual<object>("@/notifications/notifications"),
   getNotificationPermissionState: jest.fn().mockResolvedValue("granted"),
 }));
+// El servicio real mira Platform/Constants; acá se fija sólo `contacts` y el resto se da por
+// disponible (`remindersAvailable` se calcula al cargar notifications, antes de que exista el flag).
+jest.mock("@/platform/runtime", () => ({
+  ...jest.requireActual<object>("@/platform/runtime"),
+  isAvailable: (capability: string) => capability !== "contacts" || mockContactsAvailable,
+  reportUnavailable: jest.fn(),
+}));
 jest.mock("@/db/settings-repo");
 // El thunk real abre Compartir / descarga un archivo: se reemplaza por uno que solo registra la llamada.
 jest.mock("@/store/backup-slice", () => {
@@ -62,6 +73,7 @@ jest.mock("@/components/my-birthday-card", () => ({
 const mockConfirm = jest.mocked(confirmAction);
 const mockShowError = jest.mocked(showError);
 const mockSetSetting = jest.mocked(setSetting);
+const mockReportUnavailable = jest.mocked(reportUnavailable);
 const originalOS = Platform.OS;
 
 /** Agenda es la ruta índice del grupo (tabs): '/', '/(tabs)' o '/(tabs)/index' llevan ahí. */
@@ -82,6 +94,7 @@ const tocarExportar = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockContactsAvailable = true;
   mockExport.mockResolvedValue(undefined);
   mockSetSetting.mockResolvedValue(undefined);
 });
@@ -180,39 +193,30 @@ describe("<PerfilScreen /> cargar cumpleaños de contactos", () => {
     );
 
   it("en el celular abre la pantalla de importación", async () => {
-    Platform.OS = "android";
     await renderPerfil();
 
     await tocarImportar();
 
     expect(mockPush).toHaveBeenCalledWith("/cargar-cumpleanos");
+    expect(mockReportUnavailable).not.toHaveBeenCalled();
     expect(mockShowError).not.toHaveBeenCalled();
   });
 
-  it("en web muestra la misma tarjeta y, al tocarla, avisa con un error y lo loguea", async () => {
+  it("en web muestra la misma tarjeta y, al tocarla, lo reporta como acción no disponible", async () => {
+    // Entorno web completo: la capacidad falta y el SO oculta la fila iOS de Face ID.
     Platform.OS = "web";
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
-    try {
-      await renderPerfil();
+    mockContactsAvailable = false;
+    await renderPerfil();
 
-      // Mismo subtítulo que en el celular: nada de "navegador" ni "app instalada".
-      expect(
-        screen.getByText("Elegí a quiénes de tu agenda querés cargarles el cumpleaños"),
-      ).toBeTruthy();
-      expect(screen.queryByText(/navegador|app instalada|versión web/i)).toBeNull();
+    // Mismo subtítulo que en el celular: nada de "navegador" ni "app instalada".
+    expect(
+      screen.getByText("Elegí a quiénes de tu agenda querés cargarles el cumpleaños"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/navegador|app instalada|versión web/i)).toBeNull();
 
-      await tocarImportar();
+    await tocarImportar();
 
-      expect(mockPush).not.toHaveBeenCalled();
-      expect(mockShowError).toHaveBeenCalledWith(
-        "No se pudo importar",
-        "Importar contactos no está disponible en esta versión.",
-      );
-      expect(warn).toHaveBeenCalledWith(
-        "Importar contactos no está disponible en esta versión.",
-      );
-    } finally {
-      warn.mockRestore();
-    }
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockReportUnavailable).toHaveBeenCalledWith("contacts", "No se pudo importar");
   });
 });

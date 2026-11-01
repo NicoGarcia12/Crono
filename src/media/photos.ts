@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import { Platform } from 'react-native';
+
+import { isAvailable, unavailableMessage } from '@/platform/runtime';
 
 /**
  * El selector devuelve una URI temporal: elegir o cancelar un borrador NO crea
@@ -21,21 +22,13 @@ function getPhotosDir(): Directory {
 }
 
 /**
- * Único texto para la UI (diálogo de error) y el log cuando el usuario intenta
- * elegir o guardar una foto donde no hay sandbox de archivos (web).
- */
-export const PHOTOS_UNAVAILABLE_MESSAGE = 'Elegir una foto no está disponible en esta versión.';
-
-/**
  * Abre el selector sin modificar fotos ni referencias existentes.
- * En web rechaza en vez de devolver null: cancelar es silencioso, pero una
- * acción que no se puede cumplir se avisa (el que llama muestra el error).
+ * Donde no hay sandbox de archivos (web) rechaza en vez de devolver null:
+ * cancelar es silencioso, pero una acción que no se puede cumplir se avisa
+ * (el que llama decide cómo: ver `reportUnavailable` en el selector).
  */
 export async function pickPhoto(): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    console.warn(PHOTOS_UNAVAILABLE_MESSAGE);
-    throw new Error(PHOTOS_UNAVAILABLE_MESSAGE);
-  }
+  if (!isAvailable('photos')) throw new Error(unavailableMessage('photos'));
 
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (status !== 'granted') return null;
@@ -58,7 +51,7 @@ export function photoFileName(uri: string): string {
 
 /** Sólo reconocemos copias generadas por Crono, directamente en su carpeta. */
 export function isSavedPhoto(uri: string): boolean {
-  if (Platform.OS === 'web') return false;
+  if (!isAvailable('photos')) return false;
   const directoryUri = getPhotosDir().uri;
   const prefix = directoryUri.endsWith('/') ? directoryUri : `${directoryUri}/`;
   return uri.startsWith(prefix) && OWN_PHOTO_NAME.test(uri.slice(prefix.length));
@@ -70,7 +63,7 @@ export function isSavedPhoto(uri: string): boolean {
  * La fuente —galería o caché del selector— jamás se mueve ni se borra.
  */
 export async function savePhoto(sourceUri: string, prefix: PhotoPrefix): Promise<string> {
-  if (Platform.OS === 'web') throw new Error(PHOTOS_UNAVAILABLE_MESSAGE);
+  if (!isAvailable('photos')) throw new Error(unavailableMessage('photos'));
   if (isSavedPhoto(sourceUri)) return sourceUri;
 
   const source = new File(sourceUri);
@@ -89,7 +82,7 @@ export async function savePhoto(sourceUri: string, prefix: PhotoPrefix): Promise
 
 /** Inventario acotado: no recorremos subcarpetas ni tocamos archivos externos. */
 export function savedPhotos(): File[] {
-  if (Platform.OS === 'web') return [];
+  if (!isAvailable('photos')) return [];
   const directory = getPhotosDir();
   if (!directory.exists) return [];
   return directory.list().filter((entry): entry is File => entry instanceof File && isSavedPhoto(entry.uri));

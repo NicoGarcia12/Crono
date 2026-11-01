@@ -17,13 +17,13 @@ import { describeRestore } from "@/backup/backup";
 import { confirmAction, notify, showError } from "@/components/confirm";
 import { MyBirthdayCard } from "@/components/my-birthday-card";
 import { PhotoPicker } from "@/components/photo-picker";
-import { CONTACTS_UNAVAILABLE_MESSAGE } from "@/contacts/contacts-availability";
 import {
   getNotificationPermissionState,
   remindersAvailable,
   type NotificationPermissionState,
 } from "@/notifications/notifications";
 import { explainAndRequestNotificationPermission } from "@/notifications/permission-prompt";
+import { isAvailable, reportUnavailable } from "@/platform/runtime";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { exportBackup, restoreBackup } from "@/store/backup-slice";
 import { addEvent, editEvent } from "@/store/events-slice";
@@ -143,9 +143,8 @@ export default function PerfilScreen() {
    * mostrar un copy distinto o esconder el botón.
    */
   const handleImportContacts = () => {
-    if (Platform.OS === "web") {
-      console.warn(CONTACTS_UNAVAILABLE_MESSAGE);
-      showError("No se pudo importar", CONTACTS_UNAVAILABLE_MESSAGE);
+    if (!isAvailable("contacts")) {
+      reportUnavailable("contacts", "No se pudo importar");
       return;
     }
     router.push("/cargar-cumpleanos");

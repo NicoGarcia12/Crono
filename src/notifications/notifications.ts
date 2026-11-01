@@ -1,9 +1,9 @@
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
 import { cancelRemindersAfterCommit } from '@/notifications/cancellation-recovery';
+import { isAvailable } from '@/platform/runtime';
 import type { EventReminder, NewEvent, ReminderInput, ReminderUnit } from '@/types';
 import { nextOccurrence } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
@@ -16,26 +16,18 @@ import { reminderDate } from '@/utils/reminders';
  *  - Locales: la propia app le pide al sistema operativo "avisame a tal hora".
  *    Funcionan sin conexión y aunque la app esté cerrada. Son las que usamos.
  *
- * Crono desactiva este módulo en Expo Go Android y lo carga de forma diferida
- * en los demás entornos nativos. Es una restricción de esta app, no del SDK:
- * SDK 57 admite notificaciones locales en Expo Go; sólo push remoto requiere
- * un development build. La ayuda debe describir el guard que realmente usamos.
+ * Crono desactiva este módulo en Expo Go Android y web, y lo carga de forma
+ * diferida en los demás entornos nativos. La regla vive en `@/platform/runtime`
+ * (capacidad `reminders`): es una restricción de esta app, no del SDK.
  */
 
 type NotificationsModule = typeof import('expo-notifications');
 
-/** ExecutionEnvironment.StoreClient === corriendo dentro de Expo Go. */
-const isExpoGoAndroid =
-  Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-
 /**
- * Entornos deshabilitados por Crono: Expo Go Android y web.
- * El navegador no tiene el scheduler nativo de expo-notifications.
+ * true si en este entorno se pueden programar recordatorios. Se calcula una
+ * vez al cargar: el entorno no cambia en caliente y los tests lo mockean acá.
  */
-const notificationsUnavailable = isExpoGoAndroid || Platform.OS === 'web';
-
-/** true si en este entorno se pueden programar recordatorios. */
-export const remindersAvailable = !notificationsUnavailable;
+export const remindersAvailable = isAvailable('reminders');
 
 /**
  * Un vistazo con onda al tipo de evento, para el título de la notificación.
@@ -75,7 +67,7 @@ let cachedModule: NotificationsModule | null | undefined;
 function getNotifications(): NotificationsModule | null {
   if (cachedModule !== undefined) return cachedModule;
 
-  if (notificationsUnavailable) {
+  if (!remindersAvailable) {
     cachedModule = null;
     return cachedModule;
   }

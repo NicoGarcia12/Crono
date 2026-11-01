@@ -116,7 +116,9 @@ El filtro de contactos por cuenta de Google usa un **módulo nativo propio** (`m
 
 SDK 57 admite notificaciones **locales** en Expo Go; lo retirado en Android es el push remoto. Crono mantiene su propio guard para Expo Go Android. En web, las anticipaciones se guardan como referencia: para programar avisos, usá la app instalada y creá, editá o restaurá allí los eventos. La importación de contactos y las fotos requieren la app instalada incluso si abrís el navegador desde un celular. El backup web se descarga y se restaura eligiendo un archivo del equipo; no sincroniza automáticamente con otros dispositivos.
 
-La interfaz **no cambia por plataforma**: web, Expo Go y la app instalada muestran los mismos textos y botones (los de mobile). Cuando web no puede cumplir una acción (importar contactos, elegir una foto, bloquear), el botón sigue ahí y al tocarlo aparece un error claro que también queda en consola (`console.warn`). Las diferencias pasivas (sin recordatorios, sin bloqueo local, datos en el navegador) se informan una sola vez por consola al arrancar.
+La interfaz **no cambia por plataforma**: web, Expo Go y la app instalada muestran los mismos textos y botones (los de mobile). Cuando web no puede cumplir una acción (importar contactos, elegir una foto, bloquear), el botón sigue ahí y al tocarlo aparece un error claro que también queda en consola (`console.warn`). Las diferencias pasivas (sin recordatorios, sin bloqueo local) se informan una sola vez por consola al arrancar.
+
+Esa regla vive en un solo lugar: `src/platform/runtime.ts`. `runtime.kind` detecta el entorno (`web` / `expo-go` / `native`), `isAvailable(capability)` responde con una tabla por capacidad (`reminders`, `contacts`, `photos`, `localLock`) y el aviso tiene dos formas según cómo surge la diferencia: `logUnavailable` (pasiva: sólo consola, con el `kind` como contexto) y `reportUnavailable` (acción del usuario: consola + diálogo de error con el mismo mensaje). Para agregar una capacidad o cambiar el texto se toca esa tabla, no cada pantalla.
 
 ### Scripts
 

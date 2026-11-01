@@ -1,6 +1,7 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { isAvailable, logUnavailable } from '@/platform/runtime';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -12,12 +13,6 @@ import { useThemeColors } from '@/theme/use-theme';
  * expo-local-authentication abre el desbloqueo nativo (huella, cara o PIN,
  * el mismo que usás para desbloquear el teléfono) y solo nos dice si pasó o no.
  */
-
-/**
- * Web no tiene credencial del sistema que consultar. La UI es la misma que en
- * el celular: la diferencia se informa por consola al tocar Desbloquear.
- */
-const WEB_LOCK_WARNING = 'Bloqueo local no disponible en web';
 
 interface LockScreenProps {
   onUnlock: () => void;
@@ -31,9 +26,13 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
   const [authenticating, setAuthenticating] = useState(false);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
+  // Donde no hay credencial del sistema que consultar (web) la UI es la misma que en el
+  // celular: la diferencia se informa por consola al tocar Desbloquear. Se consulta al
+  // renderizar (no al cargar el módulo) para respetar el entorno real.
+  const localLockAvailable = isAvailable('localLock');
 
   const authenticate = useCallback(async (): Promise<void> => {
-    if (Platform.OS === 'web' || inFlightRef.current) return;
+    if (!localLockAvailable || inFlightRef.current) return;
     inFlightRef.current = true;
     setAuthenticating(true);
     setMessage(null);
@@ -73,11 +72,11 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
       inFlightRef.current = false;
       if (mountedRef.current) setAuthenticating(false);
     }
-  }, [onUnlock]);
+  }, [localLockAvailable, onUnlock]);
 
-  /** Acción del usuario que web no puede cumplir: se avisa por consola y se sigue. */
-  const unlockOnWeb = useCallback((): void => {
-    console.warn(WEB_LOCK_WARNING);
+  /** Acción del usuario que este entorno no puede cumplir: se avisa por consola y se sigue. */
+  const unlockWithoutLock = useCallback((): void => {
+    logUnavailable('localLock');
     onUnlock();
   }, [onUnlock]);
 
@@ -107,7 +106,7 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
         accessibilityState={{ disabled: authenticating, busy: authenticating }}
         disabled={authenticating}
         style={styles.button}
-        onPress={Platform.OS === 'web' ? unlockOnWeb : authenticate}
+        onPress={localLockAvailable ? authenticate : unlockWithoutLock}
       >
         <Text style={styles.buttonText}>Desbloquear</Text>
       </Pressable>

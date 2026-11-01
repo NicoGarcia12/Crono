@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Platform, Text } from 'react-native';
 
 import { LockScreen } from '@/components/lock-screen';
+import { logUnavailable } from '@/platform/runtime';
 import { renderWithStore } from '@/test-utils';
 
 // Jest corre en Node: simulamos la frontera nativa, no el diálogo ni la seguridad del SO.
@@ -14,9 +15,17 @@ jest.mock('expo-local-authentication', () => ({
   isEnrolledAsync: jest.fn().mockResolvedValue(false),
   SecurityLevel: { NONE: 0, SECRET: 1, BIOMETRIC_WEAK: 2, BIOMETRIC_STRONG: 3 },
 }));
+/** true = hay credencial del sistema (celular); false = web. */
+let mockLocalLockAvailable = true;
+jest.mock('@/platform/runtime', () => ({
+  ...jest.requireActual<object>('@/platform/runtime'),
+  isAvailable: () => mockLocalLockAvailable,
+  logUnavailable: jest.fn(),
+}));
 
 const mockLevel = jest.mocked(LocalAuthentication.getEnrolledLevelAsync);
 const mockAuthenticate = jest.mocked(LocalAuthentication.authenticateAsync);
+const mockLog = jest.mocked(logUnavailable);
 const originalOS = Platform.OS;
 
 function ProtectedApp() {
@@ -31,6 +40,7 @@ function ProtectedApp() {
 beforeEach(() => {
   jest.clearAllMocks();
   Platform.OS = 'android';
+  mockLocalLockAvailable = true;
   mockLevel.mockResolvedValue(LocalAuthentication.SecurityLevel.SECRET);
   mockAuthenticate.mockResolvedValue({ success: false, error: 'user_cancel' });
 });
@@ -139,26 +149,22 @@ describe('<LockScreen />', () => {
     expect(onUnlock).not.toHaveBeenCalled();
   });
 
-  it('en web muestra la misma pantalla que el celular y desbloquea avisando por consola', async () => {
-    Platform.OS = 'web';
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
-    try {
-      await renderWithStore(<ProtectedApp />);
+  it('sin bloqueo local (web) muestra la misma pantalla que el celular y desbloquea avisando por consola', async () => {
+    mockLocalLockAvailable = false;
+    await renderWithStore(<ProtectedApp />);
 
-      // Sin copy alternativo: ni "web", ni "navegador", ni botón distinto.
-      expect(screen.getByText('Crono está bloqueada')).toBeTruthy();
-      expect(screen.queryByText(/web|navegador/i)).toBeNull();
-      expect(screen.queryByText('Contenido privado')).toBeNull();
-      expect(mockLevel).not.toHaveBeenCalled();
-      expect(mockAuthenticate).not.toHaveBeenCalled();
-      expect(warn).not.toHaveBeenCalled();
+    // Sin copy alternativo: ni "web", ni "navegador", ni botón distinto.
+    expect(screen.getByText('Crono está bloqueada')).toBeTruthy();
+    expect(screen.queryByText(/web|navegador/i)).toBeNull();
+    expect(screen.queryByText('Contenido privado')).toBeNull();
+    expect(mockLevel).not.toHaveBeenCalled();
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+    expect(mockLog).not.toHaveBeenCalled();
 
-      await fireEvent.press(screen.getByRole('button', { name: 'Desbloquear' }));
-      expect(screen.getByText('Contenido privado')).toBeTruthy();
-      expect(mockAuthenticate).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalledWith('Bloqueo local no disponible en web');
-    } finally {
-      warn.mockRestore();
-    }
+    await fireEvent.press(screen.getByRole('button', { name: 'Desbloquear' }));
+    expect(screen.getByText('Contenido privado')).toBeTruthy();
+    expect(mockAuthenticate).not.toHaveBeenCalled();
+    // Es una diferencia del entorno, no un error del usuario: sólo log, sin diálogo.
+    expect(mockLog).toHaveBeenCalledWith('localLock');
   });
 });

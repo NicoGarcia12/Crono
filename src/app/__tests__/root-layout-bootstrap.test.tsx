@@ -1,11 +1,11 @@
 import { render, screen, waitFor } from "@testing-library/react-native";
 import type * as ReactModule from "react";
 import type * as ReactNative from "react-native";
-import { Platform } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 
 import RootLayout from "@/app/_layout";
 import { reconcileReminders } from "@/notifications/reconcile";
+import { type Capability, logUnavailable } from "@/platform/runtime";
 
 /**
  * Arranque de la app (CRONO44): el bootstrap crea el canal Android de avisos
@@ -16,11 +16,20 @@ import { reconcileReminders } from "@/notifications/reconcile";
 
 const mockSetupChannel = jest.fn<Promise<void>, []>();
 const mockRequestPermission = jest.fn<Promise<boolean>, []>();
+/** Capacidades que el entorno simulado NO cumple (vacío = app instalada). */
+let mockUnavailable: readonly Capability[] = [];
 
 jest.mock("@/notifications/notifications", () => ({
   remindersAvailable: true,
   setupNotificationChannel: () => mockSetupChannel(),
   requestNotificationPermission: () => mockRequestPermission(),
+}));
+// El servicio real decide por Platform/Constants; acá se fija qué falta para
+// probar sólo cómo lo informa el arranque.
+jest.mock("@/platform/runtime", () => ({
+  ...jest.requireActual<object>("@/platform/runtime"),
+  isAvailable: (capability: Capability) => !mockUnavailable.includes(capability),
+  logUnavailable: jest.fn(),
 }));
 jest.mock("@/notifications/reconcile", () => ({
   reconcileReminders: jest.fn().mockResolvedValue({ status: "current" }),
@@ -68,6 +77,7 @@ const mockReconcile = jest.mocked(reconcileReminders);
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUnavailable = [];
   mockSetupChannel.mockResolvedValue(undefined);
   mockRequestPermission.mockResolvedValue(true);
 });
@@ -129,37 +139,40 @@ describe("<RootLayout /> bootstrap si crear el canal falla", () => {
 });
 
 /**
- * Regla de plataforma: web no cambia la UI (mismos copies que mobile); sus
- * diferencias reales se informan una sola vez por consola, al arrancar.
+ * Regla de plataforma: el entorno no cambia la UI (mismos copies que mobile);
+ * lo que no cumple se informa una sola vez por consola, al arrancar, vía el
+ * servicio de capacidades (`logUnavailable`, nunca `reportUnavailable`).
  */
-describe("<RootLayout /> bootstrap y plataforma", () => {
-  const originalOS = Platform.OS;
-  let info: jest.SpyInstance;
+describe("<RootLayout /> bootstrap y capacidades del entorno", () => {
+  const mockLog = jest.mocked(logUnavailable);
 
-  beforeEach(() => {
-    info = jest.spyOn(console, "info").mockImplementation(() => undefined);
-  });
-
-  afterEach(() => {
-    Platform.OS = originalOS;
-    info.mockRestore();
-  });
-
-  it("en web informa por consola lo que no hace, sin tocar la UI", async () => {
-    Platform.OS = "web";
+  it("en web informa cada capacidad que falta, sin tocar la UI", async () => {
+    mockUnavailable = ["reminders", "contacts", "photos", "localLock"];
     await render(<RootLayout />);
     await waitFor(() => expect(mockHideSplash).toHaveBeenCalled());
 
-    expect(info).toHaveBeenCalledTimes(1);
-    expect(info).toHaveBeenCalledWith(expect.stringMatching(/^Crono web: /));
-    expect(screen.queryByText(/navegador/)).toBeNull();
+    expect(mockLog.mock.calls.map(([capability]) => capability)).toEqual([
+      "reminders",
+      "contacts",
+      "photos",
+      "localLock",
+    ]);
+    expect(screen.queryByText(/navegador|web/i)).toBeNull();
   });
 
-  it("en Android no loguea nada de web", async () => {
-    Platform.OS = "android";
+  it("en Expo Go Android informa sólo los recordatorios", async () => {
+    mockUnavailable = ["reminders"];
     await render(<RootLayout />);
     await waitFor(() => expect(mockHideSplash).toHaveBeenCalled());
 
-    expect(info).not.toHaveBeenCalled();
+    expect(mockLog).toHaveBeenCalledTimes(1);
+    expect(mockLog).toHaveBeenCalledWith("reminders");
+  });
+
+  it("en la app instalada no informa nada", async () => {
+    await render(<RootLayout />);
+    await waitFor(() => expect(mockHideSplash).toHaveBeenCalled());
+
+    expect(mockLog).not.toHaveBeenCalled();
   });
 });

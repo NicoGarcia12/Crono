@@ -30,18 +30,19 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, size = 72 }: Ph
 
   const pick = async () => {
     // El selector sólo entrega la elección (URI temporal): copiar y guardar es del dueño de onChange.
+    // En web `pickPhoto` rechaza con un mensaje claro: el botón es el mismo, la acción avisa.
     const picked = await pickPhoto();
     if (picked) await onChange(picked);
   };
 
   /** Un solo guardado a la vez; si falla se avisa en vez de dejar la promesa sin atender. */
-  const run = async (action: () => Promise<void>) => {
+  const run = async (title: string, action: () => Promise<void>) => {
     if (busy.current) return;
     busy.current = true;
     try {
       await action();
     } catch (error: unknown) {
-      showError('No se pudo guardar la foto', error);
+      showError(title, error);
     } finally {
       busy.current = false;
     }
@@ -52,7 +53,7 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, size = 72 }: Ph
       <Pressable
         accessibilityLabel={accessibilityLabel}
         style={[styles.circle, { width: size, height: size, borderRadius: size / 2 }]}
-        onPress={() => void run(pick)}
+        onPress={() => void run('No se pudo elegir la foto', pick)}
       >
         {uri ? (
           <Image source={{ uri }} style={[styles.image, { borderRadius: size / 2 }]} />
@@ -65,7 +66,7 @@ export function PhotoPicker({ uri, onChange, accessibilityLabel, size = 72 }: Ph
           accessibilityLabel={`Quitar foto`}
           style={styles.remove}
           hitSlop={8}
-          onPress={() => void run(async () => { await onChange(null); })}
+          onPress={() => void run('No se pudo quitar la foto', async () => { await onChange(null); })}
         >
           <Ionicons name="close" size={14} color="#fff" />
         </Pressable>

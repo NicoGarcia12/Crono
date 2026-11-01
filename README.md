@@ -68,7 +68,7 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 
 ### Seguridad y privacidad
 
-- En Android/iOS, la app se **bloquea** con la credencial del teléfono. Si la dejás en segundo plano más de **2 minutos**, se vuelve a bloquear. En web muestra una advertencia y pide continuar explícitamente, pero no hay bloqueo local.
+- En Android/iOS, la app se **bloquea** con la credencial del teléfono. Si la dejás en segundo plano más de **2 minutos**, se vuelve a bloquear. En web la pantalla de bloqueo es la misma, pero **Desbloquear** sigue de largo (no hay credencial del sistema) y lo anota en consola.
 - Los datos viven en una base **SQLite local**, del dispositivo o navegador actual; Crono no los manda a ningún servidor. Lo que exportes o compartas sale del dispositivo, y en Android/iOS la copia de seguridad del sistema puede incluir los datos de la app (en Android, `android.allowBackup` queda en su valor por defecto de Expo, `true`).
 - Donde hay recordatorios (Android/iOS, salvo Expo Go Android), el permiso de notificaciones se pide después de la bienvenida (al tocar **Empezar**), tras un aviso que explica para qué sirven; ya no se pide al abrir la app. Quien actualiza conserva el permiso que haya dado antes, y cualquiera puede activarlos después desde **Perfil → Avisos**. Si lo negás, la app funciona igual sin avisos. Los avisos dependen del permiso y de la configuración del sistema: no conviene usar Crono como único recordatorio para algo importante.
 - Los demás permisos (contactos, fotos, cámara) se piden solo cuando usás la función que los necesita.
@@ -108,13 +108,15 @@ Cualquier cambio que guardes en `src/` se recarga solo en el celular o el navega
 | Función                                  | Expo Go                                                                | Web                                 | APK / development build |
 | ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------- | ----------------------- |
 | Agenda, calendario, notas, tipos, backup | ✅                                                                     | ✅                                  | ✅                      |
-| Bloqueo con credencial del sistema       | Según la credencial disponible; Face ID iOS requiere development build | Advertencia + continuar sin bloqueo | Credencial del sistema  |
+| Bloqueo con credencial del sistema       | Según la credencial disponible; Face ID iOS requiere development build | Sin bloqueo local (Desbloquear sigue de largo) | Credencial del sistema  |
 | Recordatorios (notificaciones)           | Desactivados en Crono Android; disponibles en iOS con permiso          | No disponibles                      | Con permiso del sistema |
 | Importar contactos                       | ✅ (sin filtro por cuenta en Android)                                  | ❌                                  | ✅                      |
 
 El filtro de contactos por cuenta de Google usa un **módulo nativo propio** (`modules/crono-contact-accounts`, en Kotlin). Expo Go no lo incluye; si no está, la app simplemente no filtra.
 
-SDK 57 admite notificaciones **locales** en Expo Go; lo retirado en Android es el push remoto. Crono mantiene su propio guard para Expo Go Android. En web, las anticipaciones se guardan como referencia: para programar avisos, usá la app instalada y creá, editá o restaurá allí los eventos. La importación de contactos requiere la app instalada incluso si abrís el navegador desde un celular. El backup web se descarga y se restaura eligiendo un archivo del equipo; no sincroniza automáticamente con otros dispositivos.
+SDK 57 admite notificaciones **locales** en Expo Go; lo retirado en Android es el push remoto. Crono mantiene su propio guard para Expo Go Android. En web, las anticipaciones se guardan como referencia: para programar avisos, usá la app instalada y creá, editá o restaurá allí los eventos. La importación de contactos y las fotos requieren la app instalada incluso si abrís el navegador desde un celular. El backup web se descarga y se restaura eligiendo un archivo del equipo; no sincroniza automáticamente con otros dispositivos.
+
+La interfaz **no cambia por plataforma**: web, Expo Go y la app instalada muestran los mismos textos y botones (los de mobile). Cuando web no puede cumplir una acción (importar contactos, elegir una foto, bloquear), el botón sigue ahí y al tocarlo aparece un error claro que también queda en consola (`console.warn`). Las diferencias pasivas (sin recordatorios, sin bloqueo local, datos en el navegador) se informan una sola vez por consola al arrancar.
 
 ### Scripts
 

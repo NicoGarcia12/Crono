@@ -6,12 +6,13 @@ import { expect, type Page } from "@playwright/test";
  */
 
 /**
- * Acepta seguir sin bloqueo (web no tiene bloqueo local), carga el nombre y
- * toca "Empezar". En web no hay diálogo de avisos (no hay recordatorios), así
- * que la app queda en Agenda con la pregunta del recorrido de primer uso.
+ * Toca "Desbloquear" (la pantalla de bloqueo es la misma que en el celular; en
+ * web no hay credencial del sistema y solo deja un aviso en consola), carga el
+ * nombre y toca "Empezar". En web no hay diálogo de avisos (no hay
+ * recordatorios), así que la app queda en Agenda con la pregunta del recorrido.
  */
 export async function completarBienvenida(page: Page, nombre = "Nico") {
-  await page.getByRole("button", { name: "Continuar sin bloqueo" }).click();
+  await page.getByRole("button", { name: "Desbloquear" }).click();
   await page.getByPlaceholder("¿Cómo te llamás?").fill(nombre);
   await page.getByText("Empezar").click();
 }
@@ -29,9 +30,9 @@ export async function empezarSinRecorrido(page: Page, nombre = "Nico") {
   await rechazarRecorrido(page);
 }
 
-/** Recarga y vuelve a Agenda (en web hay que aceptar de nuevo seguir sin bloqueo). */
+/** Recarga y vuelve a Agenda (la pantalla de bloqueo vuelve a aparecer y hay que desbloquear). */
 export async function recargarHastaAgenda(page: Page) {
   await page.reload();
-  await page.getByRole("button", { name: "Continuar sin bloqueo" }).click();
+  await page.getByRole("button", { name: "Desbloquear" }).click();
   await expect(page.getByText("Todavía no hay nada agendado")).toBeVisible();
 }

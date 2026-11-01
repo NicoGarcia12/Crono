@@ -20,9 +20,22 @@ function getPhotosDir(): Directory {
   return new Directory(Paths.document, 'photos');
 }
 
-/** Abre el selector sin modificar fotos ni referencias existentes. */
+/**
+ * Único texto para la UI (diálogo de error) y el log cuando el usuario intenta
+ * elegir o guardar una foto donde no hay sandbox de archivos (web).
+ */
+export const PHOTOS_UNAVAILABLE_MESSAGE = 'Elegir una foto no está disponible en esta versión.';
+
+/**
+ * Abre el selector sin modificar fotos ni referencias existentes.
+ * En web rechaza en vez de devolver null: cancelar es silencioso, pero una
+ * acción que no se puede cumplir se avisa (el que llama muestra el error).
+ */
 export async function pickPhoto(): Promise<string | null> {
-  if (Platform.OS === 'web') return null;
+  if (Platform.OS === 'web') {
+    console.warn(PHOTOS_UNAVAILABLE_MESSAGE);
+    throw new Error(PHOTOS_UNAVAILABLE_MESSAGE);
+  }
 
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (status !== 'granted') return null;
@@ -57,7 +70,7 @@ export function isSavedPhoto(uri: string): boolean {
  * La fuente —galería o caché del selector— jamás se mueve ni se borra.
  */
 export async function savePhoto(sourceUri: string, prefix: PhotoPrefix): Promise<string> {
-  if (Platform.OS === 'web') throw new Error('Las fotos están disponibles en la app instalada.');
+  if (Platform.OS === 'web') throw new Error(PHOTOS_UNAVAILABLE_MESSAGE);
   if (isSavedPhoto(sourceUri)) return sourceUri;
 
   const source = new File(sourceUri);

@@ -139,16 +139,26 @@ describe('<LockScreen />', () => {
     expect(onUnlock).not.toHaveBeenCalled();
   });
 
-  it('en web advierte que no hay bloqueo y requiere continuidad explícita', async () => {
+  it('en web muestra la misma pantalla que el celular y desbloquea avisando por consola', async () => {
     Platform.OS = 'web';
-    await renderWithStore(<ProtectedApp />);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await renderWithStore(<ProtectedApp />);
 
-    expect(screen.getByText('Crono web no tiene bloqueo local')).toBeTruthy();
-    expect(screen.queryByText('Contenido privado')).toBeNull();
-    expect(mockLevel).not.toHaveBeenCalled();
-    expect(mockAuthenticate).not.toHaveBeenCalled();
+      // Sin copy alternativo: ni "web", ni "navegador", ni botón distinto.
+      expect(screen.getByText('Crono está bloqueada')).toBeTruthy();
+      expect(screen.queryByText(/web|navegador/i)).toBeNull();
+      expect(screen.queryByText('Contenido privado')).toBeNull();
+      expect(mockLevel).not.toHaveBeenCalled();
+      expect(mockAuthenticate).not.toHaveBeenCalled();
+      expect(warn).not.toHaveBeenCalled();
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Continuar sin bloqueo' }));
-    expect(screen.getByText('Contenido privado')).toBeTruthy();
+      await fireEvent.press(screen.getByRole('button', { name: 'Desbloquear' }));
+      expect(screen.getByText('Contenido privado')).toBeTruthy();
+      expect(mockAuthenticate).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith('Bloqueo local no disponible en web');
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -13,6 +13,12 @@ import { useThemeColors } from '@/theme/use-theme';
  * el mismo que usás para desbloquear el teléfono) y solo nos dice si pasó o no.
  */
 
+/**
+ * Web no tiene credencial del sistema que consultar. La UI es la misma que en
+ * el celular: la diferencia se informa por consola al tocar Desbloquear.
+ */
+const WEB_LOCK_WARNING = 'Bloqueo local no disponible en web';
+
 interface LockScreenProps {
   onUnlock: () => void;
 }
@@ -25,7 +31,6 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
   const [authenticating, setAuthenticating] = useState(false);
   const inFlightRef = useRef(false);
   const mountedRef = useRef(true);
-  const isWeb = Platform.OS === 'web';
 
   const authenticate = useCallback(async (): Promise<void> => {
     if (Platform.OS === 'web' || inFlightRef.current) return;
@@ -70,6 +75,12 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
     }
   }, [onUnlock]);
 
+  /** Acción del usuario que web no puede cumplir: se avisa por consola y se sigue. */
+  const unlockOnWeb = useCallback((): void => {
+    console.warn(WEB_LOCK_WARNING);
+    onUnlock();
+  }, [onUnlock]);
+
   useEffect(() => {
     mountedRef.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -89,23 +100,16 @@ export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
         accessibilityRole="image"
         accessibilityLabel="Crono"
       />
-      <Text style={styles.title}>
-        {isWeb ? 'Crono web no tiene bloqueo local' : 'Crono está bloqueada'}
-      </Text>
-      {isWeb ? (
-        <Text style={styles.message}>
-          En esta versión web no se solicita el PIN, la huella ni la cara del dispositivo.
-          Si continuás, cualquier persona con acceso a este navegador puede ver tus datos.
-        </Text>
-      ) : message ? <Text style={styles.message}>{message}</Text> : null}
+      <Text style={styles.title}>Crono está bloqueada</Text>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled: authenticating, busy: authenticating }}
         disabled={authenticating}
         style={styles.button}
-        onPress={isWeb ? onUnlock : authenticate}
+        onPress={Platform.OS === 'web' ? unlockOnWeb : authenticate}
       >
-        <Text style={styles.buttonText}>{isWeb ? 'Continuar sin bloqueo' : 'Desbloquear'}</Text>
+        <Text style={styles.buttonText}>Desbloquear</Text>
       </Pressable>
     </View>
   );

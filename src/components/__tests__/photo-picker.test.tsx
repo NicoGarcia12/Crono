@@ -53,7 +53,18 @@ describe('<PhotoPicker />', () => {
 
     await fireEvent.press(screen.getByLabelText('Elegir foto del evento'));
 
-    await waitFor(() => expect(showError).toHaveBeenCalledWith(expect.any(String), failure));
+    await waitFor(() => expect(showError).toHaveBeenCalledWith('No se pudo elegir la foto', failure));
+  });
+
+  it('si el selector no está disponible (web), muestra el mismo botón y avisa con el error', async () => {
+    const unavailable = new Error('Elegir una foto no está disponible en esta versión.');
+    mockPick.mockRejectedValueOnce(unavailable);
+    await renderWithStore(<PhotoPicker {...props} />);
+
+    await fireEvent.press(screen.getByLabelText('Elegir foto del evento'));
+
+    await waitFor(() => expect(showError).toHaveBeenCalledWith('No se pudo elegir la foto', unavailable));
+    expect(props.onChange).not.toHaveBeenCalled();
   });
 
   it('sin foto, no ofrece sacarla', async () => {

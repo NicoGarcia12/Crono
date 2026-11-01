@@ -1,9 +1,10 @@
 import type * as Toolkit from "@reduxjs/toolkit";
 import type * as ReactModule from "react";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { Platform } from "react-native";
 
 import PerfilScreen from "@/app/(tabs)/perfil";
-import { confirmAction } from "@/components/confirm";
+import { confirmAction, showError } from "@/components/confirm";
 import { setSetting } from "@/db/settings-repo";
 import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
 
@@ -13,6 +14,8 @@ import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
  *    abrir Compartir/descargar; cancelar no exporta.
  *  - El botón "?" ("Ver recorrido de la app") lleva a Agenda con el recorrido abierto
  *    solo para esta sesión: no escribe '0' en SQLite.
+ *  - La UI es la misma en web y en el celular: importar contactos muestra la
+ *    misma tarjeta, y donde no se puede (web) avisa con un error + log.
  */
 
 const mockPush = jest.fn<void, [string]>();
@@ -33,6 +36,7 @@ jest.mock("expo-router", () => ({
 jest.mock("@/components/confirm", () => ({
   confirmAction: jest.fn(),
   notify: jest.fn(),
+  showError: jest.fn(),
 }));
 // La fila "Avisos" consulta el permiso al montar: acá no importa, queda fijo en concedido.
 jest.mock("@/notifications/notifications", () => ({
@@ -56,7 +60,9 @@ jest.mock("@/components/my-birthday-card", () => ({
 }));
 
 const mockConfirm = jest.mocked(confirmAction);
+const mockShowError = jest.mocked(showError);
 const mockSetSetting = jest.mocked(setSetting);
+const originalOS = Platform.OS;
 
 /** Agenda es la ruta índice del grupo (tabs): '/', '/(tabs)' o '/(tabs)/index' llevan ahí. */
 const AGENDA_HREF = /^\/(\(tabs\)(\/index)?)?$/;
@@ -78,6 +84,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockExport.mockResolvedValue(undefined);
   mockSetSetting.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  Platform.OS = originalOS;
 });
 
 describe("<PerfilScreen /> exportar copia", () => {
@@ -160,5 +170,49 @@ describe("<PerfilScreen /> ver recorrido de la app", () => {
         expect.arrayContaining([expect.stringMatching(AGENDA_HREF)]),
       );
     });
+  });
+});
+
+describe("<PerfilScreen /> cargar cumpleaños de contactos", () => {
+  const tocarImportar = () =>
+    fireEvent.press(
+      screen.getByRole("button", { name: "Cargar cumpleaños de contactos" }),
+    );
+
+  it("en el celular abre la pantalla de importación", async () => {
+    Platform.OS = "android";
+    await renderPerfil();
+
+    await tocarImportar();
+
+    expect(mockPush).toHaveBeenCalledWith("/cargar-cumpleanos");
+    expect(mockShowError).not.toHaveBeenCalled();
+  });
+
+  it("en web muestra la misma tarjeta y, al tocarla, avisa con un error y lo loguea", async () => {
+    Platform.OS = "web";
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await renderPerfil();
+
+      // Mismo subtítulo que en el celular: nada de "navegador" ni "app instalada".
+      expect(
+        screen.getByText("Elegí a quiénes de tu agenda querés cargarles el cumpleaños"),
+      ).toBeTruthy();
+      expect(screen.queryByText(/navegador|app instalada|versión web/i)).toBeNull();
+
+      await tocarImportar();
+
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockShowError).toHaveBeenCalledWith(
+        "No se pudo importar",
+        "Importar contactos no está disponible en esta versión.",
+      );
+      expect(warn).toHaveBeenCalledWith(
+        "Importar contactos no está disponible en esta versión.",
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

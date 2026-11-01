@@ -17,6 +17,7 @@ import { describeRestore } from "@/backup/backup";
 import { confirmAction, notify, showError } from "@/components/confirm";
 import { MyBirthdayCard } from "@/components/my-birthday-card";
 import { PhotoPicker } from "@/components/photo-picker";
+import { CONTACTS_UNAVAILABLE_MESSAGE } from "@/contacts/contacts-availability";
 import {
   getNotificationPermissionState,
   remindersAvailable,
@@ -136,6 +137,20 @@ export default function PerfilScreen() {
     router.navigate("/");
   };
 
+  /**
+   * La tarjeta es la misma en todas las plataformas. Donde no hay agenda de
+   * contactos (web), tocarla avisa con un error y lo deja en consola, en vez de
+   * mostrar un copy distinto o esconder el botón.
+   */
+  const handleImportContacts = () => {
+    if (Platform.OS === "web") {
+      console.warn(CONTACTS_UNAVAILABLE_MESSAGE);
+      showError("No se pudo importar", CONTACTS_UNAVAILABLE_MESSAGE);
+      return;
+    }
+    router.push("/cargar-cumpleanos");
+  };
+
   const handleRestore = async () => {
     try {
       const summary = await dispatch(restoreBackup()).unwrap();
@@ -214,7 +229,7 @@ export default function PerfilScreen() {
         style={styles.actionCard}
         accessibilityRole="button"
         accessibilityLabel="Cargar cumpleaños de contactos"
-        onPress={() => router.push("/cargar-cumpleanos")}
+        onPress={handleImportContacts}
       >
         <View style={styles.actionIcon}>
           <Ionicons name="people" size={22} color={colors.danger} />
@@ -222,9 +237,7 @@ export default function PerfilScreen() {
         <View style={styles.actionBody}>
           <Text style={styles.actionTitle}>Cargar cumpleaños de contactos</Text>
           <Text style={styles.actionSubtitle}>
-            {Platform.OS === "web"
-              ? "La importación requiere la app instalada en Android o iOS. En web podés crear cumpleaños desde Agenda → +"
-              : "Elegí a quiénes de tu agenda querés cargarles el cumpleaños"}
+            Elegí a quiénes de tu agenda querés cargarles el cumpleaños
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
@@ -242,11 +255,7 @@ export default function PerfilScreen() {
         icon="cloud-upload"
         color={colors.primary}
         title="Exportar copia de seguridad"
-        subtitle={
-          Platform.OS === "web"
-            ? "Descargá un archivo con tus eventos, notas, tipos y saludos. Cualquiera que lo tenga puede leerlo: guardalo en un lugar privado y no lo mandes por chat. No incluye fotos ni ideas de regalo"
-            : "Guardá un archivo con tus eventos, notas, tipos y saludos. Cualquiera que lo tenga puede leerlo: guardalo en un lugar privado y no lo mandes por chat. No incluye fotos ni ideas de regalo"
-        }
+        subtitle="Guardá un archivo con tus eventos, notas, tipos y saludos. Cualquiera que lo tenga puede leerlo: guardalo en un lugar privado y no lo mandes por chat. No incluye fotos ni ideas de regalo"
         onPress={handleExport}
       />
 
@@ -254,11 +263,7 @@ export default function PerfilScreen() {
         icon="cloud-download"
         color={colors.success}
         title="Restaurar desde un archivo"
-        subtitle={
-          Platform.OS === "web"
-            ? "Elegí una copia guardada en tu equipo. No se duplica lo que ya tenés"
-            : "Traé tu agenda desde una copia. No se duplica lo que ya tenés"
-        }
+        subtitle="Traé tu agenda desde una copia. No se duplica lo que ya tenés"
         onPress={handleRestore}
       />
 
@@ -298,11 +303,7 @@ export default function PerfilScreen() {
       <View style={styles.infoCard}>
         <InfoRow
           icon="lock-closed"
-          text={
-            Platform.OS === "web"
-              ? "La versión web no tiene bloqueo local: cualquier persona con acceso a este navegador puede ver tus datos."
-              : "La app pide la huella, cara o credencial de tu celular al abrirse y al volver después de más de 2 minutos fuera. Sin credencial del sistema, necesitás configurar una para entrar."
-          }
+          text="La app pide la huella, cara o credencial de tu celular al abrirse y al volver después de más de 2 minutos fuera. Sin credencial del sistema, necesitás configurar una para entrar."
         />
         {Platform.OS === "ios" ? (
           <InfoRow
@@ -312,11 +313,7 @@ export default function PerfilScreen() {
         ) : null}
         <InfoRow
           icon="phone-portrait"
-          text={
-            Platform.OS === "web"
-              ? "Tus datos se guardan en este navegador. No se suben a un servidor ni se sincronizan con tu celular. Exportá una copia antes de borrar los datos del sitio."
-              : "Tus datos se guardan en este celular (SQLite local) y Crono no los sube a ningún servidor. Lo que exportes o compartas sale del celular, y la copia de seguridad del sistema puede incluir los datos de la app."
-          }
+          text="Tus datos se guardan en este celular (SQLite local) y Crono no los sube a ningún servidor. Lo que exportes o compartas sale del celular, y la copia de seguridad del sistema puede incluir los datos de la app."
         />
         {remindersAvailable ? (
           <InfoRow
@@ -324,15 +321,12 @@ export default function PerfilScreen() {
             text="Si autorizás las notificaciones, los recordatorios locales pueden avisarte sin internet y con la app cerrada. Igual dependen del permiso y de la configuración del celular: no uses Crono como único aviso para algo importante."
           />
         ) : null}
+        {/* Depende del build (Expo Go Android, web): un solo aviso, la causa va al log de arranque. */}
         {!remindersAvailable ? (
           <InfoRow
             icon="warning"
             danger
-            text={
-              Platform.OS === "web"
-                ? "Crono web no envía recordatorios. Podés guardar anticipaciones como referencia. Para recibir avisos, usá la app instalada en Android o iOS y creá o editá allí tus eventos."
-                : "Esta versión de Crono no programa recordatorios en Expo Go para Android. Usá un development build o la app instalada, permití las notificaciones y creá o editá allí tus eventos."
-            }
+            text="Esta versión no programa recordatorios. Las anticipaciones se guardan como referencia."
           />
         ) : null}
       </View>

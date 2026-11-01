@@ -7,6 +7,7 @@ import { confirmDestructive } from '@/components/confirm';
 import { BirthdayWizard, type BirthdayWizardEntry } from '@/components/birthday-wizard';
 import { ContactPickList } from '@/components/contact-pick-list';
 import { candidateToEvent, fetchContacts, type ContactCandidate } from '@/contacts/birthday-import';
+import { CONTACTS_UNAVAILABLE_MESSAGE } from '@/contacts/contacts-availability';
 import { store, useAppDispatch } from '@/store';
 import { addContactBirthdays, removeEvent } from '@/store/events-slice';
 import type { ThemeColors } from '@/theme/theme';
@@ -39,6 +40,8 @@ export default function CargarCumpleanosScreen() {
   const load = useCallback(async () => {
     // Los eventos se leen del store (ya cargados al abrir la app).
     const result = await fetchContacts(store.getState().events.items);
+    // La UI no cambia por plataforma: la causa (web) va al log, la pantalla dice lo mismo en todos lados.
+    if (result.status === 'unavailable') console.warn(CONTACTS_UNAVAILABLE_MESSAGE);
     if (result.status !== 'ok') setState({ status: result.status });
     else if (result.candidates.length === 0) setState({ status: 'empty' });
     else setState({ status: 'list', candidates: result.candidates });
@@ -109,12 +112,10 @@ export default function CargarCumpleanosScreen() {
       );
     case 'unavailable':
       return (
-        <Centered icon="phone-portrait">
-          <Text style={styles.title}>La importación requiere la app instalada</Text>
+        <Centered icon="warning">
+          <Text style={styles.title}>No se pudieron leer los contactos</Text>
           <Text style={styles.message}>
-            Crono web no puede leer los contactos del dispositivo, aunque abras el navegador en
-            tu teléfono. Para importarlos, usá la app instalada en Android o iOS. En web podés
-            crear cumpleaños manualmente desde Agenda → +.
+            {CONTACTS_UNAVAILABLE_MESSAGE} Podés crear cumpleaños manualmente desde Agenda → +.
           </Text>
         </Centered>
       );

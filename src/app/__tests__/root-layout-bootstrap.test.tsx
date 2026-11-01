@@ -5,7 +5,7 @@ import * as SplashScreen from "expo-splash-screen";
 
 import RootLayout from "@/app/_layout";
 import { reconcileReminders } from "@/notifications/reconcile";
-import { type Capability, logUnavailable } from "@/platform/runtime";
+import { type RuntimeCapability, logUnavailable } from "@/platform/runtime";
 
 /**
  * Arranque de la app (CRONO44): el bootstrap crea el canal Android de avisos
@@ -17,7 +17,7 @@ import { type Capability, logUnavailable } from "@/platform/runtime";
 const mockSetupChannel = jest.fn<Promise<void>, []>();
 const mockRequestPermission = jest.fn<Promise<boolean>, []>();
 /** Capacidades que el entorno simulado NO cumple (vacío = app instalada). */
-let mockUnavailable: readonly Capability[] = [];
+let mockUnavailable: readonly RuntimeCapability[] = [];
 
 jest.mock("@/notifications/notifications", () => ({
   remindersAvailable: true,
@@ -28,7 +28,7 @@ jest.mock("@/notifications/notifications", () => ({
 // probar sólo cómo lo informa el arranque.
 jest.mock("@/platform/runtime", () => ({
   ...jest.requireActual<object>("@/platform/runtime"),
-  isAvailable: (capability: Capability) => !mockUnavailable.includes(capability),
+  isAvailable: (capability: RuntimeCapability) => !mockUnavailable.includes(capability),
   logUnavailable: jest.fn(),
 }));
 jest.mock("@/notifications/reconcile", () => ({

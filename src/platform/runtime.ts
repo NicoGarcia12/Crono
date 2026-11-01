@@ -26,8 +26,8 @@ import { showError } from '@/components/confirm';
 export type RuntimeKind = 'web' | 'expo-go' | 'native';
 
 /** Capacidades que algún entorno no cumple. El orden es el del log de arranque. */
-export const CAPABILITIES = ['reminders', 'contacts', 'photos', 'localLock'] as const;
-export type Capability = (typeof CAPABILITIES)[number];
+export const RUNTIME_CAPABILITIES = ['reminders', 'contacts', 'photos', 'localLock'] as const;
+export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number];
 
 interface RuntimeInfo {
   readonly kind: RuntimeKind;
@@ -57,7 +57,7 @@ interface CapabilityRule {
 
 const notOnWeb = (info: RuntimeInfo): boolean => info.kind !== 'web';
 
-const RULES: Readonly<Record<Capability, CapabilityRule>> = {
+const RULES: Readonly<Record<RuntimeCapability, CapabilityRule>> = {
   // Restricción de Crono, no del SDK: SDK 57 admite notificaciones locales en
   // Expo Go; sólo el push remoto requiere development build. Web no tiene el
   // scheduler nativo de expo-notifications.
@@ -80,12 +80,12 @@ const RULES: Readonly<Record<Capability, CapabilityRule>> = {
 };
 
 /** true si en este entorno la capacidad funciona. */
-export function isAvailable(capability: Capability): boolean {
+export function isAvailable(capability: RuntimeCapability): boolean {
   return RULES[capability].available(runtime);
 }
 
 /** Texto único de "no disponible", para quien necesita mostrarlo o rechazar con él. */
-export function unavailableMessage(capability: Capability): string {
+export function unavailableMessage(capability: RuntimeCapability): string {
   return RULES[capability].message;
 }
 
@@ -94,7 +94,7 @@ export function unavailableMessage(capability: Capability): string {
  * pantalla): sólo consola. El segundo argumento es contexto para quien lee el
  * log; el mensaje queda idéntico al que vería el usuario en `reportUnavailable`.
  */
-export function logUnavailable(capability: Capability): void {
+export function logUnavailable(capability: RuntimeCapability): void {
   console.warn(unavailableMessage(capability), { capability, runtime: runtime.kind });
 }
 
@@ -103,7 +103,7 @@ export function logUnavailable(capability: Capability): void {
  * consola + diálogo de error. El botón se mantiene igual en todos los entornos;
  * lo que cambia es la respuesta al tocarlo.
  */
-export function reportUnavailable(capability: Capability, title: string): void {
+export function reportUnavailable(capability: RuntimeCapability, title: string): void {
   logUnavailable(capability);
   showError(title, unavailableMessage(capability));
 }

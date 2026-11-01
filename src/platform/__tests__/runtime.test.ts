@@ -2,8 +2,8 @@ import { Platform } from 'react-native';
 
 import { showError } from '@/components/confirm';
 import {
-  CAPABILITIES,
-  type Capability,
+  RUNTIME_CAPABILITIES,
+  type RuntimeCapability,
   isAvailable,
   logUnavailable,
   reportUnavailable,
@@ -91,7 +91,7 @@ describe('runtime', () => {
 describe('isAvailable', () => {
   // Fila por entorno, columna por capacidad: la tabla completa que reemplaza a los
   // `Platform.OS === 'web'` sueltos que había en cada módulo.
-  it.each<[keyof typeof SCENARIOS, Record<Capability, boolean>]>([
+  it.each<[keyof typeof SCENARIOS, Record<RuntimeCapability, boolean>]>([
     ['web', { reminders: false, contacts: false, photos: false, localLock: false }],
     ['expo-go-android', { reminders: false, contacts: true, photos: true, localLock: true }],
     ['expo-go-ios', { reminders: true, contacts: true, photos: true, localLock: true }],
@@ -99,13 +99,13 @@ describe('isAvailable', () => {
     ['native-ios', { reminders: true, contacts: true, photos: true, localLock: true }],
   ])('en %s', (scenario, expected) => {
     enter(scenario);
-    const actual = Object.fromEntries(CAPABILITIES.map((c) => [c, isAvailable(c)]));
+    const actual = Object.fromEntries(RUNTIME_CAPABILITIES.map((c) => [c, isAvailable(c)]));
     expect(actual).toEqual(expected);
   });
 });
 
 describe('unavailableMessage', () => {
-  it.each(CAPABILITIES)('%s: texto en español sin nombrar la plataforma', (capability) => {
+  it.each(RUNTIME_CAPABILITIES)('%s: texto en español sin nombrar la plataforma', (capability) => {
     const message = unavailableMessage(capability);
     expect(message).toMatch(/\.$/);
     expect(message).not.toMatch(/\b(web|expo go|navegador|android|ios)\b/i);

@@ -13,7 +13,7 @@ import { initDatabase } from "@/db/database";
 import { cleanupPhotosWithNotice } from "@/db/photos-repo";
 import { setupNotificationChannel } from "@/notifications/notifications";
 import { reconcileReminders } from "@/notifications/reconcile";
-import { CAPABILITIES, isAvailable, logUnavailable } from "@/platform/runtime";
+import { RUNTIME_CAPABILITIES, isAvailable, logUnavailable } from "@/platform/runtime";
 import { store, useAppSelector } from "@/store";
 import { loadEventBases } from "@/store/event-bases-slice";
 import { loadEventTypes } from "@/store/event-types-slice";
@@ -125,7 +125,7 @@ export default function RootLayout() {
       }
       // La UI es la misma en web, Expo Go y app instalada (sin copies alternativos): lo que
       // este entorno no cumple se informa una sola vez por consola, al arrancar, y no al usuario.
-      for (const capability of CAPABILITIES) {
+      for (const capability of RUNTIME_CAPABILITIES) {
         if (!isAvailable(capability)) logUnavailable(capability);
       }
       // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * Diálogos propios: en web antes se usaba el `confirm` del navegador. Ahora
  * es un diálogo de Crono dentro de la página, así que se maneja como
@@ -8,10 +10,7 @@ import { expect, test } from '@playwright/test';
 test.describe('Diálogos propios', () => {
   test('borrar un evento pide confirmación: cancelar lo deja, confirmar lo borra', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Continuar sin bloqueo' }).click();
-
-    await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-    await page.getByText('Empezar').click();
+    await empezarSinRecorrido(page);
 
     await page.getByLabel('Agregar evento').click();
     await page.getByPlaceholder('Ej: Cumpleaños de mamá').fill('Cena con amigos');

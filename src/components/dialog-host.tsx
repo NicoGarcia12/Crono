@@ -26,7 +26,12 @@ export function DialogHost() {
   return <DialogView key={dialog.id} dialog={dialog} />;
 }
 
-/** El botón "atrás" de Android y tocar fuera cancelan, como con `Alert.alert`. */
+/**
+ * El botón "atrás" de Android y tocar fuera cancelan, como con `Alert.alert`.
+ * En `notify` (un solo botón, "Entendido") cerrar así también resuelve su
+ * Promise: quien la espera (ej. NameSetup antes de pedir el permiso de avisos)
+ * sigue igual, sin quedar colgado.
+ */
 function dismissValue(buttons: DialogButton[]): boolean {
   return buttons.find((b) => b.style === 'cancel')?.value ?? buttons[0]?.value ?? false;
 }

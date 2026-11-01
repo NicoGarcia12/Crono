@@ -7,6 +7,8 @@ import { EventCard } from '@/components/event-card';
 import { SearchField } from '@/components/search-field';
 import { FALLBACK_EVENT_TYPE_META } from '@/constants/event-types';
 import { useEventTypesList } from '@/constants/use-event-types';
+import { useTourTarget } from '@/onboarding/tour-context';
+import { TOUR_TARGETS } from '@/onboarding/tour-steps';
 import { useAppSelector } from '@/store';
 import type { EventType } from '@/types';
 import { isUpcoming, nextOccurrence } from '@/utils/dates';
@@ -29,6 +31,16 @@ export default function AgendaScreen() {
   const [filter, setFilter] = useState<EventType | 'todos'>('todos');
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+
+  // Elementos que el recorrido de primer uso resalta (CRONO44). Fuera del recorrido no hacen nada.
+  const searchTarget = useTourTarget(TOUR_TARGETS.search);
+  const addTarget = useTourTarget(TOUR_TARGETS.add);
+
+  // Un solo handler para el + flotante y el botón del estado vacío: misma ruta, sin duplicar.
+  const goToNewEvent = () => router.push('/evento/nuevo');
+  // El vacío "de verdad" (sin búsqueda ni filtro) es el único que invita a agregar:
+  // con un filtro activo, "no hay nada" no significa que la agenda esté vacía.
+  const showAddHint = !query && filter === 'todos';
 
   const typeLabel = useMemo(() => {
     const byKey = new Map(eventTypes.map((t) => [t.key, t.label]));
@@ -57,12 +69,15 @@ export default function AgendaScreen() {
 
   return (
     <View style={styles.container}>
-      <SearchField
-        value={query}
-        onChange={setQuery}
-        label="Buscar eventos"
-        placeholder="Buscar por nombre, tipo o descripción…"
-      />
+      {/* View propio alrededor del buscador: es lo que mide el recorrido. */}
+      <View {...searchTarget}>
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          label="Buscar eventos"
+          placeholder="Buscar por nombre, tipo o descripción…"
+        />
+      </View>
 
       {/* Filtros por tipo */}
       <View style={styles.filterRow}>
@@ -98,41 +113,50 @@ export default function AgendaScreen() {
           ))}
         </View>
       ) : null}
-
       {/* FlatList virtualiza: solo renderiza lo visible (nunca ScrollView + map para listas). */}
-      <FlatList
-        data={sorted}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <Pressable onPress={() => router.push({ pathname: '/evento/[id]', params: { id: String(item.id) } })}>
-            <EventCard event={item} />
-          </Pressable>
-        )}
-        contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.listContent}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color={colors.textSubtle} />
-            <Text style={styles.emptyTitle}>
-              {query
-                ? 'Sin resultados'
-                : filter === 'todos'
-                  ? 'Todavía no hay nada agendado'
-                  : 'Nada agendado de este tipo'}
-            </Text>
-            <Text style={styles.emptyText}>
-              {query
-                ? `No encontramos nada que coincida con “${query}”.`
-                : 'Tocá el botón + para agregar tu primer evento.'}
-            </Text>
-          </View>
-        }
-      />
+      <View style={styles.listArea}>
+        <FlatList
+          data={sorted}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) => (
+            <Pressable onPress={() => router.push({ pathname: '/evento/[id]', params: { id: String(item.id) } })}>
+              <EventCard event={item} />
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name={query ? 'search' : 'calendar-outline'} size={56} color={colors.textSubtle} />
+              <Text style={styles.emptyTitle}>
+                {query
+                  ? 'Sin resultados'
+                  : filter === 'todos'
+                    ? 'Todavía no hay nada agendado'
+                    : 'Nada agendado de este tipo'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {query
+                  ? `No encontramos nada que coincida con “${query}”.`
+                  : 'Tocá el botón + para agregar tu primer evento.'}
+              </Text>
+              {/* Botón accionable del estado vacío: reemplaza al recorrido largo como guía de primer uso. */}
+              {showAddHint ? (
+                <Pressable style={styles.emptyButton} accessibilityRole="button" onPress={goToNewEvent}>
+                  {/* Ícono decorativo: oculto a lectores de pantalla, el texto ya dice qué hace. */}
+                  <Ionicons name="add" size={18} color="#fff" accessibilityElementsHidden importantForAccessibility="no" />
+                  <Text style={styles.emptyButtonText}>Agregar evento</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          }
+        />
+      </View>
 
       {/* FAB: botón flotante de acción, patrón clásico de mobile. */}
       <Pressable
+        {...addTarget}
         style={styles.fab}
         accessibilityLabel="Agregar evento"
-        onPress={() => router.push('/evento/nuevo')}
+        onPress={goToNewEvent}
       >
         <Ionicons name="add" size={30} color="#fff" />
       </Pressable>
@@ -164,6 +188,7 @@ function FilterChip({ label, color, active, onPress }: FilterChipProps) {
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
   container: { flex: 1, backgroundColor: c.background },
+  listArea: { flex: 1 },
   filterRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -186,6 +211,17 @@ const makeStyles = (c: ThemeColors) =>
   empty: { alignItems: 'center', gap: 8, padding: 32 },
   emptyTitle: { fontSize: 17, fontWeight: '600', color: c.textMuted },
   emptyText: { fontSize: 14, color: c.textSubtle, textAlign: 'center' },
+  emptyButton: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: c.primary,
+  },
+  emptyButtonText: { fontSize: 15, fontWeight: '600', color: '#fff' },
   fab: {
     position: 'absolute',
     right: 20,

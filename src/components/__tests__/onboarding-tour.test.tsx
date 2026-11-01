@@ -74,7 +74,7 @@ const PREGUNTA = "¿Querés un recorrido por la app?";
 const INDICADOR = /^\d+ de \d+$/;
 const AVISOS_TITULO = "Antes de empezar";
 /** Fragmento común a todas las variantes del texto de avisos (web / con o sin recordatorios). */
-const AVISOS_TEXTO = /único recordatorio para algo importante/;
+const AVISOS_TEXTO = /único recordatorio de algo importante/;
 
 function Destino({ id }: { id: string }) {
   const target = useTourTarget(id);
@@ -247,7 +247,33 @@ describe("<OnboardingTour /> tarjeta inicial: avisos y guardado inmediato", () =
       expect(mockSetSetting).toHaveBeenCalledWith("onboardingTourDone", "1"),
     );
 
-    expect(screen.getByText(PREGUNTA)).toBeTruthy();
+    expect(await screen.findByText(PREGUNTA)).toBeTruthy();
+  });
+
+  it("no muestra la tarjeta hasta que el guardado como visto terminó", async () => {
+    // Promesa controlada: simula el COMMIT asíncrono de SQLite (en web va por
+    // worker + OPFS). Mientras no resolvió, la tarjeta no tiene que verse: si
+    // apareciera antes y el usuario recargara, la escritura se perdería.
+    const guardado = Promise.withResolvers<void>();
+    mockSetSetting.mockReturnValueOnce(guardado.promise);
+    await renderTour(true);
+
+    await waitFor(() =>
+      expect(mockSetSetting).toHaveBeenCalledWith("onboardingTourDone", "1"),
+    );
+    expect(screen.queryByText(PREGUNTA)).toBeNull();
+
+    await act(async () => {
+      guardado.resolve();
+    });
+    expect(await screen.findByText(PREGUNTA)).toBeTruthy();
+  });
+
+  it("si el guardado como visto falla, la tarjeta se muestra igual", async () => {
+    mockSetSetting.mockRejectedValueOnce(new Error("disco lleno"));
+    await renderTour(true);
+
+    expect(await screen.findByText(PREGUNTA)).toBeTruthy();
   });
 
   it("quien actualiza la app también la guarda como vista al verla", async () => {

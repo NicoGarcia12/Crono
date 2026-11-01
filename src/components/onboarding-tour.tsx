@@ -61,7 +61,7 @@ const MAX_BALLOON_WIDTH = 420;
  * Se muestra mientras `onboardingTourOpen` (estado de la sesión) sea true. La
  * primera vez arranca con una tarjeta inicial en el globo centrado: arriba
  * "Antes de empezar" (límites de los avisos y dónde quedan los datos) y debajo
- * la pregunta "¿Querés un recorrido por la app?". Apenas se ve, queda guardada
+ * la pregunta "¿Querés un recorrido por la app?". Antes de mostrarse queda guardada
  * como vista en SQLite: si se cierra la app sin responder, no vuelve. "No,
  * gracias", Saltar o Terminar lo cierran; "Sí, mostrame" pasa al primer paso.
  * Perfil → "?" lo reabre directo en el primer paso, sin la tarjeta y solo para
@@ -89,7 +89,11 @@ function TourOverlay() {
   const rects = useTourRects();
   const measurer = useTourMeasure();
 
-  const [revealed, setRevealed] = useState(false);
+  const [measured, setMeasured] = useState(false);
+  // Primera apertura: la tarjeta espera a que "visto" quede escrito en SQLite.
+  // Reabierto desde Perfil (`intro` false) no hay nada que guardar.
+  const [seenSaved, setSeenSaved] = useState(!intro);
+  const revealed = measured && seenSaved;
   const [stepId, setStepId] = useState(AGENDA_TOUR_STEPS[0]?.id);
   /** Dónde quedó el propio overlay en la ventana: las medidas de los destinos se pasan a sus coordenadas. */
   const [frame, setFrame] = useState<TourRect | null>(null);
@@ -104,7 +108,7 @@ function TourOverlay() {
     if (!measurer) return;
     let active = true;
     void measurer.measureAll().then(() => {
-      if (active) setRevealed(true);
+      if (active) setMeasured(true);
     });
     return () => {
       active = false;
@@ -112,7 +116,7 @@ function TourOverlay() {
   }, [measurer, screen.width, screen.height]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setRevealed(true), SETTLE_TIMEOUT_MS);
+    const timer = setTimeout(() => setMeasured(true), SETTLE_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -136,12 +140,25 @@ function TourOverlay() {
     if (target) void measurer?.measure(target);
   }, [measurer, target]);
 
-  // Guardado "visto" inmediato: apenas se revela la tarjeta inicial queda '1' en SQLite,
-  // así no vuelve aunque se cierre la app sin responder. Corre una sola vez por apertura:
-  // `revealed` solo pasa de false a true, e `intro` solo de true a false.
+  // Guardado "visto" ANTES de revelar la tarjeta inicial: se despacha al montar y la
+  // tarjeta recién aparece cuando `setSetting` terminó. Invariante: si la tarjeta se ve,
+  // '1' ya está commiteado en SQLite, así no vuelve aunque se cierre o recargue la app sin
+  // responder (en web el COMMIT es asíncrono: worker + OPFS; revelar antes perdía la
+  // escritura si el usuario recargaba enseguida). Si la escritura falla, la tarjeta se
+  // muestra igual: no se bloquea al usuario. Corre una sola vez por apertura: `seenSaved`
+  // solo pasa de false a true, y vuelve a ser false recién en un overlay nuevo.
   useEffect(() => {
-    if (revealed && intro) void dispatch(markOnboardingTourSeen());
-  }, [dispatch, revealed, intro]);
+    if (seenSaved) return;
+    let active = true;
+    // `dispatch(thunk)` nunca rechaza (devuelve la acción fulfilled/rejected);
+    // `finally` deja explícito que cualquier desenlace destraba la tarjeta.
+    void dispatch(markOnboardingTourSeen()).finally(() => {
+      if (active) setSeenSaved(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [dispatch, seenSaved]);
 
   const finish = () => {
     void dispatch(completeOnboardingTour());

@@ -57,7 +57,7 @@ test.describe("Recorrido de primer uso", () => {
 
     await expect(page.getByText(AVISOS)).toBeVisible();
     await expect(
-      page.getByText(/único recordatorio para algo importante/),
+      page.getByText(/único recordatorio de algo importante/),
     ).toBeVisible();
     await expect(page.getByText(PREGUNTA)).toBeVisible();
     await expect(
@@ -122,10 +122,11 @@ test.describe("Recorrido de primer uso", () => {
     await expect(page.getByText(PREGUNTA)).toHaveCount(0);
     await expect(page.getByText("Buscá en tu agenda")).toBeVisible();
     await expect(indicador(page)).toHaveText(/^1 de \d+$/);
+    // En web están los 4 destinos (buscador, +, Calendario y Perfil): el recorrido completo.
     const total = Number(
       (await indicador(page).textContent())?.split(" de ")[1],
     );
-    expect(total).toBeGreaterThan(1);
+    expect(total).toBe(4);
 
     for (let paso = 2; paso <= total; paso += 1) {
       await page.getByRole("button", { name: "Siguiente" }).click();

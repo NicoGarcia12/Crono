@@ -18,7 +18,7 @@ Funciona en **Android**, **iOS** y también en el **navegador** (con algunas lim
 - En el detalle de cada evento se ve una **cuenta regresiva** ("faltan 12 días").
 - **Buscador** que filtra eventos y notas por texto.
 - **Etiquetas** propias para clasificar eventos y filtrar la agenda.
-- **Recorrido guiado** opcional la primera vez que entrás: Agenda muestra primero **Antes de empezar** (los límites de los avisos y de la privacidad) y pregunta si querés el recorrido; si aceptás, resalta el buscador, los filtros, la lista, el botón **+** y cada pestaña, y termina en Perfil. Se puede rechazar o saltar (en web, también con Escape; el foco de teclado no sale de la tarjeta ni del recorrido mientras están abiertos). La tarjeta aparece una sola vez (también al actualizar desde una versión anterior): queda vista apenas se muestra, aunque cierres la app sin responder. El recorrido se vuelve a ver desde el **?** de Perfil, directo y sin la tarjeta, solo en esa sesión.
+- **Recorrido guiado** opcional la primera vez que entrás: Agenda muestra primero **Antes de empezar** (los límites de los avisos y de la privacidad) y pregunta si querés el recorrido; si aceptás, son 4 pasos cortos: el buscador, el botón **+**, la pestaña Calendario y Perfil. La Agenda vacía ofrece directo el botón **Agregar evento**. Se puede rechazar o saltar (en web, también con Escape; el foco de teclado no sale de la tarjeta ni del recorrido mientras están abiertos). La tarjeta aparece una sola vez (también al actualizar desde una versión anterior): queda vista apenas se muestra, aunque cierres la app sin responder. El recorrido se vuelve a ver desde el **?** de Perfil, directo y sin la tarjeta, solo en esa sesión.
 
 ### Calendario
 

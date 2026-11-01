@@ -14,9 +14,9 @@ import { createTestStore, renderWithStore, type TestStore } from "@/test-utils";
  * pregunta "¿Querés un recorrido…?", así que el recorrido en sí arranca por
  * el buscador, tanto al aceptarlo como al reabrirlo desde Perfil.
  *
- * Se montan el buscador, el + y la pestaña Perfil: los pasos de los demás destinos
- * se omiten. Ya no hay paso "Antes de empezar" al final: los avisos están en la
- * tarjeta inicial y el último paso es Perfil, con "Terminar".
+ * Se montan el buscador, el + y la pestaña Perfil: el paso de Calendario (el
+ * único otro de los 4) se omite. Ya no hay paso "Antes de empezar" al final: los
+ * avisos están en la tarjeta inicial y el último paso es Perfil, con "Terminar".
  */
 
 jest.mock("@/db/settings-repo");
@@ -117,7 +117,7 @@ describe("<OnboardingTour /> con los pasos reales", () => {
 
     expect(await screen.findByText("Antes de empezar")).toBeTruthy();
     expect(
-      screen.getByText(/único recordatorio para algo importante/),
+      screen.getByText(/único recordatorio de algo importante/),
     ).toBeTruthy();
   });
 

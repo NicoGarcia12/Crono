@@ -107,9 +107,6 @@ export default function TabsLayout() {
               tabBarIcon: ({ color, size }) => (
                 <Ionicons name="list" size={size} color={color} />
               ),
-              tabBarButton: (props) => (
-                <TourTabButton tourId={TOUR_TARGETS.tabAgenda} {...props} />
-              ),
             }}
           />
           <Tabs.Screen
@@ -130,9 +127,6 @@ export default function TabsLayout() {
               title: "Notas",
               tabBarIcon: ({ color, size }) => (
                 <Ionicons name="document-text" size={size} color={color} />
-              ),
-              tabBarButton: (props) => (
-                <TourTabButton tourId={TOUR_TARGETS.tabNotes} {...props} />
               ),
             }}
           />

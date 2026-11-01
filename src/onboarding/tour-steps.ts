@@ -1,5 +1,3 @@
-import { Platform } from "react-native";
-
 import { remindersAvailable } from "@/notifications/notifications";
 
 /**
@@ -30,16 +28,16 @@ export const TOUR_TARGETS = {
   tabProfile: "tab-perfil",
 } as const;
 
-const isWeb = Platform.OS === "web";
-
-/** Límites reales de los avisos y de "los datos quedan en tu dispositivo", en dos oraciones. */
-const noticeBody = isWeb
-  ? "En la web Crono no manda avisos: no la uses como único recordatorio de algo importante. " +
-    "Tus datos quedan en este navegador, salvo lo que exportes o compartas."
-  : (remindersAvailable
-      ? "Los avisos dependen del permiso y de la configuración del celular: no uses Crono como único recordatorio de algo importante. "
-      : "Esta versión no programa avisos: no uses Crono como único recordatorio de algo importante. ") +
-    "Tus datos quedan en este celular, salvo lo que exportes o compartas y lo que copie el backup del sistema.";
+/**
+ * Límites reales de los avisos y de "los datos quedan en tu dispositivo", en dos oraciones.
+ * Varía solo por `remindersAvailable` (depende del build, no de la plataforma): en web el
+ * copy es el de mobile y la diferencia se loguea al arrancar (`_layout.tsx`), sin tocar la UI.
+ */
+const noticeBody =
+  (remindersAvailable
+    ? "Los avisos dependen del permiso y de la configuración del celular: no uses Crono como único recordatorio de algo importante. "
+    : "Esta versión no programa avisos: no uses Crono como único recordatorio de algo importante. ") +
+  "Tus datos quedan en este celular, salvo lo que exportes o compartas y lo que copie el backup del sistema.";
 
 /**
  * Primer bloque de la tarjeta inicial: los avisos van antes de la pregunta para
@@ -71,9 +69,7 @@ export const AGENDA_TOUR_STEPS: TourStep[] = [
     id: "agregar",
     target: TOUR_TARGETS.add,
     title: "Agregá un evento",
-    body: isWeb
-      ? "Con el + cargás un cumpleaños, un aniversario, una cita o lo que necesites."
-      : "Con el + cargás un cumpleaños, una cita o lo que necesites, y elegís cuándo avisarte.",
+    body: "Con el + cargás un cumpleaños, una cita o lo que necesites, y elegís cuándo avisarte.",
   },
   {
     id: "tab-calendario",

@@ -17,11 +17,9 @@ import { saveDisplayName } from "@/store/settings-slice";
 import type { ThemeColors } from "@/theme/theme";
 import { useThemeColors } from "@/theme/use-theme";
 
-/** Dónde quedan los datos según la plataforma: en web no hay "celular". */
+/** Un solo copy para todas las plataformas: la diferencia de web se loguea al arrancar, no en la UI. */
 const WELCOME_SUBTITLE =
-  Platform.OS === "web"
-    ? "Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado en este navegador."
-    : "Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado en tu celular.";
+  "Tu agenda personal: eventos, cumpleaños, aniversarios, citas médicas y notas, todo guardado en tu celular.";
 
 /**
  * Bienvenida del primer uso: pide el nombre del usuario y lo guarda en SQLite.

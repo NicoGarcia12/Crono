@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, StyleSheet, Text, View } from "react-native";
+import { AppState, Platform, StyleSheet, Text, View } from "react-native";
 import { Provider } from "react-redux";
 
 import { confirmAction, errorMessage } from "@/components/confirm";
@@ -121,6 +121,13 @@ export default function RootLayout() {
         await setupNotificationChannel();
       } catch (error) {
         console.warn("No se pudo crear el canal de notificaciones", error);
+      }
+      // En web la UI es la misma que en mobile (sin copies alternativos): las diferencias
+      // reales se informan una sola vez por consola, al arrancar, y no se muestran al usuario.
+      if (Platform.OS === "web") {
+        console.info(
+          "Crono web: no se programan recordatorios ni hay bloqueo local; los datos quedan en este navegador.",
+        );
       }
       // Reintenta borrar copias de fotos sin referencia que quedaron de un cierre o un fallo previo.
       // Nunca rechaza: si falla, avisa y no bloquea el arranque.

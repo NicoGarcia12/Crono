@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react-native";
 import type * as ReactModule from "react";
 import type * as ReactNative from "react-native";
+import { Platform } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 
 import RootLayout from "@/app/_layout";
@@ -124,5 +125,41 @@ describe("<RootLayout /> bootstrap si crear el canal falla", () => {
     await waitFor(() => expect(mockHideSplash).toHaveBeenCalled());
 
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Regla de plataforma: web no cambia la UI (mismos copies que mobile); sus
+ * diferencias reales se informan una sola vez por consola, al arrancar.
+ */
+describe("<RootLayout /> bootstrap y plataforma", () => {
+  const originalOS = Platform.OS;
+  let info: jest.SpyInstance;
+
+  beforeEach(() => {
+    info = jest.spyOn(console, "info").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    Platform.OS = originalOS;
+    info.mockRestore();
+  });
+
+  it("en web informa por consola lo que no hace, sin tocar la UI", async () => {
+    Platform.OS = "web";
+    await render(<RootLayout />);
+    await waitFor(() => expect(mockHideSplash).toHaveBeenCalled());
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info).toHaveBeenCalledWith(expect.stringMatching(/^Crono web: /));
+    expect(screen.queryByText(/navegador/)).toBeNull();
+  });
+
+  it("en Android no loguea nada de web", async () => {
+    Platform.OS = "android";
+    await render(<RootLayout />);
+    await waitFor(() => expect(mockHideSplash).toHaveBeenCalled());
+
+    expect(info).not.toHaveBeenCalled();
   });
 });

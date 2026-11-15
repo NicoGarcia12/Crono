@@ -1,0 +1,79 @@
+# Plantilla de agentes-ia publicada en este repo por `eng sync` (reset de workflows de protección de main; scripts/engram/templates/main-protection/).
+#
+# Qué hace: en cada push a main/master busca el PR mergeado asociado al commit. Si no hay PR
+# (push directo) o el PR vino de una rama que no cumple el patrón permitido (misma regla que
+# pr-origin-check: ^release/, con `hotfix/*` siempre válido), abre un issue
+# con el sha corto en el título para que quede la alarma. No revierte ni toca la rama.
+# Si ya hay un issue abierto con el mismo título, no crea otro.
+# Pensado para repos privados, donde la protección de GitHub es paga y no se puede bloquear el push.
+name: Main push alarm
+
+on:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  main-push-alarm:
+    name: main-push-alarm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Buscar el PR del commit y abrir un issue si el push no es válido
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          SERVER_URL: ${{ github.server_url }}
+          ALLOWED_ORIGIN_PATTERN: '^release/'
+        run: |
+          short_sha="${SHA:0:7}"
+          commit_url="$SERVER_URL/$REPO/commit/$SHA"
+
+          # PR mergeado hacia esta rama asociado al commit (merge commit, squash o rebase).
+          pr_json="$(gh api "repos/$REPO/commits/$SHA/pulls" |
+            jq -c --arg base "$BRANCH" \
+            '[.[] | select(.merged_at != null and .base.ref == $base)] | first // empty')"
+
+          if [[ -z "$pr_json" ]]; then
+            reason="Push directo a \`$BRANCH\` sin PR mergeado asociado."
+            pr_line="PR: ninguno"
+          else
+            pr_number="$(jq -r '.number' <<<"$pr_json")"
+            pr_head="$(jq -r '.head.ref' <<<"$pr_json")"
+            pr_url="$(jq -r '.html_url' <<<"$pr_json")"
+            if [[ "$pr_head" =~ ^hotfix/ ]] || [[ "$pr_head" =~ $ALLOWED_ORIGIN_PATTERN ]]; then
+              echo "Push válido: PR #$pr_number desde '$pr_head' hacia $BRANCH."
+              exit 0
+            fi
+            reason="El PR #$pr_number llegó a \`$BRANCH\` desde \`$pr_head\`, que no cumple el patrón \`$ALLOWED_ORIGIN_PATTERN\` (ni es hotfix/*)."
+            pr_line="PR: #$pr_number desde \`$pr_head\` ($pr_url)"
+          fi
+
+          title="[main-push-alarm] Push no válido a $BRANCH ($short_sha)"
+
+          # Sin duplicados: si ya hay un issue abierto con el mismo título, no se crea otro.
+          existing="$(gh issue list --repo "$REPO" --state open --search "$short_sha in:title" \
+            --json title | jq --arg t "$title" '[.[] | select(.title == $t)] | length')"
+          if [[ "${existing:-0}" != "0" ]]; then
+            echo "::warning::$reason Ya existe un issue abierto: '$title'."
+            exit 0
+          fi
+
+          body="$(printf '%s\n' \
+            "$reason" \
+            "" \
+            "- Autor del push: @$ACTOR" \
+            "- Rama: \`$BRANCH\`" \
+            "- Commit: $commit_url" \
+            "- $pr_line" \
+            "" \
+            "Este workflow no revierte nada: revisar el commit y decidir a mano (revert, PR de seguimiento o cerrar este issue si fue intencional).")"
+
+          gh issue create --repo "$REPO" --title "$title" --body "$body"
+          echo "::warning::$reason Se abrió un issue: '$title'."

@@ -1,54 +1,73 @@
+# Plantilla de agentes-ia publicada en este repo por `eng sync` (reset de workflows de protección de main; scripts/engram/templates/main-protection/).
+#
+# Qué hace (flujo con develop + release/*): cuando se mergea a `main` un PR que viene de
+# `release/<versión>`, crea el tag `v<versión>`, publica el Release de GitHub con la sección
+# correspondiente de CHANGELOG.md (la genera cut-release.yml) y vuelve a mergear `main` en
+# `develop` para que no diverjan. No necesita secretos propios: alcanza con GITHUB_TOKEN.
 name: Publish Release
 
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    branches: [main, master]
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/')
+    name: publish
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch && startsWith(github.event.pull_request.head.ref, 'release/')
     runs-on: ubuntu-latest
+    env:
+      BASE_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from branch name
+      - name: Sacar la versión del nombre de la rama
         id: version
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           VERSION="${HEAD_REF#release/}"
+          SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          [[ "$VERSION" =~ $SEMVER ]] || { echo '::error::La rama release no contiene una versión SemVer válida.'; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Extract changelog section for this version
+      - name: Extraer la sección del changelog de esta versión
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          awk '/^## \[/{if(p) exit; p=1; print; next} p' CHANGELOG.md > /tmp/release-notes.md
+          if [ -f CHANGELOG.md ]; then
+            awk '/^## \[/{if(p) exit; p=1; print; next} p' CHANGELOG.md > /tmp/release-notes.md
+          else
+            echo "Release $TAG" > /tmp/release-notes.md
+          fi
           cat /tmp/release-notes.md
 
-      - name: Tag and publish GitHub Release
+      - name: Crear el tag y publicar el Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
-          gh release create ${{ steps.version.outputs.tag }} \
-            --title "${{ steps.version.outputs.tag }}" \
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
             --notes-file /tmp/release-notes.md
 
-      - name: Sync main back into develop
+      - name: Volver a mergear main en develop
         run: |
           git fetch origin develop
           git checkout develop
-          git merge origin/main --no-edit
+          git merge "origin/$BASE_BRANCH" --no-edit
           git push origin develop

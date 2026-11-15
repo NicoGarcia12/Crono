@@ -14,11 +14,13 @@ Todo el trabajo (features, fixes) se ramifica y mergea contra `develop`. `main` 
 1. Andá a la pestaña **Actions** del repo → workflow **"Cut Release"** → botón **"Run workflow"** (rama: `develop`).
    - También se puede disparar por consola: `gh workflow run cut-release.yml --repo NicoGarcia12/Crono --ref develop`.
 2. El workflow, solo:
-   - Calcula la próxima versión mirando los commits desde el último tag (`feat` = minor, `fix` = patch, `BREAKING CHANGE` = major). **La primera release siempre es `1.0.0`**, sin importar qué diga el cálculo.
+   - Calcula la próxima versión con `git cliff --bumped-version`, mirando los commits desde el último tag (`feat` = minor, `fix` = patch, `BREAKING CHANGE` = major), y valida que sea SemVer. Si no hay commits releasables nuevos, termina con un aviso y no crea nada.
    - Crea la rama `release/X.Y.Z`, ya con el número puesto.
    - Genera/actualiza `CHANGELOG.md` (formato [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/)), separado en `Added` / `Fixed` / `Changed` / etc.
-   - Sincroniza la versión en `package.json`, las dos entradas raíz de `package-lock.json` y `expo.version` de `app.json` mediante `npm run release:version -- X.Y.Z`. No cambia versiones de dependencias.
-   - Abre el PR `release/X.Y.Z → main`.
+   - Sincroniza la versión: como `package.json` define el script `release:version`, el workflow corre `npm run release:version -- X.Y.Z` (`scripts/set-release-version.cjs`), que actualiza `package.json`, las dos entradas raíz de `package-lock.json` y `expo.version` de `app.json` (el `versionName` de Android). No cambia versiones de dependencias. Sin ese script, el workflow caería en `npm version`, que no toca `app.json`: no lo borres ni le cambies el nombre.
+   - Commitea `chore(release): vX.Y.Z`, pushea la rama, abre el PR `release/X.Y.Z → main` y dispara `pr-origin-check.yml` sobre la rama release para que el PR tenga su check `pr-origin`.
+
+   `cut-release.yml` (como `publish-release.yml`, `pr-origin-check.yml` y `main-push-alarm.yml`) es una plantilla de agentes-ia que publica `eng sync` (`scripts/engram/templates/main-protection/`). Un cambio hecho solo acá se pierde si se repite el reset de workflows: los cambios van primero a la plantilla.
 3. Revisá el PR (podés editar el `CHANGELOG.md` a mano si algo quedó raro) y mergealo cuando quieras.
 
 ## Qué pasa al mergear el release

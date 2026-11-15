@@ -68,7 +68,13 @@ jobs:
             git cliff --tag "$NEXT" --output CHANGELOG.md
           fi
           if [ -f package.json ]; then
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
+            # Si el repo define el script release:version, él es dueño de la versión (por ejemplo,
+            # una app Expo también la lleva en app.json); si no, alcanza con npm version.
+            if node -e "process.exit(require('./package.json').scripts?.['release:version'] ? 0 : 1)"; then
+              npm run release:version -- "$VERSION"
+            else
+              npm version "$VERSION" --no-git-tag-version --allow-same-version
+            fi
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

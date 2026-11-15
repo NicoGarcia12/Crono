@@ -1,0 +1,63 @@
+# Plantilla de agentes-ia publicada en este repo por `eng sync` (reset de workflows de protección de main; scripts/engram/templates/main-protection/).
+#
+# Qué hace: en cada PR hacia main/master verifica desde qué rama viene.
+#   - Si la rama de origen cumple el patrón permitido (regex extendida de bash que `eng sync`
+#     sustituye en ^release/: por ejemplo `^release/` o `^develop$`), pasa.
+#   - Si viene de `hotfix/*`, pasa con un aviso (::warning) para que quede registrado.
+#   - Cualquier otro origen falla (::error) y, con el check `pr-origin` requerido en la protección
+#     de la rama (repos públicos), bloquea el merge.
+# En repos privados la protección de GitHub es paga: acá este check solo avisa en el PR.
+# El id del job (`pr-origin`) es el nombre del status check que exige la protección; no cambiarlo.
+name: PR origin check
+
+on:
+  pull_request:
+    branches: [main, master]
+  # GITHUB_TOKEN sí puede disparar este evento y el check queda en el SHA del ref elegido.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR de release que se valida contra el SHA de esta ejecución
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-origin:
+    name: pr-origin
+    runs-on: ubuntu-latest
+    steps:
+      # Solo metadata de GitHub: no checkout ni ejecución de código del PR.
+      - name: Validar identidad del PR en dispatch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          RUN_SHA: ${{ github.sha }}
+          RUN_REF: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || exit 1
+          gh api "repos/$REPO/pulls/$PR_NUMBER" |
+            jq -e --arg sha "$RUN_SHA" --arg ref "$RUN_REF" --arg repo "$REPO" --arg base "$DEFAULT_BRANCH" \
+            '.state == "open" and .head.sha == $sha and .head.ref == $ref and .head.repo.full_name == $repo and .base.ref == $base and (.base.ref == "main" or .base.ref == "master")'
+      - name: Verificar la rama de origen del PR
+        env:
+          HEAD_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || github.head_ref }}
+          BASE_REF: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.default_branch || github.base_ref }}
+          ALLOWED_ORIGIN_PATTERN: '^release/'
+        run: |
+          if [[ "$HEAD_REF" =~ ^hotfix/ ]]; then
+            echo "::warning::PR a $BASE_REF desde hotfix ($HEAD_REF): permitido como excepción, revisar que sea un fix urgente."
+            exit 0
+          fi
+          if [[ "$HEAD_REF" =~ $ALLOWED_ORIGIN_PATTERN ]]; then
+            echo "Origen válido: $HEAD_REF cumple el patrón '$ALLOWED_ORIGIN_PATTERN'."
+            exit 0
+          fi
+          echo "::error::PR a $BASE_REF desde '$HEAD_REF': solo se aceptan ramas que cumplan '$ALLOWED_ORIGIN_PATTERN' (o hotfix/*)."
+          exit 1

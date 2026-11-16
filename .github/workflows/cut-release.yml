@@ -47,7 +47,8 @@ jobs:
 
       - name: Calcular la próxima versión
         id: version
-        # git-cliff usa el token para leer datos de PRs (commit.remote.pr_number) en repos privados.
+        # git-cliff usa el token para leer datos de PRs (commit.remote.pr_number) vía la API de GitHub;
+        # en repos privados sin token no puede leerlos.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -65,18 +66,25 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # Los outputs entran por env: nunca se interpolan como código de shell.
+      # GITHUB_REPO le dice a git-cliff qué repo consultar: release/<v> no tiene upstream y sin esto
+      # no detecta el remoto. El rango termina en el SHA de HEAD (develop) para que pida
+      # /commits?sha=<SHA>: con --unreleased consultaría la rama default y los PRs a develop
+      # saldrían sin (#N).
       - name: Preparar y pushear el release
         if: steps.version.outputs.version != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
           VERSION: ${{ steps.version.outputs.version }}
           NEXT: ${{ steps.version.outputs.next }}
         run: |
           git checkout -b "release/$VERSION"
+          HEAD_SHA=$(git rev-parse HEAD)
           if [ -f CHANGELOG.md ]; then
-            git cliff --tag "$NEXT" --prepend CHANGELOG.md --unreleased
+            LAST_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo "")
+            git cliff --tag "$NEXT" --prepend CHANGELOG.md "${LAST_TAG:+$LAST_TAG..}$HEAD_SHA"
           else
-            git cliff --tag "$NEXT" --output CHANGELOG.md
+            git cliff --tag "$NEXT" --output CHANGELOG.md "$HEAD_SHA"
           fi
           if [ -f package.json ]; then
             # Si el repo define el script release:version, él es dueño de la versión (por ejemplo,

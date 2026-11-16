@@ -38,8 +38,18 @@ jobs:
         with:
           tool: git-cliff
 
+      # npm version / release:version necesitan Node; solo si el repo tiene package.json.
+      - name: Set up Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
       - name: Calcular la próxima versión
         id: version
+        # git-cliff usa el token para leer datos de PRs (commit.remote.pr_number) en repos privados.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NEXT=$(git cliff --bumped-version)
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -58,6 +68,7 @@ jobs:
       - name: Preparar y pushear el release
         if: steps.version.outputs.version != ''
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           NEXT: ${{ steps.version.outputs.next }}
         run: |
@@ -68,7 +79,13 @@ jobs:
             git cliff --tag "$NEXT" --output CHANGELOG.md
           fi
           if [ -f package.json ]; then
-            npm version "$VERSION" --no-git-tag-version --allow-same-version
+            # Si el repo define el script release:version, él es dueño de la versión (por ejemplo,
+            # una app Expo también la lleva en app.json); si no, alcanza con npm version.
+            if node -e "process.exit(require('./package.json').scripts?.['release:version'] ? 0 : 1)"; then
+              npm run release:version -- "$VERSION"
+            else
+              npm version "$VERSION" --no-git-tag-version --allow-same-version
+            fi
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

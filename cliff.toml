@@ -17,7 +17,7 @@ body = """
 ### {{ group | upper_first }}
 {% for commit in commits %}
 - {{ commit.message | upper_first | trim }}\
-{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% endif %}
+{% if commit.remote.pr_number and commit.message is not containing("(#" ~ commit.remote.pr_number ~ ")") %} (#{{ commit.remote.pr_number }}){% endif %}
 {% endfor %}
 {% endfor %}
 """

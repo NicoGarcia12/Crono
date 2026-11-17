@@ -4,6 +4,60 @@ Todos los cambios notables de este proyecto se documentan en este archivo.
 
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
+## [1.1.0] - 2026-11-17
+
+### Added
+
+- Snapshot desde SQLite y restauración atómica e idempotente v2
+
+- Recorrido de primer uso, avisos en Perfil y advertencia al exportar
+
+- Hacer opcional el recorrido de primer uso y mover los avisos al inicio
+
+- Acortar el recorrido, empty state accionable y guardar "visto" antes de mostrar la tarjeta
+
+
+### Changed
+
+- Quitar docs comunes; el README va en cada PR y el CHANGELOG en la release
+
+- Servicio runtime para capacidades por entorno
+
+- Renombrar RuntimeCapability para no chocar con types
+
+
+### Fixed
+
+- Corregir guardado de notas y desbloqueo con PIN del sistema
+
+- Hacer atómicas y reanudables las migraciones de SQLite
+
+- Guardar evento y relaciones en una sola transacción
+
+- Borrar relaciones antes del evento sin depender de foreign keys
+
+- Recuperar avisos anuales y compensación ante fallos
+
+- Unificar la recurrencia anual del 29 de febrero
+
+- Integrar recurrencia bisiesta sin perder contrato anual
+
+- Conservar avisos y recuperar cancelaciones pendientes
+
+- Aislar restauraciones y preservar compensaciones
+
+- Serializar la persistencia de cancelaciones pendientes
+
+- Previews versionadas, sin micrófono, limpieza de fotos y ayuda por plataforma
+
+- Sincronizar app.json al cortar el release
+
+- Sincronizar app.json al cortar el release (#58)
+
+- Devolver el token de git-cliff y Node 24 a Cut Release (#59)
+
+- Changelog de Cut Release sin números de PR duplicados ni faltantes (#60)
+
 
 ## [Unreleased]
 

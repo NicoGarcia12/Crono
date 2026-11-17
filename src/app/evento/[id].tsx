@@ -12,8 +12,7 @@ import { useAppDispatch, useAppSelector } from '@/store';
 import { editEvent, removeEvent } from '@/store/events-slice';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
-import { saveFieldValues } from '@/store/field-values-slice';
-import type { FieldValues, NewEvent } from '@/types';
+import type { NewEvent } from '@/types';
 
 /**
  * Ruta dinámica /evento/[id] — editar o borrar un evento existente.
@@ -40,10 +39,8 @@ export default function EditarEventoScreen() {
     );
   }
 
-  const handleSubmit = async (data: NewEvent, fieldValues: FieldValues) => {
+  const handleSubmit = async (data: NewEvent) => {
     await dispatch(editEvent({ id: event.id, data, previousReminders: event.reminders })).unwrap();
-    // Se guardan siempre: así también se borran los que se vaciaron.
-    await dispatch(saveFieldValues({ eventId: event.id, values: fieldValues })).unwrap();
     router.back();
   };
 

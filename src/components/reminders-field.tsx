@@ -47,13 +47,14 @@ export function RemindersField({ value, onChange }: RemindersFieldProps) {
 
   return (
     <View style={styles.container}>
-      {/* En Expo Go (Android) y en web no hay scheduler nativo: se pueden
-          armar los avisos igual, pero no van a disparar hasta instalar el APK. */}
+      {/* Guardar anticipaciones no significa programarlas: depende del build (Crono
+          lo desactiva en Expo Go Android y web no tiene scheduler nativo). El aviso es
+          el mismo en todos los casos: la causa se informa por consola, no en la UI. */}
       {!remindersAvailable ? (
         <View style={styles.unavailableNotice}>
           <Ionicons name="warning" size={16} color={colors.danger} />
           <Text style={styles.unavailableText}>
-            En Expo Go los recordatorios no se disparan. Instalá la app para recibirlos.
+            Esta versión no programa recordatorios. Las anticipaciones se guardan como referencia.
           </Text>
         </View>
       ) : null}

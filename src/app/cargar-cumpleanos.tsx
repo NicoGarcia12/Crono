@@ -7,6 +7,7 @@ import { confirmDestructive } from '@/components/confirm';
 import { BirthdayWizard, type BirthdayWizardEntry } from '@/components/birthday-wizard';
 import { ContactPickList } from '@/components/contact-pick-list';
 import { candidateToEvent, fetchContacts, type ContactCandidate } from '@/contacts/birthday-import';
+import { logUnavailable, unavailableMessage } from '@/platform/runtime';
 import { store, useAppDispatch } from '@/store';
 import { addContactBirthdays, removeEvent } from '@/store/events-slice';
 import type { ThemeColors } from '@/theme/theme';
@@ -39,6 +40,8 @@ export default function CargarCumpleanosScreen() {
   const load = useCallback(async () => {
     // Los eventos se leen del store (ya cargados al abrir la app).
     const result = await fetchContacts(store.getState().events.items);
+    // La UI no cambia por plataforma: la causa va al log, la pantalla dice lo mismo en todos lados.
+    if (result.status === 'unavailable') logUnavailable('contacts');
     if (result.status !== 'ok') setState({ status: result.status });
     else if (result.candidates.length === 0) setState({ status: 'empty' });
     else setState({ status: 'list', candidates: result.candidates });
@@ -109,11 +112,10 @@ export default function CargarCumpleanosScreen() {
       );
     case 'unavailable':
       return (
-        <Centered icon="phone-portrait">
-          <Text style={styles.title}>Disponible solo en el celular</Text>
+        <Centered icon="warning">
+          <Text style={styles.title}>No se pudieron leer los contactos</Text>
           <Text style={styles.message}>
-            La agenda de contactos no existe en el navegador. Abrí Crono en tu teléfono para usar
-            esta función.
+            {unavailableMessage('contacts')} Podés crear cumpleaños manualmente desde Agenda → +.
           </Text>
         </Centered>
       );

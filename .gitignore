@@ -47,3 +47,6 @@ example
 # generated native folders
 /ios
 /android
+
+# capturas de evidencia de PRs (se suben como adjuntos del PR, no al repo)
+.claude-screenshots/

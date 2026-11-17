@@ -1,4 +1,5 @@
 import { getDb } from '@/db/database';
+import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
 import type { GreetingSent } from '@/types';
 
 /**
@@ -16,31 +17,37 @@ export async function findGreetingsSentByYear(year: number): Promise<GreetingSen
   );
 }
 
+/** Todas las marcas de todos los años (para la copia de seguridad). */
+export async function findAllGreetingsSent(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<GreetingSent[]> {
+  return db.getAllAsync<GreetingSent>(`SELECT ${SELECT_FIELDS} FROM greetings_sent ORDER BY year ASC, id ASC`);
+}
+
 /** Marca (o desmarca) que ya saludé a la persona de ese evento en ese año. */
 export async function setGreetingSent(
   year: number,
   eventId: number,
   greeted: boolean,
 ): Promise<GreetingSent> {
-  const db = getDb();
-  const existing = await db.getFirstAsync<GreetingSent>(
-    `SELECT ${SELECT_FIELDS} FROM greetings_sent WHERE year = ? AND event_id = ?`,
-    year,
-    eventId,
-  );
+  return withEventTransaction(getDb(), async (db) => {
+    const existing = await db.getFirstAsync<GreetingSent>(
+      `SELECT ${SELECT_FIELDS} FROM greetings_sent WHERE year = ? AND event_id = ?`,
+      year,
+      eventId,
+    );
 
-  const value = greeted ? 1 : 0;
+    const value = greeted ? 1 : 0;
 
-  if (existing) {
-    await db.runAsync('UPDATE greetings_sent SET greeted = ? WHERE id = ?', value, existing.id);
-    return { ...existing, greeted: value };
-  }
+    if (existing) {
+      await db.runAsync('UPDATE greetings_sent SET greeted = ? WHERE id = ?', value, existing.id);
+      return { ...existing, greeted: value };
+    }
 
-  const result = await db.runAsync(
-    'INSERT INTO greetings_sent (year, event_id, greeted) VALUES (?, ?, ?)',
-    year,
-    eventId,
-    value,
-  );
-  return { id: result.lastInsertRowId, year, eventId, greeted: value };
+    const result = await db.runAsync(
+      'INSERT INTO greetings_sent (year, event_id, greeted) VALUES (?, ?, ?)',
+      year,
+      eventId,
+      value,
+    );
+    return { id: result.lastInsertRowId, year, eventId, greeted: value };
+  }, 'primary');
 }

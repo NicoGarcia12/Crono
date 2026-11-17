@@ -2,6 +2,7 @@ import type * as SQLite from 'expo-sqlite';
 
 import { parseMultiValue } from '@/constants/event-bases';
 import { getDb } from '@/db/database';
+import { withEventTransaction, type EventExecutor } from '@/db/event-transaction';
 import type { Capability, FieldDraft, FieldValues, RemovalPlan } from '@/types';
 
 /**
@@ -162,8 +163,8 @@ export async function applyRemovals(db: Executor, typeKeys: readonly string[], p
 }
 
 /** Todos los valores de campos, agrupados por evento. */
-export async function findAllFieldValues(): Promise<Record<number, FieldValues>> {
-  const rows = await getDb().getAllAsync<ValueRow>(
+export async function findAllFieldValues(db: Pick<EventExecutor, 'getAllAsync'> = getDb()): Promise<Record<number, FieldValues>> {
+  const rows = await db.getAllAsync<ValueRow>(
     'SELECT event_id AS eventId, field_id AS fieldId, value FROM event_field_values',
   );
   const byEvent: Record<number, FieldValues> = {};
@@ -173,20 +174,31 @@ export async function findAllFieldValues(): Promise<Record<number, FieldValues>>
   return byEvent;
 }
 
-/** Reemplaza los valores de un evento (los vacíos no se guardan). */
-export async function saveEventFieldValues(eventId: number, values: FieldValues): Promise<FieldValues> {
-  const db = getDb();
-  const kept: FieldValues = {};
-  await db.withTransactionAsync(async () => {
-    await db.runAsync('DELETE FROM event_field_values WHERE event_id = ?', eventId);
-    for (const [fieldId, value] of Object.entries(values)) {
-      if (value.trim().length === 0 || value === '[]') continue;
-      await db.runAsync(
-        'INSERT INTO event_field_values (event_id, field_id, value) VALUES (?, ?, ?)',
-        eventId, Number(fieldId), value,
-      );
-      kept[Number(fieldId)] = value;
-    }
-  });
+/** La misma selección se usa en SQLite y en su copia Redux, sin recortar valores válidos. */
+export function nonEmptyFieldValues(values: FieldValues): FieldValues {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value.trim().length > 0 && value !== '[]'),
+  );
+}
+
+/** Reemplaza valores DENTRO de la transacción del evento, sin abrir otra. */
+export async function writeEventFieldValues(
+  db: Pick<EventExecutor, 'runAsync'>,
+  eventId: number,
+  values: FieldValues,
+): Promise<FieldValues> {
+  const kept = nonEmptyFieldValues(values);
+  await db.runAsync('DELETE FROM event_field_values WHERE event_id = ?', eventId);
+  for (const [fieldId, value] of Object.entries(kept)) {
+    await db.runAsync(
+      'INSERT INTO event_field_values (event_id, field_id, value) VALUES (?, ?, ?)',
+      eventId, Number(fieldId), value,
+    );
+  }
   return kept;
+}
+
+/** Completar campos por separado (panel de tipos) sigue siendo una unidad atómica. */
+export async function saveEventFieldValues(eventId: number, values: FieldValues): Promise<FieldValues> {
+  return withEventTransaction(getDb(), (transaction) => writeEventFieldValues(transaction, eventId, values));
 }

@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * Mi cumpleaños se carga en el Perfil, y solo desde ahí se llega a la lista
  * de quién me saludó ese año (es algo mío, no del evento).
  */
 test('carga mi cumpleaños desde el perfil y registra quién me saludó', async ({ page }) => {
   await page.goto('/');
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
 
   const crearCumple = async (nombre: string, fecha: string) => {
     await page.getByLabel('Agregar evento').click();
@@ -54,5 +55,6 @@ test('carga mi cumpleaños desde el perfil y registra quién me saludó', async 
 
   // Al recargar, los saludos siguen guardados.
   await page.reload();
+  await page.getByRole('button', { name: 'Desbloquear' }).click();
   await expect(page.getByText('Te saludaron 2 de 3')).toBeVisible();
 });

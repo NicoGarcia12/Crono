@@ -6,6 +6,7 @@ import { Provider } from 'react-redux';
 import { DEFAULT_EVENT_BASES, capabilityLookup, typeCapabilities } from '@/constants/event-bases';
 import type { CustomField, EventItem, EventTypeMeta, FieldValues } from '@/types';
 import { DEFAULT_EVENT_TYPES } from '@/constants/event-types';
+import type { RootState } from '@/store';
 import eventBasesReducer from '@/store/event-bases-slice';
 import eventTypesReducer from '@/store/event-types-slice';
 import eventsReducer from '@/store/events-slice';
@@ -44,23 +45,20 @@ export const capabilitiesOf = (typeKey: string) => typeCapabilities(
   defaultEventBases,
 );
 
-/**
- * Helper para tests de componentes.
- *
- * 💡 Aprendizaje: desde que los colores salen del tema (y el tema vive en
- * Redux), cualquier componente con estilos necesita el <Provider> para
- * renderizar. Este helper evita repetir ese armado en cada test.
- */
-export function renderWithStore(
-  ui: ReactElement,
-  extra: {
-    fields?: CustomField[];
-    types?: EventTypeMeta[];
-    fieldValues?: Record<number, FieldValues>;
-    events?: EventItem[];
-  } = {},
-) {
-  const store = configureStore({
+type SettingsState = RootState['settings'];
+
+export interface TestStoreExtra {
+  fields?: CustomField[];
+  types?: EventTypeMeta[];
+  fieldValues?: Record<number, FieldValues>;
+  events?: EventItem[];
+  /** Pisa campos de `settings` (nombre, tema, recorrido…) sobre su estado inicial. */
+  settings?: Partial<SettingsState>;
+}
+
+/** Store real con los mismos reducers que la app, para tests que necesitan leer el estado. */
+export function createTestStore(extra: TestStoreExtra = {}) {
+  return configureStore({
     reducer: {
       events: eventsReducer,
       eventBases: eventBasesReducer,
@@ -77,8 +75,23 @@ export function renderWithStore(
       eventTypes: { items: [...defaultEventTypes, ...(extra.types ?? [])], status: 'ready' as const },
       fieldValues: { byEvent: extra.fieldValues ?? {}, status: 'ready' as const },
       events: { items: extra.events ?? [], status: 'ready' as const },
+      settings: { ...settingsReducer(undefined, { type: '@@test/init' }), ...extra.settings },
     },
   });
+}
+
+export type TestStore = ReturnType<typeof createTestStore>;
+
+/**
+ * Helper para tests de componentes.
+ *
+ * 💡 Aprendizaje: desde que los colores salen del tema (y el tema vive en
+ * Redux), cualquier componente con estilos necesita el <Provider> para
+ * renderizar. Este helper evita repetir ese armado en cada test. Si el test
+ * necesita inspeccionar el estado, que cree el store con `createTestStore` y lo pase.
+ */
+export function renderWithStore(ui: ReactElement, extra: TestStoreExtra & { store?: TestStore } = {}) {
+  const store = extra.store ?? createTestStore(extra);
 
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <Provider store={store}>{children}</Provider>

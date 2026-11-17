@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+import { empezarSinRecorrido } from './primer-uso';
+
 /**
  * El tema se elige en Perfil y queda guardado: al recargar la app sigue igual.
  * Comprobamos el color de fondo real de la pantalla, no solo que el chip esté activo.
  */
 test('cambia a modo oscuro y lo recuerda al recargar', async ({ page }) => {
   await page.goto('/');
-  await page.getByPlaceholder('¿Cómo te llamás?').fill('Nico');
-  await page.getByText('Empezar').click();
+  await empezarSinRecorrido(page);
   await expect(page.getByText('Todavía no hay nada agendado')).toBeVisible();
 
   const fondoAgenda = () =>
@@ -34,6 +35,7 @@ test('cambia a modo oscuro y lo recuerda al recargar', async ({ page }) => {
 
   // Al recargar sigue en oscuro (la preferencia se guardó en la base).
   await page.reload();
+  await page.getByRole('button', { name: 'Desbloquear' }).click();
   await expect(page.getByText('Todavía no hay nada agendado')).toBeVisible();
   expect(await fondoAgenda()).toBe(oscuro);
 });

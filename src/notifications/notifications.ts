@@ -1,10 +1,11 @@
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type { NotificationContentInput } from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { REMINDER_UNIT_LABELS } from '@/constants/event-types';
+import { cancelRemindersAfterCommit } from '@/notifications/cancellation-recovery';
+import { isAvailable } from '@/platform/runtime';
 import type { EventReminder, NewEvent, ReminderInput, ReminderUnit } from '@/types';
-import { toLocalDate } from '@/utils/dates';
+import { nextOccurrence } from '@/utils/dates';
 import { reminderDate } from '@/utils/reminders';
 
 /**
@@ -15,28 +16,18 @@ import { reminderDate } from '@/utils/reminders';
  *  - Locales: la propia app le pide al sistema operativo "avisame a tal hora".
  *    Funcionan sin conexión y aunque la app esté cerrada. Son las que usamos.
  *
- * ⚠️ Limitación de Expo Go en Android (SDK 53+): el módulo expo-notifications
- * lanza un error apenas se importa, porque intenta registrar push tokens
- * (funcionalidad quitada de Expo Go). Por eso acá NO lo importamos arriba del
- * archivo: lo cargamos de forma diferida con require() y lo salteamos por
- * completo cuando corremos dentro de Expo Go en Android. En la app instalada
- * de verdad (development build / APK) los recordatorios funcionan normal.
+ * Crono desactiva este módulo en Expo Go Android y web, y lo carga de forma
+ * diferida en los demás entornos nativos. La regla vive en `@/platform/runtime`
+ * (capacidad `reminders`): es una restricción de esta app, no del SDK.
  */
 
 type NotificationsModule = typeof import('expo-notifications');
 
-/** ExecutionEnvironment.StoreClient === corriendo dentro de Expo Go. */
-const isExpoGoAndroid =
-  Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-
 /**
- * Entornos sin notificaciones programadas: Expo Go Android (push removido en
- * SDK 53+) y web (el navegador no tiene el scheduler nativo de expo-notifications).
+ * true si en este entorno se pueden programar recordatorios. Se calcula una
+ * vez al cargar: el entorno no cambia en caliente y los tests lo mockean acá.
  */
-const notificationsUnavailable = isExpoGoAndroid || Platform.OS === 'web';
-
-/** true si en este entorno se pueden programar recordatorios. */
-export const remindersAvailable = !notificationsUnavailable;
+export const remindersAvailable = isAvailable('reminders');
 
 /**
  * Un vistazo con onda al tipo de evento, para el título de la notificación.
@@ -76,7 +67,7 @@ let cachedModule: NotificationsModule | null | undefined;
 function getNotifications(): NotificationsModule | null {
   if (cachedModule !== undefined) return cachedModule;
 
-  if (notificationsUnavailable) {
+  if (!remindersAvailable) {
     cachedModule = null;
     return cachedModule;
   }
@@ -99,18 +90,37 @@ function getNotifications(): NotificationsModule | null {
   return cachedModule;
 }
 
-/** Pide permiso al usuario (Android 13+ y iOS lo exigen). Devuelve true si lo dio. */
+/**
+ * Crea el canal Android "Recordatorios" sin pedir ningún permiso. Va en el
+ * arranque de la app: los avisos ya programados por instalaciones existentes
+ * apuntan a este canal, así que tiene que existir siempre.
+ *
+ * 💡 Aprendizaje: Android agrupa las notificaciones en "canales" que el usuario
+ * configura desde Ajustes. Crear el canal es idempotente (llamarlo de nuevo no
+ * duplica nada) y, como Crono apunta a Android 13+, no dispara el diálogo del
+ * permiso: ese lo pedimos nosotros cuando tiene sentido (después de la bienvenida).
+ * iOS no tiene canales.
+ */
+export async function setupNotificationChannel(): Promise<void> {
+  // Platform.OS se lee al llamar (no al cargar el módulo) para respetar el SO real.
+  if (Platform.OS !== 'android') return;
+  const Notifications = getNotifications();
+  if (!Notifications) return;
+
+  await Notifications.setNotificationChannelAsync('recordatorios', {
+    name: 'Recordatorios',
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+}
+
+/**
+ * Pide permiso al usuario (Android 13+ y iOS lo exigen). Devuelve true si lo dio.
+ * Si ya estaba concedido no vuelve a preguntar. El canal Android ya lo creó
+ * `setupNotificationChannel` en el arranque.
+ */
 export async function requestNotificationPermission(): Promise<boolean> {
   const Notifications = getNotifications();
   if (!Notifications) return false;
-
-  if (Platform.OS === 'android') {
-    // Android agrupa las notificaciones en "canales" configurables por el usuario.
-    await Notifications.setNotificationChannelAsync('recordatorios', {
-      name: 'Recordatorios',
-      importance: Notifications.AndroidImportance.HIGH,
-    });
-  }
 
   const current = await Notifications.getPermissionsAsync();
   if (current.status === 'granted') return true;
@@ -120,11 +130,50 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 /**
+ * Estado del permiso, para la fila "Avisos" de Perfil:
+ *  - 'granted': concedido.
+ *  - 'askable': nunca respondido, o negado pero el SO deja volver a preguntar.
+ *  - 'blocked': negado y el SO ya no muestra el diálogo (`canAskAgain` false):
+ *    solo se puede activar desde los ajustes del sistema.
+ * Sin módulo de notificaciones (web, Expo Go Android) no hay nada que pedir: 'blocked'.
+ *
+ * 💡 Aprendizaje: `getPermissionsAsync` solo consulta, nunca muestra nada al usuario.
+ */
+export type NotificationPermissionState = 'granted' | 'askable' | 'blocked';
+
+export async function getNotificationPermissionState(): Promise<NotificationPermissionState> {
+  const Notifications = getNotifications();
+  if (!Notifications) return 'blocked';
+
+  const current = await Notifications.getPermissionsAsync();
+  if (current.status === 'granted') return 'granted';
+  return current.canAskAgain ? 'askable' : 'blocked';
+}
+
+/**
+ * Versión del contrato con el que se programan los avisos en el SO. Sube cada
+ * vez que cambia lo que ve el scheduler nativo para un mismo evento, de modo
+ * que `reconcileReminders` pueda reprogramar lo que quedó bajo un contrato viejo.
+ *
+ *  - 1 (implícito: BD sin marca): el trigger YEARLY mandaba `month` 1-12. Expo 57
+ *    exige 0-11 (como `Date.getMonth()`), así que octubre salía como noviembre,
+ *    diciembre lanzaba RangeError y enero 31 lanzaba "día 31 de febrero".
+ *  - 2: `month` 0-11 (docs: https://docs.expo.dev/versions/v57.0.0/sdk/notifications/#yearlytriggerinput).
+ */
+export const REMINDER_CONTRACT_VERSION = 2;
+
+/** Lo único que el scheduler necesita de un evento: sirve tanto para un NewEvent como para una fila de BD. */
+export type SchedulableEvent = Pick<
+  NewEvent,
+  'title' | 'type' | 'date' | 'time' | 'description' | 'yearly' | 'reminders'
+>;
+
+/**
  * Programa TODOS los avisos de un evento (uno por cada anticipación elegida)
  * y devuelve la lista con sus ids de notificación, lista para persistir.
  * En entornos sin notificaciones, los ids quedan en null.
  */
-export async function scheduleEventReminders(event: NewEvent): Promise<EventReminder[]> {
+export async function scheduleEventReminders(event: SchedulableEvent): Promise<EventReminder[]> {
   const scheduled: EventReminder[] = [];
   try {
     for (const reminder of event.reminders) {
@@ -132,21 +181,9 @@ export async function scheduleEventReminders(event: NewEvent): Promise<EventRemi
     }
     return scheduled;
   } catch (error) {
-    /**
-     * `scheduleNotificationAsync` cruza el límite JS → sistema operativo: no
-     * participa de una transacción SQLite. Si el segundo aviso falla, por
-     * ejemplo, debemos deshacer manualmente los IDs que el SO ya aceptó.
-     *
-     * `allSettled` hace la compensación "best effort": un error al cancelar
-     * un aviso no tapa el error original que explica por qué no se pudo crear
-     * el conjunto completo.
-     */
-    const Notifications = getNotifications();
-    const cancellationAttempts = scheduled
-      .flatMap(({ notificationId }) => (notificationId ? [notificationId] : []))
-      .map((notificationId) => Notifications?.cancelScheduledNotificationAsync(notificationId));
-
-    await Promise.allSettled(cancellationAttempts);
+    // El SO no participa del rollback SQLite. La compensación también puede
+    // fallar: retenemos esos IDs para limpiar sin tapar el error de programación.
+    await cancelRemindersAfterCommit(cancelReminders, scheduled, 'Programar avisos fallido');
     throw error;
   }
 }
@@ -156,11 +193,13 @@ export async function scheduleEventReminders(event: NewEvent): Promise<EventRemi
  * cancelarla después) o null si no corresponde o el entorno no soporta
  * notificaciones (Expo Go en Android, web).
  */
-async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<string | null> {
+async function scheduleOne(event: SchedulableEvent, reminder: ReminderInput): Promise<string | null> {
   const Notifications = getNotifications();
   if (!Notifications) return null;
 
-  const occurrence = toLocalDate(event.date, event.time ?? '09:00');
+  const occurrence = nextOccurrence(event);
+  // Sin hora sigue siendo un evento de día completo; las 09:00 solo fijan la hora del aviso.
+  if (!event.time) occurrence.setHours(9, 0, 0, 0);
   // Momento del aviso: la fecha del evento menos la anticipación elegida
   // (los meses se restan por calendario, ver utils/reminders).
   const reminderAt = reminderDate(occurrence, reminder);
@@ -175,11 +214,13 @@ async function scheduleOne(event: NewEvent, reminder: ReminderInput): Promise<st
 
   if (event.yearly) {
     // Trigger YEARLY: el sistema repite el aviso cada año en ese día/mes/hora.
+    // OJO: Expo 57 usa los rangos de `Date` (enero = 0), igual que getMonth().
+    // Sumarle 1 (como en el contrato 1) corría octubre a noviembre y rompía diciembre.
     return Notifications.scheduleNotificationAsync({
       content,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.YEARLY,
-        month: reminderAt.getMonth() + 1, // expo-notifications usa meses 1-12
+        month: reminderAt.getMonth(),
         day: reminderAt.getDate(),
         hour: reminderAt.getHours(),
         minute: reminderAt.getMinutes(),

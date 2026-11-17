@@ -38,6 +38,23 @@ export function dateToTime(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/** Indica si febrero tiene 29 días en el año indicado. */
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+/**
+ * Proyecta la fecha ORIGINAL de un anual en un año concreto, sin modificarla.
+ * El 29/2 se celebra el 28/2 en años no bisiestos y vuelve al 29/2 en bisiestos.
+ */
+export function annualOccurrence(base: Date, year: number): Date {
+  const isLeapDay = base.getMonth() === 1 && base.getDate() === 29;
+  const day = isLeapDay && !isLeapYear(year) ? 28 : base.getDate();
+
+  // Date desborda un 29/2 inexistente a marzo: elegimos el día antes de construirlo.
+  return new Date(year, base.getMonth(), day, base.getHours(), base.getMinutes());
+}
+
 /**
  * Próxima ocurrencia de un evento.
  * - Evento puntual: su propia fecha (aunque ya haya pasado, se muestra como pasado).
@@ -47,12 +64,13 @@ export function nextOccurrence(event: Pick<EventItem, 'date' | 'time' | 'yearly'
   const base = toLocalDate(event.date, event.time);
   if (!event.yearly) return base;
 
-  const candidate = new Date(from.getFullYear(), base.getMonth(), base.getDate(), base.getHours(), base.getMinutes());
+  const candidate = annualOccurrence(base, from.getFullYear());
   // Sin hora es de día completo: el día de hoy sigue vigente hasta medianoche
   // (si no, un cumpleaños de hoy figuraba recién para el año que viene).
   const limit = event.time ? from : new Date(from.getFullYear(), from.getMonth(), from.getDate());
   if (candidate.getTime() < limit.getTime()) {
-    candidate.setFullYear(candidate.getFullYear() + 1);
+    // Volvemos a la fecha original, no al candidato recortado: así no perdemos el 29/2.
+    return annualOccurrence(base, from.getFullYear() + 1);
   }
   return candidate;
 }

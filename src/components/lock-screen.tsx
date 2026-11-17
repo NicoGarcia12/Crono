@@ -1,6 +1,7 @@
 import * as LocalAuthentication from 'expo-local-authentication';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { isAvailable, logUnavailable } from '@/platform/runtime';
 import type { ThemeColors } from '@/theme/theme';
 import { useThemeColors } from '@/theme/use-theme';
 
@@ -17,55 +18,80 @@ interface LockScreenProps {
   onUnlock: () => void;
 }
 
-export function LockScreen({ onUnlock }: LockScreenProps) {
+export function LockScreen({ onUnlock }: LockScreenProps): ReactElement {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [message, setMessage] = useState<string | null>(null);
+  const [authenticating, setAuthenticating] = useState(false);
+  const inFlightRef = useRef(false);
+  const mountedRef = useRef(true);
+  // Donde no hay credencial del sistema que consultar (web) la UI es la misma que en el
+  // celular: la diferencia se informa por consola al tocar Desbloquear. Se consulta al
+  // renderizar (no al cargar el módulo) para respetar el entorno real.
+  const localLockAvailable = isAvailable('localLock');
 
-  const authenticate = useCallback(async () => {
-    // En web no existe el bloqueo del sistema (huella/PIN): se deja pasar directo.
-    if (Platform.OS === 'web') {
-      onUnlock();
-      return;
+  const authenticate = useCallback(async (): Promise<void> => {
+    if (!localLockAvailable || inFlightRef.current) return;
+    inFlightRef.current = true;
+    setAuthenticating(true);
+    setMessage(null);
+
+    try {
+      // Hardware/enrollment describen sólo biometría. SECRET incluye PIN/patrón
+      // del SO: no tener huella configurada nunca equivale a estar autenticado.
+      const level = await LocalAuthentication.getEnrolledLevelAsync();
+      if (!mountedRef.current) return;
+      if (level === LocalAuthentication.SecurityLevel.NONE) {
+        setMessage(
+          'Configurá un PIN, patrón o contraseña en los Ajustes de seguridad de tu celular y volvé a intentar. Sin una credencial del sistema, Crono no puede habilitar el desbloqueo.',
+        );
+        return;
+      }
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Desbloqueá Crono',
+        cancelLabel: 'Cancelar',
+        // El diálogo corre en el SO, no en JS. false admite la credencial del
+        // dispositivo incluso sin biometría; Crono nunca conoce ni guarda el PIN.
+        disableDeviceFallback: false,
+      });
+      if (!mountedRef.current) return;
+
+      if (result.success) {
+        onUnlock();
+      } else {
+        setMessage('No se pudo verificar tu identidad. Intentá de nuevo.');
+      }
+    } catch {
+      // Un módulo no disponible o una excepción tampoco prueban identidad.
+      if (mountedRef.current) {
+        setMessage('No se pudo verificar tu identidad. Intentá de nuevo.');
+      }
+    } finally {
+      inFlightRef.current = false;
+      if (mountedRef.current) setAuthenticating(false);
     }
+  }, [localLockAvailable, onUnlock]);
 
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-    // Si el celular no tiene bloqueo configurado no hay nada que pedir:
-    // se avisa y se deja pasar (no podemos inventar una seguridad que el SO no tiene).
-    if (!hasHardware || !isEnrolled) {
-      setMessage('Tu celular no tiene bloqueo configurado. Se recomienda activar uno en Ajustes.');
-      onUnlock();
-      return;
-    }
-
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Desbloqueá Crono',
-      cancelLabel: 'Cancelar',
-    });
-
-    if (result.success) {
-      onUnlock();
-    } else {
-      setMessage('No se pudo verificar tu identidad. Intentá de nuevo.');
-    }
+  /** Acción del usuario que este entorno no puede cumplir: se avisa por consola y se sigue. */
+  const unlockWithoutLock = useCallback((): void => {
+    logUnavailable('localLock');
+    onUnlock();
   }, [onUnlock]);
 
-  // Pedimos el desbloqueo apenas aparece la pantalla: `authenticate`
-  // sincroniza con el sistema de biometría nativo (uso legítimo de un
-  // efecto); el setState llega en la respuesta async, no en este cuerpo.
   useEffect(() => {
+    mountedRef.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void authenticate();
+    // Ignoramos respuestas tardías: un prompt nativo puede sobrevivir a esta vista.
+    return () => { mountedRef.current = false; };
   }, [authenticate]);
 
   return (
     <View style={styles.container}>
       {/* Isotipo (la "C" del logo) en vez de un ícono genérico de candado: esta es la
-          primera pantalla que se ve al abrir la app (antes del splash desaparecer),
-          así que conviene reforzar marca acá. El estado "bloqueada" ya lo dice el texto. */}
+          primera pantalla que se ve al abrir la app, así que refuerza la marca. */}
       <Image
         source={require('../../assets/images/branding/crono-isotipo.png')}
         style={styles.logo}
@@ -75,7 +101,13 @@ export function LockScreen({ onUnlock }: LockScreenProps) {
       />
       <Text style={styles.title}>Crono está bloqueada</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
-      <Pressable style={styles.button} onPress={authenticate}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ disabled: authenticating, busy: authenticating }}
+        disabled={authenticating}
+        style={styles.button}
+        onPress={localLockAvailable ? authenticate : unlockWithoutLock}
+      >
         <Text style={styles.buttonText}>Desbloquear</Text>
       </Pressable>
     </View>

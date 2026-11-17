@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 type MigrationDatabaseDouble = {
   getFirstAsync: jest.Mock<Promise<{ user_version: number }>, [string]>;
+  getAllAsync: jest.Mock<Promise<{ name: string }[]>, [string]>;
   execAsync: jest.Mock<Promise<void>, [string]>;
   withTransactionAsync: jest.Mock<Promise<void>, [() => Promise<void>]>;
 };
@@ -21,6 +22,7 @@ describe('migración de recordatorios v1 a v2', () => {
   it('delega el backfill de datos existentes a una transacción de Expo', async () => {
     const database: MigrationDatabaseDouble = {
       getFirstAsync: jest.fn().mockResolvedValue({ user_version: 1 }),
+      getAllAsync: jest.fn().mockResolvedValue([{ name: 'minutes' }]),
       execAsync: jest.fn().mockResolvedValue(undefined),
       // El mock ejecuta el callback igual que Expo; la API nativa decide luego
       // si confirma o revierte según el resultado de esa Promise.
@@ -35,8 +37,8 @@ describe('migración de recordatorios v1 a v2', () => {
     const { initDatabase }: typeof import('@/db/database') = require('@/db/database');
     await initDatabase();
 
-    // v1→v2, v11→v12, v12→v13, v13→v14 y v14→v15 son las migraciones transaccionales.
-    expect(database.withTransactionAsync).toHaveBeenCalledTimes(5);
+    // Cada paso confirma esquema/datos y user_version en la misma transacción.
+    expect(database.withTransactionAsync).toHaveBeenCalledTimes(14);
     expect(database.execAsync).toHaveBeenCalledWith('PRAGMA user_version = 2');
   });
 
@@ -45,6 +47,7 @@ describe('migración de recordatorios v1 a v2', () => {
     let failOnce = true;
     const database: MigrationDatabaseDouble = {
       getFirstAsync: jest.fn().mockResolvedValue({ user_version: 1 }),
+      getAllAsync: jest.fn().mockResolvedValue([{ name: 'minutes' }]),
       execAsync: jest.fn(async (sql) => {
         if (sql === 'ALTER TABLE events DROP COLUMN reminder_minutes' && failOnce) {
           failOnce = false;
@@ -72,8 +75,8 @@ describe('migración de recordatorios v1 a v2', () => {
 
     await initDatabase();
 
-    // 1 intento fallido de v2 + reintento de v2 + v12 + v13 + v14 + v15.
-    expect(database.withTransactionAsync).toHaveBeenCalledTimes(6);
+    // Un intento fallido de v2 más los catorce pasos confirmados de v2 a v15.
+    expect(database.withTransactionAsync).toHaveBeenCalledTimes(15);
     expect(appliedMigrationStatements).toContain('PRAGMA user_version = 2');
   });
 });
@@ -89,6 +92,7 @@ describe('migración de tipos componibles v11 a v12', () => {
     const database: MigrationDatabaseDouble & { applied: () => string[] } = {
       applied: () => applied,
       getFirstAsync: jest.fn().mockResolvedValue({ user_version: 11 }),
+      getAllAsync: jest.fn().mockResolvedValue([]),
       execAsync: jest.fn(async (sql) => {
         applied.push(sql);
       }),

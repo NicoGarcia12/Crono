@@ -1,19 +1,45 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AppState,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 
-import { notify } from '@/components/confirm';
-import { MyBirthdayCard } from '@/components/my-birthday-card';
-import { PhotoPicker } from '@/components/photo-picker';
-import { remindersAvailable } from '@/notifications/notifications';
-import { useAppDispatch, useAppSelector } from '@/store';
-import { exportBackup, restoreBackup } from '@/store/backup-slice';
-import { addEvent, editEvent } from '@/store/events-slice';
-import { saveDisplayName, savePhotoUri, saveThemePreference } from '@/store/settings-slice';
-import { THEME_LABELS, THEME_PREFERENCES, type ThemeColors } from '@/theme/theme';
-import { MY_BIRTHDAY_TYPE_KEY } from '@/types';
-import { useThemeColors } from '@/theme/use-theme';
+import { describeRestore } from "@/backup/backup";
+import { confirmAction, notify, showError } from "@/components/confirm";
+import { MyBirthdayCard } from "@/components/my-birthday-card";
+import { PhotoPicker } from "@/components/photo-picker";
+import {
+  getNotificationPermissionState,
+  remindersAvailable,
+  type NotificationPermissionState,
+} from "@/notifications/notifications";
+import { explainAndRequestNotificationPermission } from "@/notifications/permission-prompt";
+import { isAvailable, reportUnavailable } from "@/platform/runtime";
+import { useAppDispatch, useAppSelector } from "@/store";
+import { exportBackup, restoreBackup } from "@/store/backup-slice";
+import { addEvent, editEvent } from "@/store/events-slice";
+import {
+  restartOnboardingTour,
+  saveDisplayName,
+  savePhotoUri,
+  saveThemePreference,
+} from "@/store/settings-slice";
+import {
+  THEME_LABELS,
+  THEME_PREFERENCES,
+  type ThemeColors,
+} from "@/theme/theme";
+import { MY_BIRTHDAY_TYPE_KEY } from "@/types";
+import { useThemeColors } from "@/theme/use-theme";
 
 /** Perfil: nombre del usuario, resumen de datos y cómo funciona la app. */
 export default function PerfilScreen() {
@@ -23,7 +49,9 @@ export default function PerfilScreen() {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const displayName = useAppSelector((state) => state.settings.displayName);
-  const themePreference = useAppSelector((state) => state.settings.themePreference);
+  const themePreference = useAppSelector(
+    (state) => state.settings.themePreference,
+  );
   const photoUri = useAppSelector((state) => state.settings.photoUri);
   const events = useAppSelector((state) => state.events.items);
   const eventCount = events.length;
@@ -32,7 +60,7 @@ export default function PerfilScreen() {
   const myBirthday = events.find((event) => event.isMine === 1);
 
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(displayName ?? '');
+  const [name, setName] = useState(displayName ?? "");
 
   const save = () => {
     if (name.trim().length === 0) return;
@@ -46,7 +74,9 @@ export default function PerfilScreen() {
    * botón de esta misma tarjeta— se lleva la lista de quién me saludó.
    */
   const handleSaveMyBirthday = async (isoDate: string) => {
-    const title = displayName ? `Cumpleaños de ${displayName}` : 'Mi cumpleaños';
+    const title = displayName
+      ? `Cumpleaños de ${displayName}`
+      : "Mi cumpleaños";
 
     if (myBirthday) {
       await dispatch(
@@ -74,7 +104,7 @@ export default function PerfilScreen() {
         description: null,
         contactId: null,
         phone: null,
-        reminders: [{ amount: 1, unit: 'dias' }],
+        reminders: [{ amount: 1, unit: "dias" }],
         yearly: 1,
         isMine: 1,
         tags: [],
@@ -85,11 +115,39 @@ export default function PerfilScreen() {
   };
 
   const handleExport = async () => {
+    // Se pregunta cada vez, antes de abrir Compartir / descargar: el archivo es JSON
+    // legible, sin contraseña, y puede terminar en cualquier lado.
+    const accepted = await confirmAction(
+      "Tu copia se puede leer",
+      "Tu copia va a ser accesible para cualquiera que la tenga: el archivo no tiene contraseña. " +
+        "Guardala en un lugar privado y no la mandes por chat ni la adjuntes en un reporte.",
+      "Exportar",
+    );
+    if (!accepted) return;
     try {
       await dispatch(exportBackup()).unwrap();
     } catch {
-      notify('No se pudo exportar', 'Intentá de nuevo en un momento.');
+      notify("No se pudo exportar", "Intentá de nuevo en un momento.");
     }
+  };
+
+  /** "?" → vuelve a abrir el recorrido guiado, que vive en Agenda, solo para esta sesión (no toca SQLite). */
+  const handleShowTour = () => {
+    dispatch(restartOnboardingTour());
+    router.navigate("/");
+  };
+
+  /**
+   * La tarjeta es la misma en todas las plataformas. Donde no hay agenda de
+   * contactos (web), tocarla avisa con un error y lo deja en consola, en vez de
+   * mostrar un copy distinto o esconder el botón.
+   */
+  const handleImportContacts = () => {
+    if (!isAvailable("contacts")) {
+      reportUnavailable("contacts", "No se pudo importar");
+      return;
+    }
+    router.push("/cargar-cumpleanos");
   };
 
   const handleRestore = async () => {
@@ -97,22 +155,23 @@ export default function PerfilScreen() {
       const summary = await dispatch(restoreBackup()).unwrap();
       if (!summary) return; // el usuario canceló
 
-      const partes = [
-        `${summary.events} ${summary.events === 1 ? 'evento' : 'eventos'}`,
-        `${summary.notes} ${summary.notes === 1 ? 'nota' : 'notas'}`,
-      ];
-      const salteados = summary.skipped > 0 ? `\n${summary.skipped} ya estaban en tu agenda.` : '';
-      notify('Listo', `Se restauraron ${partes.join(' y ')}.${salteados}`);
+      const { title, message } = describeRestore(summary);
+      notify(title, message);
     } catch (error) {
       // Un string es un rechazo de parseBackup (archivo inválido). Cualquier otra
       // cosa es una falla al restaurar: se muestra su mensaje en vez de culpar al archivo.
-      if (typeof error === 'string') {
-        notify('No se pudo restaurar', error);
+      if (typeof error === "string") {
+        notify("No se pudo restaurar", error);
         return;
       }
-      console.error('Falló la restauración del backup', error);
+      console.error("Falló la restauración del backup", error);
       const detail = (error as { message?: string } | null)?.message;
-      notify('No se pudo restaurar', detail ? `Error al restaurar: ${detail}` : 'Error inesperado al restaurar.');
+      notify(
+        "No se pudo restaurar",
+        detail
+          ? `Error al restaurar: ${detail}`
+          : "Error inesperado al restaurar.",
+      );
     }
   };
 
@@ -120,8 +179,9 @@ export default function PerfilScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <PhotoPicker
         uri={photoUri}
-        onChange={(uri) => void dispatch(savePhotoUri(uri))}
-        filePrefix="perfil"
+        onChange={async (uri) => {
+          await dispatch(savePhotoUri(uri)).unwrap();
+        }}
         accessibilityLabel="Elegir foto de perfil"
         size={88}
       />
@@ -161,13 +221,14 @@ export default function PerfilScreen() {
       <MyBirthdayCard
         event={myBirthday}
         onSave={handleSaveMyBirthday}
-        onOpenGreetings={() => router.push('/saludos')}
+        onOpenGreetings={() => router.push("/saludos")}
       />
 
       <Pressable
         style={styles.actionCard}
+        accessibilityRole="button"
         accessibilityLabel="Cargar cumpleaños de contactos"
-        onPress={() => router.push('/cargar-cumpleanos')}
+        onPress={handleImportContacts}
       >
         <View style={styles.actionIcon}>
           <Ionicons name="people" size={22} color={colors.danger} />
@@ -186,14 +247,14 @@ export default function PerfilScreen() {
         color={colors.primary}
         title="Tipos de evento"
         subtitle="Creá tipos y bases propios, con capacidades y campos extra"
-        onPress={() => router.push('/tipos-evento')}
+        onPress={() => router.push("/tipos-evento")}
       />
 
       <ActionCard
         icon="cloud-upload"
         color={colors.primary}
         title="Exportar copia de seguridad"
-        subtitle="Guardá un archivo con tus eventos y notas (Drive, WhatsApp, donde quieras)"
+        subtitle="Guardá un archivo con tus eventos, notas, tipos y saludos. Cualquiera que lo tenga puede leerlo: guardalo en un lugar privado y no lo mandes por chat. No incluye fotos ni ideas de regalo"
         onPress={handleExport}
       />
 
@@ -204,6 +265,9 @@ export default function PerfilScreen() {
         subtitle="Traé tu agenda desde una copia. No se duplica lo que ya tenés"
         onPress={handleRestore}
       />
+
+      {/* Solo donde Crono programa recordatorios (no en web ni en Expo Go Android). */}
+      {remindersAvailable ? <NotificationsRow /> : null}
 
       {/* Tema: automático (sigue al celular), claro u oscuro. */}
       <View style={styles.themeCard}>
@@ -221,7 +285,12 @@ export default function PerfilScreen() {
                 style={[styles.themeChip, active && styles.themeChipActive]}
                 onPress={() => dispatch(saveThemePreference(preference))}
               >
-                <Text style={[styles.themeChipText, active && styles.themeChipTextActive]}>
+                <Text
+                  style={[
+                    styles.themeChipText,
+                    active && styles.themeChipTextActive,
+                  ]}
+                >
                   {THEME_LABELS[preference]}
                 </Text>
               </Pressable>
@@ -231,18 +300,165 @@ export default function PerfilScreen() {
       </View>
 
       <View style={styles.infoCard}>
-        <InfoRow icon="lock-closed" text="La app se bloquea al salir y se desbloquea con la huella, cara o PIN de tu celular." />
-        <InfoRow icon="phone-portrait" text="Todos tus datos viven solo en este celular (SQLite local). No se suben a ningún servidor." />
-        <InfoRow icon="notifications" text="Los recordatorios son notificaciones locales: funcionan sin internet, incluso con la app cerrada." />
+        <InfoRow
+          icon="lock-closed"
+          text="La app pide la huella, cara o credencial de tu celular al abrirse y al volver después de más de 2 minutos fuera. Sin credencial del sistema, necesitás configurar una para entrar."
+        />
+        {Platform.OS === "ios" ? (
+          <InfoRow
+            icon="information-circle"
+            text="Para probar Face ID, usá un development build o la app instalada de Crono: Expo Go en iOS no lo admite."
+          />
+        ) : null}
+        <InfoRow
+          icon="phone-portrait"
+          text="Tus datos se guardan en este celular (SQLite local) y Crono no los sube a ningún servidor. Lo que exportes o compartas sale del celular, y la copia de seguridad del sistema puede incluir los datos de la app."
+        />
+        {remindersAvailable ? (
+          <InfoRow
+            icon="notifications"
+            text="Si autorizás las notificaciones, los recordatorios locales pueden avisarte sin internet y con la app cerrada. Igual dependen del permiso y de la configuración del celular: no uses Crono como único aviso para algo importante."
+          />
+        ) : null}
+        {/* Depende del build (Expo Go Android, web): un solo aviso, la causa va al log de arranque. */}
         {!remindersAvailable ? (
           <InfoRow
             icon="warning"
             danger
-            text="Estás en Expo Go: los recordatorios no se disparan acá. Instalá la app (APK) para recibirlos completos."
+            text="Esta versión no programa recordatorios. Las anticipaciones se guardan como referencia."
           />
         ) : null}
       </View>
+
+      {/* Va al final para quedar por encima del resto; se ubica arriba a la derecha. */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.helpButton,
+          pressed && styles.helpButtonPressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="Ver recorrido de la app"
+        hitSlop={8}
+        onPress={handleShowTour}
+      >
+        <Ionicons name="help-circle-outline" size={30} color={colors.primary} />
+      </Pressable>
     </ScrollView>
+  );
+}
+
+/** Qué dice la fila "Avisos" según el permiso (el label es lo que lee el lector de pantalla). */
+const PERMISSION_COPY: Record<
+  NotificationPermissionState,
+  { subtitle: string; label: string }
+> = {
+  granted: {
+    subtitle:
+      "Activados. Crono puede avisarte de tus eventos aunque la app esté cerrada.",
+    label: "Avisos: activados",
+  },
+  askable: {
+    subtitle:
+      "Sin permiso todavía. Tocá para permitir que Crono te avise de tus eventos.",
+    label: "Avisos: sin permiso todavía. Tocá para permitirlos",
+  },
+  blocked: {
+    subtitle:
+      "Bloqueados en los ajustes del celular. Tocá para abrirlos y permitir las notificaciones de Crono.",
+    label: "Avisos: bloqueados en los ajustes del celular. Tocá para abrirlos",
+  },
+};
+
+/**
+ * Fila "Avisos" (CRONO44): el permiso de notificaciones ya no se pide al abrir
+ * la app, así que quien actualizó o lo negó necesita un lugar para activarlo.
+ *  - Se puede pedir → el mismo diálogo explicativo de la bienvenida y el pedido.
+ *  - Bloqueado (el SO ya no pregunta) → abre los ajustes del sistema.
+ *  - Concedido → solo informa.
+ *
+ * 💡 Aprendizaje: el permiso puede cambiar fuera de Crono (en Ajustes), así que
+ * se vuelve a leer al entrar a la pantalla (`useFocusEffect`) y cuando la app
+ * vuelve a primer plano (`AppState` → 'active').
+ */
+function NotificationsRow() {
+  const colors = useThemeColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [permission, setPermission] =
+    useState<NotificationPermissionState | null>(null);
+
+  // useCallback: useFocusEffect exige una función estable (si no, correría en cada render).
+  const refresh = useCallback(() => {
+    getNotificationPermissionState()
+      .then(setPermission)
+      .catch((error: unknown) =>
+        console.warn("No se pudo leer el permiso de notificaciones", error),
+      );
+  }, []);
+
+  useFocusEffect(refresh);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => subscription.remove(); // cleanup obligatorio de listeners nativos
+  }, [refresh]);
+
+  const handlePress = async () => {
+    if (permission === "blocked") {
+      try {
+        await Linking.openSettings();
+      } catch (error) {
+        showError("No se pudieron abrir los ajustes", error);
+      }
+      return;
+    }
+    if (permission === "askable") {
+      await explainAndRequestNotificationPermission();
+      refresh();
+    }
+  };
+
+  const actionable = permission === "askable" || permission === "blocked";
+  const copy = permission
+    ? PERMISSION_COPY[permission]
+    : {
+        subtitle: "Revisando el permiso…",
+        label: "Avisos: revisando el permiso",
+      };
+  const iconColor =
+    permission === "granted"
+      ? colors.success
+      : permission === "blocked"
+        ? colors.danger
+        : colors.primary;
+
+  return (
+    <Pressable
+      style={styles.actionCard}
+      accessibilityRole="button"
+      accessibilityLabel={copy.label}
+      accessibilityState={{ disabled: !actionable }}
+      disabled={!actionable}
+      onPress={() => void handlePress()}
+    >
+      <View style={[styles.actionIcon, { backgroundColor: `${iconColor}22` }]}>
+        <Ionicons
+          name={
+            permission === "granted" ? "notifications" : "notifications-off"
+          }
+          size={22}
+          color={iconColor}
+        />
+      </View>
+      <View style={styles.actionBody}>
+        <Text style={styles.actionTitle}>Avisos</Text>
+        <Text style={styles.actionSubtitle}>{copy.subtitle}</Text>
+      </View>
+      {actionable ? (
+        <Ionicons name="chevron-forward" size={20} color={colors.textSubtle} />
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -255,12 +471,23 @@ interface ActionCardProps {
 }
 
 /** Fila accionable del perfil (importar contactos, exportar, restaurar…). */
-function ActionCard({ icon, color, title, subtitle, onPress }: ActionCardProps) {
+function ActionCard({
+  icon,
+  color,
+  title,
+  subtitle,
+  onPress,
+}: ActionCardProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <Pressable style={styles.actionCard} accessibilityLabel={title} onPress={onPress}>
+    <Pressable
+      style={styles.actionCard}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      onPress={onPress}
+    >
       <View style={[styles.actionIcon, { backgroundColor: `${color}22` }]}>
         <Ionicons name={icon} size={22} color={color} />
       </View>
@@ -287,84 +514,117 @@ function InfoRow({
 
   return (
     <View style={styles.infoRow}>
-      <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.primary} />
-      <Text style={[styles.infoText, danger && { color: colors.danger }]}>{text}</Text>
+      <Ionicons
+        name={icon}
+        size={20}
+        color={danger ? colors.danger : colors.primary}
+      />
+      <Text style={[styles.infoText, danger && { color: colors.danger }]}>
+        {text}
+      </Text>
     </View>
   );
 }
 
 const makeStyles = (c: ThemeColors) =>
   StyleSheet.create({
-  container: { flex: 1, backgroundColor: c.background },
-  content: { alignItems: 'center', padding: 24, gap: 16 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { fontSize: 24, fontWeight: '700', color: c.text },
-  editRow: { flexDirection: 'row', gap: 8, alignItems: 'center', alignSelf: 'stretch' },
-  input: {
-    flex: 1,
-    backgroundColor: c.surface,
-    borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    color: c.text,
-  },
-  saveButton: { backgroundColor: c.primary, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12 },
-  saveText: { color: '#fff', fontWeight: '600' },
-  statsRow: { flexDirection: 'row', gap: 12, alignSelf: 'stretch' },
-  statBox: {
-    flex: 1,
-    backgroundColor: c.surface,
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    gap: 2,
-  },
-  statNumber: { fontSize: 26, fontWeight: '700', color: c.primary },
-  statLabel: { fontSize: 13, color: c.textMuted },
-  actionCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: c.surface,
-    borderRadius: 14,
-    padding: 14,
-    alignSelf: 'stretch',
-  },
-  actionIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#E91E6322',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBody: { flex: 1, gap: 2 },
-  actionTitle: { fontSize: 15.5, fontWeight: '600', color: c.text },
-  actionSubtitle: { fontSize: 12.5, color: c.textMuted },
-  themeCard: {
-    backgroundColor: c.surface,
-    borderRadius: 14,
-    padding: 14,
-    gap: 10,
-    alignSelf: 'stretch',
-  },
-  themeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  themeTitle: { fontSize: 15.5, fontWeight: '600', color: c.text },
-  themeRow: { flexDirection: 'row', gap: 6 },
-  themeChip: {
-    flex: 1,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: 16,
-    paddingVertical: 7,
-  },
-  themeChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
-  themeChipText: { fontSize: 13, color: c.textMuted },
-  themeChipTextActive: { color: '#fff', fontWeight: '600' },
-  infoCard: { backgroundColor: c.surface, borderRadius: 14, padding: 16, gap: 14, alignSelf: 'stretch' },
-  infoRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  infoText: { flex: 1, fontSize: 13.5, color: c.textMuted, lineHeight: 19 },
-});
+    container: { flex: 1, backgroundColor: c.background },
+    content: { alignItems: "center", padding: 24, gap: 16 },
+    helpButton: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    helpButtonPressed: { backgroundColor: c.surfaceAlt },
+    nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    name: { fontSize: 24, fontWeight: "700", color: c.text },
+    editRow: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      alignSelf: "stretch",
+    },
+    input: {
+      flex: 1,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      padding: 12,
+      fontSize: 16,
+      color: c.text,
+    },
+    saveButton: {
+      backgroundColor: c.primary,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    saveText: { color: "#fff", fontWeight: "600" },
+    statsRow: { flexDirection: "row", gap: 12, alignSelf: "stretch" },
+    statBox: {
+      flex: 1,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 16,
+      alignItems: "center",
+      gap: 2,
+    },
+    statNumber: { fontSize: 26, fontWeight: "700", color: c.primary },
+    statLabel: { fontSize: 13, color: c.textMuted },
+    actionCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      alignSelf: "stretch",
+    },
+    actionIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      backgroundColor: "#E91E6322",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    actionBody: { flex: 1, gap: 2 },
+    actionTitle: { fontSize: 15.5, fontWeight: "600", color: c.text },
+    actionSubtitle: { fontSize: 12.5, color: c.textMuted },
+    themeCard: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 14,
+      gap: 10,
+      alignSelf: "stretch",
+    },
+    themeHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+    themeTitle: { fontSize: 15.5, fontWeight: "600", color: c.text },
+    themeRow: { flexDirection: "row", gap: 6 },
+    themeChip: {
+      flex: 1,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 16,
+      paddingVertical: 7,
+    },
+    themeChipActive: { backgroundColor: c.contrast, borderColor: c.contrast },
+    themeChipText: { fontSize: 13, color: c.textMuted },
+    themeChipTextActive: { color: "#fff", fontWeight: "600" },
+    infoCard: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      padding: 16,
+      gap: 14,
+      alignSelf: "stretch",
+    },
+    infoRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+    infoText: { flex: 1, fontSize: 13.5, color: c.textMuted, lineHeight: 19 },
+  });
